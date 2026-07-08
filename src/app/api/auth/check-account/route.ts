@@ -1,0 +1,39 @@
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { canSignIn } from "@/lib/account-lifecycle";
+import { canLogin } from "@/lib/permissions";
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const username = String(body.username ?? "").trim();
+    if (!username) {
+      return NextResponse.json({ ok: false, code: "INVALID", message: "请输入账号" });
+    }
+
+    const user = await db.user.findUnique({
+      where: { username },
+      select: { passwordHash: true, status: true, accountLifecycle: true },
+    });
+
+    if (!user) {
+      return NextResponse.json({ ok: false, code: "INVALID", message: "账号或密码错误" });
+    }
+
+    if (!canLogin(user.status)) {
+      return NextResponse.json({ ok: false, code: "DISABLED", message: "账号已停用或离职，无法登录" });
+    }
+
+    if (!canSignIn(user.accountLifecycle, user.passwordHash)) {
+      return NextResponse.json({
+        ok: false,
+        code: "NOT_ENABLED",
+        message: "账号尚未开通，请联系您的经理开通后再登录",
+      });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ ok: false, code: "ERROR", message: "服务器错误" }, { status: 500 });
+  }
+}

@@ -1,0 +1,296 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  DIRECTOR   // 事业部负责人
+  MANAGER    // 区域经理
+  SUPERVISOR // 团队主管（兼外勤）
+  SALES      // 一线业务员
+}
+
+enum UserStatus {
+  ACTIVE   // 正常
+  RESIGNED // 离职
+  DISABLED // 停用
+}
+
+/** 账号开通与实名认证生命周期 */
+enum AccountLifecycle {
+  IMPORTED           // Excel 导入，未开通登录
+  PENDING_ONBOARDING // 经理已开通，待完成实名认证
+  ACTIVE             // 已完成实名认证
+}
+
+enum DataMode {
+  MANUAL_UPLOAD // 人工上传 Excel
+  API_SYNC      // P 站 API 自动拉取
+}
+
+enum PhotoStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RiskStatus {
+  PENDING
+  PASSED
+  FAILED
+}
+
+enum SalesActivationStatus {
+  NOT_ACTIVATED // 待照片通过（照片待定/不通过，动销未启动）
+  ACTIVATED     // 已动销
+  IN_PROGRESS   // 待动销达标（照片已通过，笔数未达标）
+}
+
+enum OrgUnitType {
+  DIVISION // 事业部
+  REGION   // 区域
+  TEAM     // 团队
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum AnomalyType {
+  NAME_MISMATCH // P 站姓名与后台不匹配
+  DUPLICATE     // 重复数据（已跳过）
+  DIRTY_DATA    // 脏数据
+}
+
+enum ApiSyncStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+// ─── Organization ────────────────────────────────────────────────────────────
+
+model OrgUnit {
+  id        String      @id @default(cuid())
+  name      String
+  type      OrgUnitType
+  parentId  String?
+  parent    OrgUnit?    @relation("OrgHierarchy", fields: [parentId], references: [id])
+  children  OrgUnit[]   @relation("OrgHierarchy")
+  users     User[]
+  merchants MerchantRecord[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([parentId])
+  @@index([type])
+}
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+model User {
+  id               String            @id @default(cuid())
+  username         String            @unique
+  passwordHash     String?           // null = 未开通登录
+  name             String            // 真实姓名
+  aliases          String[]          @default([]) // 兼容旧匹配，逐步迁移至 SalesPlatformIdentity
+  role             UserRole
+  status           UserStatus        @default(ACTIVE)
+  accountLifecycle AccountLifecycle  @default(IMPORTED)
+  teamId           String?
+  team             OrgUnit?          @relation(fields: [teamId], references: [id])
+  managerId        String?
+  manager          User?             @relation("UserHierarchy", fields: [managerId], references: [id])
+  subordinates     User[]            @relation("UserHierarchy")
+  profile          UserProfile?
+  platformIdentities SalesPlatformIdentity[]
+  merchants        MerchantRecord[]
+  teamHistory      UserTeamHistory[]
+  importLogs       ImportLog[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([teamId])
+  @@index([managerId])
+  @@index([name])
+  @@index([role, status])
+  @@index([accountLifecycle])
+}
+
+model UserProfile {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone     String?
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/** 业务员 P 站认证身份（作业账号 + 个人 PID，可多个） */
+model SalesPlatformIdentity {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobAccountName String   // 对应 P 站「员工名称」，全站唯一
+  personalPid    String   // 业务员个人 PID，一期仅存储
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([jobAccountName])
+  @@index([userId])
+  @@index([personalPid])
+}
+
+// 人员调动历史：历史数据保留原团队
+model UserTeamHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId    String
+  teamName  String
+  startDate DateTime
+  endDate   DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([teamId])
+}
+
+// ─── Business Data ───────────────────────────────────────────────────────────
+
+model Opportunity {
+  id        String           @id @default(cuid())
+  name      String           @unique
+  code      String?          @unique
+  merchants MerchantRecord[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model MerchantRecord {
+  id                    String                @id @default(cuid())
+  jobNumber             String                @unique // 作业编号，去重主键
+  merchantPid           String?               // 商家 PID（可重复，同一商户多条作业）
+  merchantName          String
+  salesUserId           String?               // 匹配到的后台用户
+  salesUser             User?                 @relation(fields: [salesUserId], references: [id])
+  salesUserName         String                // P 站原始业务员姓名
+  teamId                String?               // 入库时的团队归属（含历史快照）
+  team                  OrgUnit?              @relation(fields: [teamId], references: [id])
+  opportunityId         String?
+  opportunity           Opportunity?          @relation(fields: [opportunityId], references: [id])
+  opportunityName       String?
+  photoStatus           PhotoStatus           @default(PENDING)
+  riskStatus            RiskStatus            @default(PENDING)
+  salesActivationStatus SalesActivationStatus @default(NOT_ACTIVATED)
+  riskFailReason        String?
+  expandDate            DateTime
+  touchCount15d         Int                   @default(0) // 15 天有效碰笔数
+  scanCount15d          Int                   @default(0) // 15 天有效扫码数
+  transactionCount30d   Int                   @default(0) // 30 天有效交易笔数
+  sourceMode            DataMode              @default(MANUAL_UPLOAD)
+  importBatchId         String?
+  importBatch           ImportLog?            @relation(fields: [importBatchId], references: [id])
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@index([salesUserId])
+  @@index([teamId])
+  @@index([opportunityId])
+  @@index([expandDate])
+  @@index([photoStatus])
+  @@index([riskStatus])
+  @@index([salesActivationStatus])
+  @@index([merchantPid])
+}
+
+// ─── System Config ───────────────────────────────────────────────────────────
+
+model SystemConfig {
+  id               String   @id @default("singleton")
+  dataMode         DataMode @default(MANUAL_UPLOAD)
+  apiUrl           String?
+  apiKey           String?
+  apiTimeoutMs     Int      @default(30000)
+  apiRetryCount    Int      @default(3)
+  syncCron         String   @default("10 0 * * *") // 每日 00:10
+  syncFrequency    String   @default("daily")      // hourly | daily
+  lastSyncAt       DateTime?
+  updatedAt        DateTime @updatedAt
+}
+
+// ─── Logs & Anomalies ────────────────────────────────────────────────────────
+
+model ImportLog {
+  id             String           @id @default(cuid())
+  fileName       String
+  uploadedById   String
+  uploadedBy     User             @relation(fields: [uploadedById], references: [id])
+  status         ImportStatus     @default(PENDING)
+  totalRows      Int              @default(0)
+  importedRows   Int              @default(0)
+  skippedRows    Int              @default(0)
+  anomalyRows    Int              @default(0)
+  errorMessage   String?
+  merchants      MerchantRecord[]
+  createdAt      DateTime         @default(now())
+  completedAt    DateTime?
+
+  @@index([uploadedById])
+  @@index([createdAt])
+}
+
+model ApiSyncLog {
+  id           String        @id @default(cuid())
+  status       ApiSyncStatus @default(RUNNING)
+  triggeredBy  String?       // manual | cron
+  totalRows    Int           @default(0)
+  importedRows Int           @default(0)
+  skippedRows  Int           @default(0)
+  anomalyRows  Int           @default(0)
+  errorMessage String?
+  startedAt    DateTime      @default(now())
+  completedAt  DateTime?
+
+  @@index([startedAt])
+}
+
+model AnomalyRecord {
+  id            String      @id @default(cuid())
+  type          AnomalyType
+  rawData       Json
+  salesUserName String?
+  jobNumber     String?
+  merchantPid   String?
+  reason        String
+  resolved      Boolean     @default(false)
+  matchedUserId String?
+  importBatchId String?
+  apiSyncLogId  String?
+  createdAt     DateTime    @default(now())
+  resolvedAt    DateTime?
+
+  @@index([type, resolved])
+  @@index([salesUserName])
+}
+
+model SystemAlert {
+  id        String   @id @default(cuid())
+  level     String   @default("warning") // info | warning | error
+  message   String
+  source    String   // import | api | system
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([read, createdAt])
+}
