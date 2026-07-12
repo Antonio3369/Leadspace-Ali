@@ -4,6 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import { EnableSuccessModal } from "@/components/admin/EnableSuccessModal";
 import { ADMIN_TARGET_RELOGIN_HINT, ENABLE_NEXT_STEPS } from "@/lib/account-lifecycle";
 import { LIFECYCLE_LABELS, ROLE_LABELS, STATUS_LABELS } from "@/lib/constants";
+import {
+  NotionAlert,
+  NotionButton,
+  NotionCallout,
+  NotionInput,
+  NotionPanel,
+  NotionTabs,
+  PageHeader,
+  PageShell,
+  notion,
+} from "@/components/ui/notion";
 
 interface UserRow {
   id: string;
@@ -220,13 +231,13 @@ export default function AdminOrgPage() {
             type="password"
             value={actionPassword}
             onChange={(e) => setActionPassword(e.target.value)}
-            className="border rounded px-2 py-1 text-xs w-24"
+            className={`${notion.input} text-xs w-24`}
             placeholder="密码"
           />
           <button
             type="button"
             onClick={() => handleEnable(user)}
-            className="text-xs text-white bg-[#165DFF] px-2 py-1 rounded"
+            className="text-xs text-white bg-[#2563eb] px-2 py-1 rounded"
           >
             确认
           </button>
@@ -244,13 +255,13 @@ export default function AdminOrgPage() {
             type="password"
             value={actionPassword}
             onChange={(e) => setActionPassword(e.target.value)}
-            className="border rounded px-2 py-1 text-xs w-24"
+            className={`${notion.input} text-xs w-24`}
             placeholder="新密码"
           />
           <button
             type="button"
             onClick={() => handleResetPassword(user)}
-            className="text-xs text-white bg-[#165DFF] px-2 py-1 rounded"
+            className="text-xs text-white bg-[#2563eb] px-2 py-1 rounded"
           >
             确认
           </button>
@@ -267,7 +278,7 @@ export default function AdminOrgPage() {
           <button
             type="button"
             onClick={() => startAction(user.id, "enable")}
-            className="text-xs text-[#165DFF] hover:underline"
+            className="text-xs text-[#2563eb] hover:underline"
           >
             开通账号
           </button>
@@ -276,7 +287,7 @@ export default function AdminOrgPage() {
           <button
             type="button"
             onClick={() => handleCompleteOnboarding(user)}
-            className="text-xs text-[#165DFF] hover:underline"
+            className="text-xs text-[#2563eb] hover:underline"
           >
             完成认证
           </button>
@@ -285,7 +296,7 @@ export default function AdminOrgPage() {
           <button
             type="button"
             onClick={() => startAction(user.id, "reset")}
-            className="text-xs text-[#165DFF] hover:underline"
+            className="text-xs text-[#2563eb] hover:underline"
           >
             重置密码
           </button>
@@ -313,7 +324,7 @@ export default function AdminOrgPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <PageShell>
       <EnableSuccessModal
         open={enableSuccess !== null}
         onClose={() => setEnableSuccess(null)}
@@ -323,74 +334,61 @@ export default function AdminOrgPage() {
         nextSteps={ENABLE_NEXT_STEPS.manager}
       />
 
-      <h1 className="text-xl font-semibold text-gray-900">组织人员管理</h1>
+      <PageHeader title="组织人员管理" kicker="" />
 
-      <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-900 space-y-1">
+      <NotionCallout tone="warning">
         <p>
           Excel 导入的经理默认为「未开通」。管理员<strong>开通账号</strong>时设置密码即可，开通后状态为「已认证」，可立即登录经理端。
         </p>
         <p>
           「待认证」为历史经理账号；「已停用」账号可在此<strong>启用</strong>。重置密码、停用/启用后，{ADMIN_TARGET_RELOGIN_HINT}
         </p>
-      </div>
+      </NotionCallout>
 
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 max-w-lg">
-        <h2 className="text-sm font-medium text-gray-700 mb-4">创建区域经理</h2>
+      <NotionPanel className="max-w-lg">
+        <h2 className="text-sm font-medium text-[#111827] mb-4">创建区域经理</h2>
         <form onSubmit={handleCreate} className="space-y-3">
-          <input
+          <NotionInput
             required
             placeholder="登录名"
             value={form.username}
             onChange={(e) => setForm({ ...form, username: e.target.value })}
-            className="w-full border rounded-lg px-3 py-2 text-sm"
           />
-          <input
+          <NotionInput
             required
             placeholder="姓名"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="w-full border rounded-lg px-3 py-2 text-sm"
           />
-          <input
+          <NotionInput
             required
             type="password"
             placeholder="密码"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
-            className="w-full border rounded-lg px-3 py-2 text-sm"
           />
-          <button type="submit" className="bg-[#165DFF] text-white px-4 py-2 rounded-lg text-sm">
-            创建
-          </button>
+          <NotionButton type="submit">创建</NotionButton>
         </form>
-        {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
-        {message && <p className="text-green-600 text-sm mt-2">{message}</p>}
-      </div>
+        {error && <NotionAlert tone="error">{error}</NotionAlert>}
+        {message && <NotionAlert tone="success">{message}</NotionAlert>}
+      </NotionPanel>
 
-      <div className="flex gap-1 border-b border-gray-200">
-        {(Object.keys(TAB_LABELS) as OrgTab[]).map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => {
-              setTab(key);
-              clearAction();
-            }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === key
-                ? "border-[#165DFF] text-[#165DFF]"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {TAB_LABELS[key]}
-            <span className="ml-1.5 text-xs text-gray-400">({tabCounts[key]})</span>
-          </button>
-        ))}
-      </div>
+      <NotionTabs
+        tabs={(Object.keys(TAB_LABELS) as OrgTab[]).map((key) => ({
+          key,
+          label: TAB_LABELS[key],
+          count: tabCounts[key],
+        }))}
+        active={tab}
+        onChange={(key) => {
+          setTab(key);
+          clearAction();
+        }}
+      />
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+      <div className={notion.tableWrap}>
         <table className="w-full text-sm min-w-[900px]">
-          <thead className="bg-gray-50 text-gray-500">
+          <thead className={notion.thead}>
             <tr>
               <th className="text-left px-4 py-3">登录名</th>
               <th className="text-left px-4 py-3">姓名</th>
@@ -415,7 +413,7 @@ export default function AdminOrgPage() {
               </tr>
             ) : (
               filteredUsers.map((u) => (
-              <tr key={u.id} className="border-t border-gray-50">
+              <tr key={u.id} className={notion.row}>
                 <td className="px-4 py-2.5 font-mono text-xs">{u.username}</td>
                 <td className="px-4 py-2.5">{u.name}</td>
                 <td className="px-4 py-2.5">{ROLE_LABELS[u.role] ?? u.role}</td>
@@ -456,6 +454,6 @@ export default function AdminOrgPage() {
           </tbody>
         </table>
       </div>
-    </div>
+    </PageShell>
   );
 }

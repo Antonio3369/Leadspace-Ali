@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { UserRole } from "@/generated/prisma/client";
-import { MetricsGrid } from "@/components/stats/MetricCard";
 import { AlertBanner } from "@/components/stats/AlertBanner";
 import { DualViewTabs } from "@/components/layout/DualViewTabs";
 import { PieChartCard } from "@/components/charts/PieChartCard";
@@ -13,7 +11,9 @@ import { ManagerTeamRankingTable } from "@/components/charts/ManagerTeamRankingT
 import type { ManagerTeamRankingItem } from "@/components/charts/ManagerTeamRankingTable";
 import { SalesStaffRankingTable } from "@/components/charts/SalesStaffRankingTable";
 import type { SalesStaffRankingItem } from "@/components/charts/SalesStaffRankingTable";
+import { MetricsGrid } from "@/components/stats/MetricCard";
 import { requiresDualView } from "@/lib/permissions";
+import { DateRangeMeta, PageHeader, PageShell } from "@/components/ui/notion";
 
 interface DashboardOverviewProps {
   user: { role: UserRole; name: string };
@@ -47,12 +47,15 @@ interface DashboardOverviewProps {
     data: ManagerTeamRankingItem[];
   };
   salesStaffRanking?: {
-    monthLabel: string;
+    periodLabel: string;
     data: SalesStaffRankingItem[];
   };
   pageTitle?: string;
   hideManagerRanking?: boolean;
   backHref?: string;
+  dateRangeLabel?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export function DashboardOverview({
@@ -66,6 +69,9 @@ export function DashboardOverview({
   pageTitle = "数据总览",
   hideManagerRanking = false,
   backHref,
+  dateRangeLabel,
+  dateFrom = "",
+  dateTo = "",
 }: DashboardOverviewProps) {
   const router = useRouter();
   const showDualView = requiresDualView(user.role);
@@ -74,31 +80,29 @@ export function DashboardOverview({
     router.push(`/?view=${view}`);
   }
 
+  const meta = dateRangeLabel ? (
+    <p>
+      数据范围：<span className="font-medium text-[#111827]">{dateRangeLabel}</span>
+    </p>
+  ) : dateFrom || dateTo ? (
+    <DateRangeMeta dateFrom={dateFrom} dateTo={dateTo} />
+  ) : undefined;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-3">
-          {backHref && (
-            <Link
-              href={backHref}
-              className="text-sm text-gray-500 hover:text-[#165DFF] transition-colors"
-            >
-              ← 返回
-            </Link>
-          )}
-          <h1 className="text-xl font-semibold text-gray-900">{pageTitle}</h1>
-        </div>
-        {showDualView && (
-          <DualViewTabs activeView={activeView} onChange={handleViewChange} />
-        )}
-      </div>
+    <PageShell>
+      <PageHeader
+        title={pageTitle}
+        backHref={backHref}
+        meta={meta}
+        trailing={showDualView ? <DualViewTabs activeView={activeView} onChange={handleViewChange} /> : undefined}
+      />
 
       <AlertBanner message={alert.message} visible={alert.visible} />
       <MetricsGrid metrics={metrics} />
 
       {salesStaffRanking && (
         <SalesStaffRankingTable
-          monthLabel={salesStaffRanking.monthLabel}
+          periodLabel={salesStaffRanking.periodLabel}
           data={salesStaffRanking.data}
         />
       )}
@@ -107,19 +111,20 @@ export function DashboardOverview({
         <ManagerTeamRankingTable
           monthLabel={managerRanking.monthLabel}
           data={managerRanking.data}
-          highlightManagerName={
-            user.role === "MANAGER" ? user.name : undefined
-          }
+          highlightManagerName={user.role === "MANAGER" ? user.name : undefined}
         />
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <PieChartCard title="风控状态分布" data={charts.riskDistribution} />
         <PieChartCard title="动销未达标原因分布" data={charts.salesFailureDistribution} />
-      </div>
+      </section>
 
       <DailyTrendChart data={charts.dailyTrend} />
-      <OpportunityStatsTable data={charts.opportunityStats} />
-    </div>
+
+      <section className="rounded-[14px] overflow-hidden border border-[#eef2f7] bg-white shadow-sm">
+        <OpportunityStatsTable data={charts.opportunityStats} />
+      </section>
+    </PageShell>
   );
 }

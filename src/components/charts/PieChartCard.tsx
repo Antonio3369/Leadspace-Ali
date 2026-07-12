@@ -47,16 +47,16 @@ export function PieChartCard({ title, data }: PieChartCardProps) {
 
   if (data.length === 0) {
     return (
-      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-        <h3 className="text-sm font-medium text-gray-700 mb-4 text-center">{title}</h3>
-        <p className="text-gray-400 text-sm text-center py-12">暂无数据</p>
+      <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm p-5">
+        <h3 className="text-sm font-medium text-[#111827] mb-4 text-center">{title}</h3>
+        <p className="text-[#94a3b8] text-sm text-center py-12">暂无数据</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 flex flex-col">
-      <h3 className="text-sm font-medium text-gray-700 mb-3 text-center">{title}</h3>
+    <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm p-5 flex flex-col">
+      <h3 className="text-sm font-medium text-[#111827] mb-3 text-center">{title}</h3>
 
       <div className="relative w-full h-[200px]">
         <ResponsiveContainer width="100%" height="100%">
@@ -118,7 +118,7 @@ export function PieChartCard({ title, data }: PieChartCardProps) {
       </div>
 
       {/* 图例列表：完整展示名称 + 数量 + 占比 */}
-      <ul className="mt-3 space-y-2 border-t border-gray-50 pt-3">
+      <ul className="mt-3 space-y-2 border-t border-[#f1f5f9] pt-3">
         {enriched.map((item, index) => {
           const isActive = activeIndex === index;
           return (

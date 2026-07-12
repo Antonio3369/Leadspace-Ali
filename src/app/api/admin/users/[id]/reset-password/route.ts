@@ -30,7 +30,7 @@ export async function POST(
     const passwordHash = await bcrypt.hash(body.password, 10);
     await db.user.update({
       where: { id },
-      data: { passwordHash },
+      data: { passwordHash, mustChangePassword: true },
     });
 
     return NextResponse.json({ ok: true, requiresRelogin: true });

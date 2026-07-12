@@ -19,16 +19,16 @@ interface DailyTrendChartProps {
 export function DailyTrendChart({ data }: DailyTrendChartProps) {
   if (data.length === 0) {
     return (
-      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-        <h3 className="text-sm font-medium text-gray-700 mb-4">每日拓展 & 动销趋势</h3>
-        <p className="text-gray-400 text-sm text-center py-12">暂无数据</p>
+      <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm p-5">
+        <h3 className="text-sm font-medium text-[#111827] mb-4">每日拓展 & 动销趋势</h3>
+        <p className="text-[#94a3b8] text-sm text-center py-12">暂无数据</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-      <h3 className="text-sm font-medium text-gray-700 mb-4">每日拓展 & 动销趋势</h3>
+    <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm p-5">
+      <h3 className="text-sm font-medium text-[#111827] mb-4">每日拓展 & 动销趋势</h3>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#E5E6EB" />

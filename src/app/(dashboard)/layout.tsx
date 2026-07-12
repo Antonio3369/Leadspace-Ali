@@ -1,7 +1,6 @@
-import { redirect } from "next/navigation";
 import { ensureLiveSession } from "@/lib/auth";
-import { Navbar } from "@/components/layout/Navbar";
-import { BusinessNotice } from "@/components/layout/BusinessNotice";
+import { AppShell } from "@/components/layout/AppShell";
+import { SignOutButton } from "@/components/layout/SignOutButton";
 
 export default async function DashboardLayout({
   children,
@@ -11,12 +10,19 @@ export default async function DashboardLayout({
   const user = await ensureLiveSession();
 
   return (
-    <div className="min-h-screen bg-[#F5F7FA] flex flex-col">
-      <Navbar user={user} />
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-        <BusinessNotice />
-        {children}
-      </main>
-    </div>
+    <AppShell
+      user={user}
+      signOutMobile={
+        <SignOutButton
+          className="text-xs text-[#64748b] hover:text-[#111827] shrink-0"
+          label="退出"
+        />
+      }
+      signOutDesktop={
+        <SignOutButton className="text-sm text-[#64748b] hover:text-[#111827] transition-colors" />
+      }
+    >
+      {children}
+    </AppShell>
   );
 }

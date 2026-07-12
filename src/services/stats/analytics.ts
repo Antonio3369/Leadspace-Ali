@@ -22,7 +22,8 @@ import {
   getManagerOrThrow,
   withExpandDateRange,
 } from "@/services/stats/manager-scope";
-import { formatDateInput, getMonthRange, parseDateFromParam, parseDateToParam } from "@/lib/ledger-date";
+import { formatDateInput, formatDateRangeLabel, getMonthRange, parseDateFromParam, parseDateToParam } from "@/lib/ledger-date";
+import { toTeamDetailMetrics, type TeamDetailRow } from "@/lib/team-details";
 
 const MERCHANT_CHART_SELECT = {
   photoStatus: true,
@@ -192,7 +193,7 @@ export interface OpportunityListItem {
 /** 商机专项：权限范围内各商机汇总列表 */
 export async function getOpportunityAnalysisList(
   user: SessionUser,
-  options: { view?: "team" | "personal" } = {}
+  options: { view?: "team" | "personal"; dateFrom?: Date; dateTo?: Date } = {}
 ) {
   const { where } = await resolveMerchantWhere(user, options);
 
@@ -231,7 +232,7 @@ export async function getOpportunityAnalysisList(
 export async function getOpportunityAnalysisDetail(
   user: SessionUser,
   opportunityId: string,
-  options: { view?: "team" | "personal" } = {}
+  options: { view?: "team" | "personal"; dateFrom?: Date; dateTo?: Date } = {}
 ) {
   const { where: scopeWhere } = await resolveMerchantWhere(user, options);
   const where: Prisma.MerchantRecordWhereInput = {
@@ -357,12 +358,13 @@ export interface SalesStaffRankingItem {
   riskNonCompliant: number;
 }
 
-/** 经理所辖业务人员拓展排名（高 → 低） */
+/** 经理所辖业务人员拓展排名（高 → 低），与详情页拓展日期范围一致 */
 export async function getSalesStaffMonthlyRankingForManager(
   managerId: string,
-  monthParam?: string
-): Promise<{ monthLabel: string; monthParam: string; ranking: SalesStaffRankingItem[] }> {
-  const { start, end, label, monthParam: resolved } = getMonthRange(monthParam ?? "");
+  options: { dateFrom?: string; dateTo?: string } = {}
+): Promise<{ rangeLabel: string; ranking: SalesStaffRankingItem[] }> {
+  const { dateFrom, dateTo } = options;
+  const rangeLabel = formatDateRangeLabel(dateFrom ?? "", dateTo ?? "");
   await getManagerOrThrow(managerId);
 
   const staffWhere = await buildManagerStaffUserWhere(managerId);
@@ -374,16 +376,13 @@ export async function getSalesStaffMonthlyRankingForManager(
   });
 
   if (staff.length === 0) {
-    return { monthLabel: label, monthParam: resolved, ranking: [] };
+    return { rangeLabel, ranking: [] };
   }
 
   const staffIds = staff.map((s) => s.id);
 
   const merchants = await db.merchantRecord.findMany({
-    where: {
-      salesUserId: { in: staffIds },
-      expandDate: { gte: start, lte: end },
-    },
+    where: withExpandDateRange({ salesUserId: { in: staffIds } }, dateFrom, dateTo),
     select: {
       salesUserId: true,
       photoStatus: true,
@@ -422,7 +421,7 @@ export async function getSalesStaffMonthlyRankingForManager(
     .sort((a, b) => b.monthlyExpand - a.monthlyExpand || a.salesName.localeCompare(b.salesName, "zh"))
     .map((item, idx) => ({ ...item, rank: idx + 1 }));
 
-  return { monthLabel: label, monthParam: resolved, ranking };
+  return { rangeLabel, ranking };
 }
 
 export function shouldShowManagerRanking(
@@ -440,9 +439,10 @@ export interface LedgerQuery {
   sortBy?: string;
   sortOrder?: "asc" | "desc";
   teamId?: string;
+  managerId?: string;
   salesUserId?: string;
   opportunityId?: string;
-  photoStatus?: string;
+  photoStatus?: string[];
   riskStatus?: string[];
   salesActivationStatus?: string[];
   search?: string;
@@ -452,26 +452,90 @@ export interface LedgerQuery {
 
 const LEDGER_EXPORT_LIMIT = 50_000;
 
+export { LEDGER_EXPORT_LIMIT };
+
+export interface LedgerSummary {
+  risk: { PENDING: number; PASSED: number; FAILED: number };
+  photo: { PENDING: number; APPROVED: number; REJECTED: number };
+  sales: { NOT_ACTIVATED: number; IN_PROGRESS: number; ACTIVATED: number };
+}
+
+async function getLedgerSummary(
+  where: Prisma.MerchantRecordWhereInput
+): Promise<LedgerSummary> {
+  const [riskRows, photoRows, salesRows] = await Promise.all([
+    db.merchantRecord.groupBy({
+      by: ["riskStatus"],
+      where,
+      _count: { _all: true },
+    }),
+    db.merchantRecord.groupBy({
+      by: ["photoStatus"],
+      where,
+      _count: { _all: true },
+    }),
+    db.merchantRecord.groupBy({
+      by: ["salesActivationStatus"],
+      where,
+      _count: { _all: true },
+    }),
+  ]);
+
+  const risk = { PENDING: 0, PASSED: 0, FAILED: 0 };
+  for (const row of riskRows) {
+    risk[row.riskStatus] = row._count._all;
+  }
+
+  const photo = { PENDING: 0, APPROVED: 0, REJECTED: 0 };
+  for (const row of photoRows) {
+    photo[row.photoStatus] = row._count._all;
+  }
+
+  const sales = { NOT_ACTIVATED: 0, IN_PROGRESS: 0, ACTIVATED: 0 };
+  for (const row of salesRows) {
+    sales[row.salesActivationStatus] = row._count._all;
+  }
+
+  return { risk, photo, sales };
+}
+
 export async function buildLedgerWhere(
   user: SessionUser,
   params: LedgerQuery
 ): Promise<Prisma.MerchantRecordWhereInput> {
-  const { where: scopeWhere } = await resolveMerchantWhere(user, {
-    scope: params.teamId ? "team" : params.salesUserId ? "personal" : undefined,
-    teamId: params.teamId,
-    userId: params.salesUserId,
-    dateFrom: params.dateFrom ? parseDateFromParam(params.dateFrom) : undefined,
-    dateTo: params.dateTo ? parseDateToParam(params.dateTo) : undefined,
-  });
+  let scopeWhere: Prisma.MerchantRecordWhereInput;
+
+  if (params.managerId) {
+    if (user.role !== "DIRECTOR") {
+      throw new Error("无权按经理筛选");
+    }
+    scopeWhere = withExpandDateRange(
+      await buildManagerMerchantWhere(params.managerId),
+      params.dateFrom,
+      params.dateTo
+    );
+  } else {
+    const resolved = await resolveMerchantWhere(user, {
+      scope: params.teamId ? "team" : params.salesUserId ? "personal" : undefined,
+      teamId: params.teamId,
+      userId: params.salesUserId,
+      dateFrom: params.dateFrom ? parseDateFromParam(params.dateFrom) : undefined,
+      dateTo: params.dateTo ? parseDateToParam(params.dateTo) : undefined,
+    });
+    scopeWhere = resolved.where;
+  }
 
   const filters: Prisma.MerchantRecordWhereInput[] = [scopeWhere];
 
   if (params.opportunityId) {
     filters.push({ opportunityId: params.opportunityId });
   }
-  if (params.photoStatus) {
+  if (params.photoStatus && params.photoStatus.length > 0) {
     filters.push({
-      photoStatus: params.photoStatus as Prisma.EnumPhotoStatusFilter["equals"],
+      photoStatus:
+        params.photoStatus.length === 1
+          ? (params.photoStatus[0] as Prisma.EnumPhotoStatusFilter["equals"])
+          : { in: params.photoStatus as Prisma.EnumPhotoStatusFilter["in"] },
     });
   }
   if (params.riskStatus && params.riskStatus.length > 0) {
@@ -539,8 +603,9 @@ export async function getLedgerRecords(
   const sortBy = params.sortBy ?? "expandDate";
   const sortOrder = params.sortOrder ?? "desc";
 
-  const [total, records] = await Promise.all([
+  const [total, summary, records] = await Promise.all([
     db.merchantRecord.count({ where }),
+    getLedgerSummary(where),
     db.merchantRecord.findMany({
       where,
       include: {
@@ -554,7 +619,7 @@ export async function getLedgerRecords(
     }),
   ]);
 
-  return { total, page, pageSize, records };
+  return { total, page, pageSize, summary, records, exportLimit: LEDGER_EXPORT_LIMIT };
 }
 
 export interface MemberQuery {
@@ -706,15 +771,7 @@ async function getManagerListStats(params: MemberQuery) {
 
   const merchants = await db.merchantRecord.findMany({
     where: withExpandDateRange({ teamId: { in: teamIds } }, dateFrom, dateTo),
-    select: {
-      teamId: true,
-      photoStatus: true,
-      riskStatus: true,
-      salesActivationStatus: true,
-      touchCount15d: true,
-      scanCount15d: true,
-      transactionCount30d: true,
-    },
+    select: MEMBER_METRICS_SELECT,
   });
 
   const byTeam = new Map<string, typeof merchants>();
@@ -731,9 +788,147 @@ async function getManagerListStats(params: MemberQuery) {
       id: mgr.id,
       name: mgr.name,
       role: mgr.role,
-      metrics: calculateCoreMetrics(
-        mgr.teamId ? (byTeam.get(mgr.teamId) ?? []) : []
-      ),
+      metrics: calculateCoreMetrics(mgr.teamId ? (byTeam.get(mgr.teamId) ?? []) : []),
     })),
   };
+}
+
+async function getDirectorTeamDetails(params: MemberQuery) {
+  const { search, dateFrom, dateTo } = params;
+  const userWhere: Prisma.UserWhereInput = {
+    role: "MANAGER",
+    status: "ACTIVE",
+    ...(search
+      ? { name: { contains: search, mode: "insensitive" as const } }
+      : {}),
+  };
+
+  const managers = await db.user.findMany({
+    where: userWhere,
+    select: { id: true, name: true, teamId: true },
+    orderBy: { name: "asc" },
+  });
+
+  if (managers.length === 0) {
+    return { listType: "managers" as const, canExport: false, rows: [] as TeamDetailRow[] };
+  }
+
+  const teamIds = [...new Set(managers.map((m) => m.teamId).filter((id): id is string => !!id))];
+
+  type MerchantMetricRow = {
+    teamId: string | null;
+    salesUserId: string | null;
+    photoStatus: PhotoStatus;
+    riskStatus: RiskStatus;
+    salesActivationStatus: SalesActivationStatus;
+    touchCount15d: number;
+    scanCount15d: number;
+    transactionCount30d: number;
+  };
+
+  const [merchants, staffCountByTeam] = await Promise.all([
+    teamIds.length > 0
+      ? db.merchantRecord.findMany({
+          where: withExpandDateRange({ teamId: { in: teamIds } }, dateFrom, dateTo),
+          select: MEMBER_METRICS_SELECT,
+        })
+      : Promise.resolve([] as MerchantMetricRow[]),
+    teamIds.length > 0
+      ? db.user.groupBy({
+          by: ["teamId"],
+          where: {
+            teamId: { in: teamIds },
+            role: { in: ["SALES", "SUPERVISOR"] },
+            status: "ACTIVE",
+          },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const teamStaffCounts = new Map<string, number>();
+  for (const row of staffCountByTeam) {
+    if (row.teamId) teamStaffCounts.set(row.teamId, row._count._all);
+  }
+
+  const byTeam = new Map<string, MerchantMetricRow[]>();
+  for (const m of merchants) {
+    if (!m.teamId) continue;
+    if (!byTeam.has(m.teamId)) byTeam.set(m.teamId, []);
+    byTeam.get(m.teamId)!.push(m);
+  }
+
+  const managersWithoutTeam = managers.filter((m) => !m.teamId);
+  const memberCountByManagerId = new Map<string, number>();
+  for (const mgr of managersWithoutTeam) {
+    const staffWhere = await buildManagerManagedUserWhere(mgr.id);
+    const memberCount = await db.user.count({
+      where: { AND: [staffWhere, { status: "ACTIVE" }] },
+    });
+    memberCountByManagerId.set(mgr.id, memberCount);
+  }
+
+  const rows = managers.map((mgr) => ({
+    id: mgr.id,
+    name: mgr.name,
+    memberCount: mgr.teamId
+      ? (teamStaffCounts.get(mgr.teamId) ?? 0)
+      : (memberCountByManagerId.get(mgr.id) ?? 0),
+    metrics: toTeamDetailMetrics(
+      calculateCoreMetrics(mgr.teamId ? (byTeam.get(mgr.teamId) ?? []) : [])
+    ),
+  }));
+
+  return { listType: "managers" as const, canExport: false, rows };
+}
+
+export async function getTeamDetails(user: SessionUser, params: MemberQuery = {}) {
+  if (user.role === "DIRECTOR") {
+    return getDirectorTeamDetails(params);
+  }
+
+  if (user.role === "MANAGER") {
+    const { search, dateFrom, dateTo } = params;
+    const staffWhere = await buildManagerStaffUserWhere(user.id);
+
+    const userWhere: Prisma.UserWhereInput = {
+      AND: [
+        staffWhere,
+        ...(search ? [{ name: { contains: search, mode: "insensitive" as const } }] : []),
+      ],
+    };
+
+    const staff = await db.user.findMany({
+      where: userWhere,
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+
+    if (staff.length === 0) {
+      return { listType: "staff" as const, canExport: true, rows: [] as TeamDetailRow[] };
+    }
+
+    const staffIds = staff.map((s) => s.id);
+    const merchants = await db.merchantRecord.findMany({
+      where: withExpandDateRange({ salesUserId: { in: staffIds } }, dateFrom, dateTo),
+      select: MEMBER_METRICS_SELECT,
+    });
+
+    const byUser = new Map<string, typeof merchants>();
+    for (const m of merchants) {
+      if (!m.salesUserId) continue;
+      if (!byUser.has(m.salesUserId)) byUser.set(m.salesUserId, []);
+      byUser.get(m.salesUserId)!.push(m);
+    }
+
+    const rows = staff.map((person) => ({
+      id: person.id,
+      name: person.name,
+      metrics: toTeamDetailMetrics(calculateCoreMetrics(byUser.get(person.id) ?? [])),
+    }));
+
+    return { listType: "staff" as const, canExport: true, rows };
+  }
+
+  return { listType: "none" as const, canExport: false, rows: [] as TeamDetailRow[] };
 }

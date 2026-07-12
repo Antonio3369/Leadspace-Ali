@@ -1,14 +1,23 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
 import { getChartData } from "@/services/stats/analytics";
+import { parseDateFromParam, parseDateToParam } from "@/lib/ledger-date";
 
 export async function GET(request: Request) {
   try {
     const user = await requireSessionUser();
     const { searchParams } = new URL(request.url);
     const view = searchParams.get("view") as "team" | "personal" | null;
+    const opportunityId = searchParams.get("opportunityId") ?? undefined;
+    const dateFrom = searchParams.get("dateFrom");
+    const dateTo = searchParams.get("dateTo");
 
-    const data = await getChartData(user, { view: view ?? undefined });
+    const data = await getChartData(user, {
+      view: view ?? undefined,
+      dateFrom: dateFrom ? parseDateFromParam(dateFrom) : undefined,
+      dateTo: dateTo ? parseDateToParam(dateTo) : undefined,
+      opportunityId,
+    });
 
     return NextResponse.json(data);
   } catch (err) {

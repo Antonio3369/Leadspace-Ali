@@ -121,7 +121,10 @@ export async function getManagerDashboard(
         charts: payload,
       };
     })(),
-    getSalesStaffMonthlyRankingForManager(managerId),
+    getSalesStaffMonthlyRankingForManager(managerId, {
+      dateFrom: options.dateFrom,
+      dateTo: options.dateTo,
+    }),
   ]);
 
   return { manager, metrics, alert, charts, salesStaffRanking };

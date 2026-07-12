@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { NotionAlert, NotionButton, NotionInput } from "@/components/ui/notion";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -57,78 +58,66 @@ export default function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F5F7FA]">
-      <div className="w-full max-w-md bg-white rounded-xl shadow-sm p-8">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-semibold text-[#165DFF]">
-            Leadspace 支付宝业务数据管理
-          </h1>
-          <p className="text-sm text-gray-500 mt-2">请登录您的账号</p>
+    <div className="min-h-screen flex items-center justify-center bg-[#f4f6f9] px-4 py-10">
+      <div className="w-full max-w-[400px]">
+        <div className="mb-6 space-y-1 text-center">
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[#eff6ff] text-[#2563eb] text-lg font-bold mb-2">
+            L
+          </div>
+          <p className="text-[0.78rem] font-semibold tracking-wide uppercase text-[#94a3b8]">
+            Leadspace.Alipay
+          </p>
+          <h1 className="text-2xl font-bold text-[#111827] tracking-tight">数据管理</h1>
+          <p className="text-sm text-[#64748b]">请登录您的账号</p>
         </div>
 
-        {onboarded && (
-          <p className="text-sm text-green-600 bg-green-50 px-3 py-2 rounded-lg mb-4 text-center">
-            实名认证已完成，请重新登录
-          </p>
-        )}
-        {disabled && (
-          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-4 text-center">
-            账号已停用或离职，无法登录
-          </p>
-        )}
-        {sessionRefresh && (
-          <p className="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg mb-4 text-center">
-            账号状态已更新，请重新登录
-          </p>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              账号
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#165DFF]/30 focus:border-[#165DFF]"
-              placeholder="请输入账号"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              密码
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#165DFF]/30 focus:border-[#165DFF]"
-              placeholder="请输入密码"
-              required
-            />
-          </div>
-
-          {error && (
-            <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">
-              {error}
-            </p>
+        <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm p-6 sm:p-8 space-y-4">
+          {onboarded && (
+            <NotionAlert tone="success">实名认证已完成，请重新登录</NotionAlert>
+          )}
+          {disabled && (
+            <NotionAlert tone="error">账号已停用或离职，无法登录</NotionAlert>
+          )}
+          {sessionRefresh && (
+            <NotionAlert tone="warning">账号状态已更新，请重新登录</NotionAlert>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#165DFF] text-white py-2.5 rounded-lg font-medium hover:bg-[#165DFF]/90 disabled:opacity-60 transition-colors"
-          >
-            {loading ? "登录中..." : "登录"}
-          </button>
-        </form>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-[#111827] mb-1.5">账号</label>
+              <NotionInput
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="请输入账号"
+                className="w-full"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#111827] mb-1.5">密码</label>
+              <NotionInput
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="请输入密码"
+                className="w-full"
+                required
+              />
+            </div>
 
-        <p className="text-xs text-gray-400 mt-6 text-center">
+            {error && <NotionAlert tone="error">{error}</NotionAlert>}
+
+            <NotionButton type="submit" disabled={loading} className="w-full">
+              {loading ? "登录中..." : "登录"}
+            </NotionButton>
+          </form>
+        </div>
+
+        <p className="text-xs text-[#94a3b8] mt-5 text-center leading-relaxed">
           {process.env.NODE_ENV === "production"
-            ? "经理与业务员需由经理开通账号后登录"
-            : "开发环境：管理员 Antonio / 123456；经理与业务员需由经理开通账号后登录"}
+            ? "仅经理与事业部负责人可登录；业务员为数据账号"
+            : "开发环境：Antonio / 123456；业务员账号不支持登录"}
         </p>
       </div>
     </div>

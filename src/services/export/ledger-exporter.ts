@@ -4,7 +4,7 @@ import type { LedgerQuery } from "@/services/stats/analytics";
 import { getLedgerRecordsForExport } from "@/services/stats/analytics";
 import type { SessionUser } from "@/lib/permissions";
 
-const EXPORT_COLUMNS = [
+const ALL_EXPORT_COLUMNS = [
   { key: "jobNumber", header: "作业编号" },
   { key: "merchantName", header: "商家名称" },
   { key: "salesUserName", header: "业务员" },
@@ -26,6 +26,9 @@ export async function exportLedgerExcel(
   params: Omit<LedgerQuery, "page" | "pageSize">
 ) {
   const records = await getLedgerRecordsForExport(user, params);
+  const exportColumns = user.role === "DIRECTOR"
+    ? ALL_EXPORT_COLUMNS
+    : ALL_EXPORT_COLUMNS.filter((column) => column.key !== "teamName");
 
   const rows = records.map((r) => ({
     jobNumber: r.jobNumber,
@@ -41,9 +44,9 @@ export async function exportLedgerExcel(
   }));
 
   const sheet = XLSX.utils.json_to_sheet(rows, {
-    header: EXPORT_COLUMNS.map((c) => c.key),
+    header: exportColumns.map((c) => c.key),
   });
-  XLSX.utils.sheet_add_aoa(sheet, [EXPORT_COLUMNS.map((c) => c.header)], { origin: "A1" });
+  XLSX.utils.sheet_add_aoa(sheet, [exportColumns.map((c) => c.header)], { origin: "A1" });
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "风控台账");

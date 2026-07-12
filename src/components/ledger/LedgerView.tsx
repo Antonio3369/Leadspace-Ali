@@ -1,20 +1,47 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { MultiSelectFilter } from "@/components/ui/MultiSelectFilter";
-import { PHOTO_LABELS, RISK_LABELS, SALES_FILTER_OPTIONS, SALES_LABELS, SALES_STATUS_HINT } from "@/lib/ledger-labels";
+import { SegmentFilterRow } from "@/components/ui/SegmentFilterRow";
+import { SalesStatusLegend } from "@/components/ledger/SalesStatusLegend";
 import {
-  formatDateRangeLabel,
+  LEDGER_QUICK_FILTERS,
+  LEDGER_STATUS_TONE_CLASS,
+  PHOTO_FILTER_OPTIONS,
+  PHOTO_LABELS,
+  RISK_FILTER_OPTIONS,
+  RISK_LABELS,
+  SALES_FILTER_OPTIONS,
+  SALES_LABELS,
+  photoStatusTone,
+  riskStatusTone,
+  salesStatusTone,
+} from "@/lib/ledger-labels";
+import {
   getCurrentMonthRange,
   getPresetRange,
   type LedgerDatePreset,
 } from "@/lib/ledger-date";
 import {
+  EMPTY_LEDGER_STATUS_FILTERS,
   buildLedgerUrlSearchParams,
+  hasActiveLedgerStatusFilters,
   ledgerUrlQueryString,
   parseLedgerUrlFilters,
+  type LedgerUrlFilters,
 } from "@/lib/ledger-url";
+import type { LedgerSummary } from "@/services/stats/analytics";
+import {
+  DateFilterBar,
+  NotionAlert,
+  NotionButton,
+  NotionInput,
+  NotionSelect,
+  PageHeader,
+  PageShell,
+  notion,
+  presetButtonClass,
+} from "@/components/ui/notion";
 
 interface LedgerRecord {
   id: string;
@@ -31,79 +58,102 @@ interface LedgerRecord {
   expandDate: string;
 }
 
-const DATE_PRESETS: { key: LedgerDatePreset; label: string }[] = [
-  { key: "month", label: "本月" },
-  { key: "lastMonth", label: "上月" },
-  { key: "30d", label: "近30天" },
-  { key: "90d", label: "近90天" },
-  { key: "all", label: "全部" },
-];
+const EMPTY_SUMMARY: LedgerSummary = {
+  risk: { PENDING: 0, PASSED: 0, FAILED: 0 },
+  photo: { PENDING: 0, APPROVED: 0, REJECTED: 0 },
+  sales: { NOT_ACTIVATED: 0, IN_PROGRESS: 0, ACTIVATED: 0 },
+};
 
-const RISK_FILTER_OPTIONS = [
-  { value: "PENDING", label: "审核中" },
-  { value: "PASSED", label: "通过" },
-  { value: "FAILED", label: "不通过" },
-];
+function StatusText({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: keyof typeof LEDGER_STATUS_TONE_CLASS;
+}) {
+  return <span className={LEDGER_STATUS_TONE_CLASS[tone]}>{label}</span>;
+}
 
-export function LedgerView() {
+function LedgerSummaryBar({ total, summary }: { total: number; summary: LedgerSummary }) {
+  return (
+    <div className="rounded-[10px] border border-[#eef2f7] bg-[#f8fafc] px-3 py-2.5 text-xs text-[#64748b] space-y-1.5">
+      <p className="font-medium text-[#111827]">当前筛选共 {total.toLocaleString()} 条</p>
+      <p>
+        风控：通过 {summary.risk.PASSED.toLocaleString()} · 审核中{" "}
+        {summary.risk.PENDING.toLocaleString()} · 不通过 {summary.risk.FAILED.toLocaleString()}
+      </p>
+      <p>
+        动销：已动销 {summary.sales.ACTIVATED.toLocaleString()} · 待达标{" "}
+        {summary.sales.IN_PROGRESS.toLocaleString()} · 未动销{" "}
+        {summary.sales.NOT_ACTIVATED.toLocaleString()}
+      </p>
+    </div>
+  );
+}
+
+interface StaffOption {
+  id: string;
+  name: string;
+}
+
+interface ManagerOption {
+  id: string;
+  name: string;
+}
+
+export function LedgerView({
+  showTeamColumn = false,
+  showManagerFilter = false,
+  showSalesUserFilter = false,
+}: {
+  showTeamColumn?: boolean;
+  showManagerFilter?: boolean;
+  showSalesUserFilter?: boolean;
+}) {
   const router = useRouter();
   const urlSearchParams = useSearchParams();
   const defaultRange = useMemo(() => getCurrentMonthRange(), []);
-  const initializedRef = useRef(false);
+
+  const filters = useMemo(
+    () => parseLedgerUrlFilters(urlSearchParams, defaultRange),
+    [urlSearchParams, defaultRange]
+  );
 
   const [records, setRecords] = useState<LedgerRecord[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [riskStatuses, setRiskStatuses] = useState<string[]>([]);
-  const [salesStatuses, setSalesStatuses] = useState<string[]>([]);
-  const [dateFrom, setDateFrom] = useState(defaultRange.dateFrom);
-  const [dateTo, setDateTo] = useState(defaultRange.dateTo);
-  const [datePreset, setDatePreset] = useState<LedgerDatePreset>("month");
+  const [summary, setSummary] = useState<LedgerSummary>(EMPTY_SUMMARY);
+  const [exportLimit, setExportLimit] = useState(50_000);
+  const [searchDraft, setSearchDraft] = useState(filters.search);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
+  const [managerOptions, setManagerOptions] = useState<ManagerOption[]>([]);
 
-  useEffect(() => {
-    const parsed = parseLedgerUrlFilters(urlSearchParams, defaultRange);
-    setPage(parsed.page);
-    setSearch(parsed.search);
-    setRiskStatuses(parsed.riskStatuses);
-    setSalesStatuses(parsed.salesStatuses);
-    setDateFrom(parsed.dateFrom);
-    setDateTo(parsed.dateTo);
-    setDatePreset(parsed.datePreset);
-    initializedRef.current = true;
-  }, [urlSearchParams, defaultRange]);
-
-  const urlFilters = useMemo(
-    () => ({
-      dateFrom,
-      dateTo,
-      datePreset,
-      search,
-      riskStatuses,
-      salesStatuses,
-      page,
-    }),
-    [dateFrom, dateTo, datePreset, search, riskStatuses, salesStatuses, page]
+  const pushFilters = useCallback(
+    (patch: Partial<LedgerUrlFilters>) => {
+      const next = { ...filters, ...patch };
+      router.replace(`/ledger${ledgerUrlQueryString(next)}`, { scroll: false });
+    },
+    [filters, router]
   );
 
   useEffect(() => {
-    if (!initializedRef.current) return;
+    setSearchDraft(filters.search);
+  }, [filters.search]);
 
-    const nextQuery = ledgerUrlQueryString(urlFilters);
-    const currentQuery = urlSearchParams.toString();
-    const normalizedCurrent = currentQuery ? `?${currentQuery}` : "";
-
-    if (nextQuery !== normalizedCurrent) {
-      router.replace(`/ledger${nextQuery}`, { scroll: false });
-    }
-  }, [urlFilters, router, urlSearchParams]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchDraft !== filters.search) {
+        pushFilters({ search: searchDraft, page: 1 });
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchDraft, filters.search, pushFilters]);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const params = buildLedgerUrlSearchParams(urlFilters);
+    const params = buildLedgerUrlSearchParams(filters);
     params.set("pageSize", "20");
     params.set("sortBy", "expandDate");
     params.set("sortOrder", "desc");
@@ -112,39 +162,96 @@ export function LedgerView() {
     const data = await res.json();
     setRecords(data.records ?? []);
     setTotal(data.total ?? 0);
+    setSummary(data.summary ?? EMPTY_SUMMARY);
+    setExportLimit(data.exportLimit ?? 50_000);
     setLoading(false);
-  }, [urlFilters]);
+  }, [filters]);
 
   useEffect(() => {
-    if (!initializedRef.current) return;
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!showSalesUserFilter) {
+      setStaffOptions([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadStaff() {
+      const res = await fetch("/api/admin/team");
+      if (!res.ok || cancelled) return;
+
+      const data = await res.json();
+      const roster = (data.roster ?? []) as Array<{ id: string; name: string; status: string }>;
+      const options = roster
+        .filter((member) => member.status === "ACTIVE")
+        .map((member) => ({ id: member.id, name: member.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+
+      if (!cancelled) setStaffOptions(options);
+    }
+
+    loadStaff();
+    return () => {
+      cancelled = true;
+    };
+  }, [showSalesUserFilter]);
+
+  useEffect(() => {
+    if (!showManagerFilter) {
+      setManagerOptions([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadManagers() {
+      const res = await fetch("/api/admin/users");
+      if (!res.ok || cancelled) return;
+
+      const data = await res.json();
+      const users = (data.users ?? []) as Array<{ id: string; name: string; role: string; status: string }>;
+      const options = users
+        .filter((user) => user.role === "MANAGER" && user.status === "ACTIVE")
+        .map((user) => ({ id: user.id, name: user.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+
+      if (!cancelled) setManagerOptions(options);
+    }
+
+    loadManagers();
+    return () => {
+      cancelled = true;
+    };
+  }, [showManagerFilter]);
+
   function applyPreset(preset: LedgerDatePreset) {
     const range = getPresetRange(preset);
-    setDatePreset(preset);
-    setDateFrom(range.dateFrom);
-    setDateTo(range.dateTo);
-    setPage(1);
+    pushFilters({
+      datePreset: preset,
+      dateFrom: range.dateFrom,
+      dateTo: range.dateTo,
+      page: 1,
+    });
   }
 
-  function handleDateFromChange(value: string) {
-    setDateFrom(value);
-    setDatePreset("custom");
-    setPage(1);
-  }
-
-  function handleDateToChange(value: string) {
-    setDateTo(value);
-    setDatePreset("custom");
-    setPage(1);
+  function isQuickFilterActive(key: (typeof LEDGER_QUICK_FILTERS)[number]["key"]) {
+    const preset = LEDGER_QUICK_FILTERS.find((item) => item.key === key);
+    if (!preset) return false;
+    return (
+      filters.riskStatus === preset.filters.riskStatus &&
+      filters.photoStatus === preset.filters.photoStatus &&
+      filters.salesStatus === preset.filters.salesStatus
+    );
   }
 
   async function handleExport() {
     setExporting(true);
     setExportError("");
 
-    const params = buildLedgerUrlSearchParams(urlFilters);
+    const params = buildLedgerUrlSearchParams(filters);
     params.set("sortBy", "expandDate");
     params.set("sortOrder", "desc");
 
@@ -174,146 +281,199 @@ export function LedgerView() {
   }
 
   const totalPages = Math.ceil(total / 20);
+  const { dateFrom, dateTo, datePreset, riskStatus, photoStatus, salesStatus, managerId, salesUserId, page } =
+    filters;
+  const showFailReasonColumn = riskStatus === "FAILED" || summary.risk.FAILED > 0;
+  const columnCount = 8 + (showTeamColumn ? 1 : 0) + (showFailReasonColumn ? 1 : 0);
+  const exportBlocked = total > exportLimit;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">风控台账</h1>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={exporting || loading}
-          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-[#165DFF] rounded-lg hover:bg-[#165DFF]/90 disabled:opacity-50 transition-colors"
-        >
-          {exporting ? "导出中..." : "导出 Excel"}
-        </button>
+    <PageShell>
+      <PageHeader
+        title="风控台账"
+        kicker=""
+        meta={
+          <p>
+            当前筛选 {total.toLocaleString()} 条
+            {exportBlocked
+              ? ` · 超出导出上限 ${exportLimit.toLocaleString()} 条，请缩小范围`
+              : " · 可导出当前筛选结果"}
+          </p>
+        }
+        actions={
+          <NotionButton
+            onClick={handleExport}
+            disabled={exporting || loading || exportBlocked || total === 0}
+          >
+            {exporting ? "导出中..." : "导出 Excel"}
+          </NotionButton>
+        }
+      />
+
+      {exportError && <NotionAlert tone="error">{exportError}</NotionAlert>}
+
+      <DateFilterBar
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        datePreset={datePreset}
+        onPreset={applyPreset}
+        onDateFrom={(value) => pushFilters({ dateFrom: value, datePreset: "custom", page: 1 })}
+        onDateTo={(value) => pushFilters({ dateTo: value, datePreset: "custom", page: 1 })}
+        trailing={
+          <>
+            <NotionInput
+              type="text"
+              placeholder="搜索商家/作业编号/业务员"
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+              className="w-full sm:w-64"
+            />
+            {showManagerFilter && (
+              <NotionSelect
+                value={managerId}
+                onChange={(e) => pushFilters({ managerId: e.target.value, page: 1 })}
+              >
+                <option value="">全部经理</option>
+                {managerOptions.map((manager) => (
+                  <option key={manager.id} value={manager.id}>
+                    {manager.name}
+                  </option>
+                ))}
+              </NotionSelect>
+            )}
+            {showSalesUserFilter && (
+              <NotionSelect
+                value={salesUserId}
+                onChange={(e) => pushFilters({ salesUserId: e.target.value, page: 1 })}
+              >
+                <option value="">全部业务员</option>
+                {staffOptions.map((staff) => (
+                  <option key={staff.id} value={staff.id}>
+                    {staff.name}
+                  </option>
+                ))}
+              </NotionSelect>
+            )}
+          </>
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-[#64748b] w-16 shrink-0">快捷</span>
+        {LEDGER_QUICK_FILTERS.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => pushFilters({ ...item.filters, page: 1 })}
+            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${presetButtonClass(isQuickFilterActive(item.key))}`}
+          >
+            {item.label}
+          </button>
+        ))}
+        {hasActiveLedgerStatusFilters(filters) && (
+          <button
+            type="button"
+            onClick={() => pushFilters({ ...EMPTY_LEDGER_STATUS_FILTERS })}
+            className="px-3 py-1.5 text-xs rounded-lg border border-[#e2e8f0] text-[#64748b] hover:border-[#cbd5e1] bg-white"
+          >
+            清除筛选
+          </button>
+        )}
       </div>
 
-      {exportError && (
-        <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-          {exportError}
-        </p>
-      )}
-
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-gray-500">拓展日期</span>
-          {DATE_PRESETS.map((preset) => (
-            <button
-              key={preset.key}
-              type="button"
-              onClick={() => applyPreset(preset.key)}
-              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                datePreset === preset.key
-                  ? "bg-[#165DFF]/10 border-[#165DFF]/30 text-[#165DFF] font-medium"
-                  : "border-gray-200 text-gray-600 hover:border-gray-300"
-              }`}
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => handleDateFromChange(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#165DFF]/30"
-          />
-          <span className="text-sm text-gray-400">至</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => handleDateToChange(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#165DFF]/30"
-          />
-          <input
-            type="text"
-            placeholder="搜索商家/作业编号/业务员"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-[#165DFF]/30"
-          />
-          <MultiSelectFilter
-            placeholder="全部审核状态"
-            options={RISK_FILTER_OPTIONS}
-            values={riskStatuses}
-            onChange={(values) => {
-              setRiskStatuses(values);
-              setPage(1);
-            }}
-          />
-          <MultiSelectFilter
-            placeholder="全部动销进度"
-            options={[...SALES_FILTER_OPTIONS]}
-            values={salesStatuses}
-            onChange={(values) => {
-              setSalesStatuses(values);
-              setPage(1);
-            }}
-          />
-        </div>
-
-        <p className="text-xs text-gray-500">{SALES_STATUS_HINT}</p>
-
-        <p className="text-sm text-gray-500">
-          {formatDateRangeLabel(dateFrom, dateTo)} · 共 {total.toLocaleString()} 条
-        </p>
+      <div className={`space-y-2 ${notion.panel} px-3 py-3`}>
+        <SegmentFilterRow
+          label="风控"
+          value={riskStatus}
+          options={RISK_FILTER_OPTIONS.map(({ value, label }) => ({ value, label }))}
+          onChange={(value) => pushFilters({ riskStatus: value, page: 1 })}
+        />
+        <SegmentFilterRow
+          label="照片"
+          value={photoStatus}
+          options={PHOTO_FILTER_OPTIONS.map(({ value, label }) => ({ value, label }))}
+          onChange={(value) => pushFilters({ photoStatus: value, page: 1 })}
+        />
+        <SegmentFilterRow
+          label="动销"
+          value={salesStatus}
+          options={SALES_FILTER_OPTIONS.map(({ value, label }) => ({ value, label }))}
+          onChange={(value) => pushFilters({ salesStatus: value, page: 1 })}
+        />
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <SalesStatusLegend />
+
+      {!loading && total > 0 && <LedgerSummaryBar total={total} summary={summary} />}
+
+      <div className={notion.tableWrap}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-500">
+            <thead className={notion.thead}>
               <tr>
                 <th className="text-left px-3 py-3">作业编号</th>
                 <th className="text-left px-3 py-3">商家名称</th>
                 <th className="text-left px-3 py-3">业务员</th>
-                <th className="text-left px-3 py-3">团队</th>
+                {showTeamColumn && <th className="text-left px-3 py-3">团队</th>}
                 <th className="text-left px-3 py-3">商机</th>
-                <th className="text-left px-3 py-3">照片</th>
-                <th className="text-left px-3 py-3">风控</th>
+                <th className="text-left px-3 py-3">风控状态</th>
+                <th className="text-left px-3 py-3">照片状态</th>
                 <th className="text-left px-3 py-3">动销进度</th>
-                <th className="text-left px-3 py-3">不通过原因</th>
+                {showFailReasonColumn && (
+                  <th className="text-left px-3 py-3">不通过原因</th>
+                )}
                 <th className="text-left px-3 py-3">拓展日期</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-8 text-gray-400">
+                  <td colSpan={columnCount} className="text-center py-8 text-gray-400">
                     加载中...
                   </td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-8 text-gray-400">
+                  <td colSpan={columnCount} className="text-center py-8 text-gray-400">
                     暂无数据
                   </td>
                 </tr>
               ) : (
                 records.map((r) => (
-                  <tr key={r.id} className="border-t border-gray-50 hover:bg-gray-50/50">
+                  <tr key={r.id} className={notion.row}>
                     <td className="px-3 py-2.5 font-mono text-xs">{r.jobNumber}</td>
                     <td className="px-3 py-2.5">{r.merchantName}</td>
                     <td className="px-3 py-2.5">{r.salesUserName}</td>
-                    <td className="px-3 py-2.5">{r.team?.name ?? "-"}</td>
+                    {showTeamColumn && (
+                      <td className="px-3 py-2.5">{r.team?.name ?? "-"}</td>
+                    )}
                     <td className="px-3 py-2.5">{r.opportunity?.name ?? r.opportunityName ?? "-"}</td>
-                    <td className="px-3 py-2.5">{PHOTO_LABELS[r.photoStatus] ?? r.photoStatus}</td>
-                    <td className="px-3 py-2.5">{RISK_LABELS[r.riskStatus] ?? r.riskStatus}</td>
                     <td className="px-3 py-2.5">
-                      {SALES_LABELS[r.salesActivationStatus] ?? r.salesActivationStatus}
+                      <StatusText
+                        label={RISK_LABELS[r.riskStatus] ?? r.riskStatus}
+                        tone={riskStatusTone(r.riskStatus)}
+                      />
                     </td>
-                    <td
-                      className="px-3 py-2.5 text-gray-500 max-w-[160px] truncate"
-                      title={r.riskFailReason ?? ""}
-                    >
-                      {r.riskFailReason ?? "-"}
+                    <td className="px-3 py-2.5">
+                      <StatusText
+                        label={PHOTO_LABELS[r.photoStatus] ?? r.photoStatus}
+                        tone={photoStatusTone(r.photoStatus)}
+                      />
                     </td>
+                    <td className="px-3 py-2.5">
+                      <StatusText
+                        label={SALES_LABELS[r.salesActivationStatus] ?? r.salesActivationStatus}
+                        tone={salesStatusTone(r.salesActivationStatus)}
+                      />
+                    </td>
+                    {showFailReasonColumn && (
+                      <td
+                        className="px-3 py-2.5 text-gray-500 max-w-[160px] truncate"
+                        title={r.riskFailReason ?? ""}
+                      >
+                        {r.riskStatus === "FAILED" ? (r.riskFailReason ?? "-") : "-"}
+                      </td>
+                    )}
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {new Date(r.expandDate).toLocaleDateString("zh-CN")}
                     </td>
@@ -325,29 +485,29 @@ export function LedgerView() {
         </div>
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-            <span className="text-sm text-gray-500">
+          <div className="flex items-center justify-between px-4 py-3 border-t border-[#eef2f7]">
+            <span className="text-sm text-[#64748b]">
               第 {page} / {totalPages} 页
             </span>
             <div className="flex gap-2">
-              <button
+              <NotionButton
+                variant="ghost"
                 disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-40"
+                onClick={() => pushFilters({ page: page - 1 })}
               >
                 上一页
-              </button>
-              <button
+              </NotionButton>
+              <NotionButton
+                variant="ghost"
                 disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-40"
+                onClick={() => pushFilters({ page: page + 1 })}
               >
                 下一页
-              </button>
+              </NotionButton>
             </div>
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

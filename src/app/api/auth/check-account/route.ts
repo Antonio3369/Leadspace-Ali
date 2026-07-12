@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { canSignIn } from "@/lib/account-lifecycle";
-import { canLogin } from "@/lib/permissions";
+import { canLogin, canRoleSignIn } from "@/lib/permissions";
 
 export async function POST(request: Request) {
   try {
@@ -13,11 +13,19 @@ export async function POST(request: Request) {
 
     const user = await db.user.findUnique({
       where: { username },
-      select: { passwordHash: true, status: true, accountLifecycle: true },
+      select: { passwordHash: true, status: true, accountLifecycle: true, role: true },
     });
 
     if (!user) {
       return NextResponse.json({ ok: false, code: "INVALID", message: "账号或密码错误" });
+    }
+
+    if (!canRoleSignIn(user.role)) {
+      return NextResponse.json({
+        ok: false,
+        code: "NOT_LOGIN_ROLE",
+        message: "业务员账号不支持登录，请使用经理或负责人账号",
+      });
     }
 
     if (!canLogin(user.status)) {
@@ -28,7 +36,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         ok: false,
         code: "NOT_ENABLED",
-        message: "账号尚未开通，请联系您的经理开通后再登录",
+        message: "账号尚未开通，请联系管理员开通后再登录",
       });
     }
 

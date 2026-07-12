@@ -10,6 +10,7 @@ export interface SessionUser {
   status: UserStatus;
   teamId: string | null;
   accountLifecycle: AccountLifecycle;
+  mustChangePassword: boolean;
 }
 
 export interface AccessibleScope {
@@ -30,6 +31,11 @@ export interface AccessibleScope {
 /** 离职/停用账号禁止登录 */
 export function canLogin(status: UserStatus): boolean {
   return status === "ACTIVE";
+}
+
+/** 仅经理/负责人等管理角色可登录；业务员为纯数据账号 */
+export function canRoleSignIn(role: UserRole): boolean {
+  return role !== "SALES";
 }
 
 /** 仅事业部负责人可访问公共大屏 */

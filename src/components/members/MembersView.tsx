@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { ROLE_LABELS } from "@/lib/constants";
 import { getRateColorLevel } from "@/lib/business-rules";
 import { COLORS } from "@/lib/constants";
@@ -11,6 +10,16 @@ import {
   getPresetRange,
   type LedgerDatePreset,
 } from "@/lib/ledger-date";
+import {
+  DateFilterBar,
+  NotionAlert,
+  NotionButton,
+  NotionInput,
+  NotionLinkButton,
+  PageHeader,
+  PageShell,
+  notion,
+} from "@/components/ui/notion";
 
 interface MemberMetrics {
   totalMerchants: number;
@@ -28,14 +37,6 @@ interface MemberRow {
   managerName?: string;
   metrics: MemberMetrics;
 }
-
-const DATE_PRESETS: { key: LedgerDatePreset; label: string }[] = [
-  { key: "month", label: "本月" },
-  { key: "lastMonth", label: "上月" },
-  { key: "30d", label: "近30天" },
-  { key: "90d", label: "近90天" },
-  { key: "all", label: "全部" },
-];
 
 function rateColor(rate: number) {
   const level = getRateColorLevel(rate);
@@ -156,86 +157,56 @@ export function MembersView() {
   const colSpan = showOrgColumns ? 10 : showDetailLink ? 8 : 7;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">人员明细</h1>
-        {canExport && (
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={exporting || loading}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-[#165DFF] rounded-lg hover:bg-[#165DFF]/90 disabled:opacity-50 transition-colors"
-          >
-            {exporting ? "导出中..." : "导出 Excel"}
-          </button>
-        )}
-      </div>
+    <PageShell>
+      <PageHeader
+        title="人员明细"
+        kicker=""
+        meta={
+          <p>
+            {formatDateRangeLabel(dateFrom, dateTo)} · 共 {members.length.toLocaleString()} 人
+          </p>
+        }
+        actions={
+          canExport ? (
+            <NotionButton onClick={handleExport} disabled={exporting || loading}>
+              {exporting ? "导出中..." : "导出 Excel"}
+            </NotionButton>
+          ) : undefined
+        }
+      />
 
-      {exportError && (
-        <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-          {exportError}
-        </p>
-      )}
+      {exportError && <NotionAlert tone="error">{exportError}</NotionAlert>}
 
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-gray-500">拓展日期</span>
-          {DATE_PRESETS.map((preset) => (
-            <button
-              key={preset.key}
-              type="button"
-              onClick={() => applyPreset(preset.key)}
-              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                datePreset === preset.key
-                  ? "bg-[#165DFF]/10 border-[#165DFF]/30 text-[#165DFF] font-medium"
-                  : "border-gray-200 text-gray-600 hover:border-gray-300"
-              }`}
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => {
-              setDateFrom(e.target.value);
-              setDatePreset("custom");
-            }}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#165DFF]/30"
-          />
-          <span className="text-sm text-gray-400">至</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => {
-              setDateTo(e.target.value);
-              setDatePreset("custom");
-            }}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#165DFF]/30"
-          />
-          <input
+      <DateFilterBar
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        datePreset={datePreset}
+        onPreset={applyPreset}
+        onDateFrom={(value) => {
+          setDateFrom(value);
+          setDatePreset("custom");
+        }}
+        onDateTo={(value) => {
+          setDateTo(value);
+          setDatePreset("custom");
+        }}
+        trailing={
+          <NotionInput
             type="text"
             placeholder={
               isManagerList ? "搜索经理姓名" : isStaffList ? "搜索业务员姓名" : "搜索姓名或团队"
             }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-[#165DFF]/30"
+            className="w-full sm:w-64"
           />
-        </div>
+        }
+      />
 
-        <p className="text-sm text-gray-500">
-          {formatDateRangeLabel(dateFrom, dateTo)} · 共 {members.length.toLocaleString()} 人
-        </p>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className={notion.tableWrap}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-500">
+            <thead className={notion.thead}>
               <tr>
                 <th className="text-left px-4 py-3">姓名</th>
                 <th className="text-left px-4 py-3">角色</th>
@@ -270,7 +241,7 @@ export function MembersView() {
                 </tr>
               ) : (
                 members.map((m) => (
-                  <tr key={m.id} className="border-t border-gray-50 hover:bg-gray-50/50">
+                  <tr key={m.id} className={notion.row}>
                     <td className="px-4 py-3 font-medium">{m.name}</td>
                     <td className="px-4 py-3">
                       {isManagerList ? "经理" : (ROLE_LABELS[m.role] ?? m.role)}
@@ -284,12 +255,7 @@ export function MembersView() {
                     <MetricsCells metrics={m.metrics} />
                     {showDetailLink && (
                       <td className="px-4 py-3 text-center">
-                        <Link
-                          href={buildDetailHref(m.id)}
-                          className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-[#165DFF] border border-[#165DFF]/30 rounded-lg hover:bg-[#165DFF]/5 transition-colors"
-                        >
-                          详情
-                        </Link>
+                        <NotionLinkButton href={buildDetailHref(m.id)}>详情</NotionLinkButton>
                       </td>
                     )}
                   </tr>
@@ -299,6 +265,6 @@ export function MembersView() {
           </table>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

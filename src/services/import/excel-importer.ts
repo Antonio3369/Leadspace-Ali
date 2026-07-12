@@ -1,6 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { parseExcelBuffer, type ParsedMerchantRow } from "@/services/import/excel-parser";
+import { pruneMerchantsOutsideRetention } from "@/services/import/merchant-retention";
 import {
   buildUserLookupIndexes,
   findUserInIndexes,
@@ -9,7 +10,11 @@ import {
 export interface ImportResult {
   importLogId?: string;
   totalRows: number;
+  /** 新增 + 更新 */
   importedRows: number;
+  createdRows: number;
+  updatedRows: number;
+  prunedRows: number;
   skippedRows: number;
   anomalyRows: number;
   status: "SUCCESS" | "PARTIAL" | "FAILED";
@@ -30,11 +35,34 @@ async function upsertOpportunityCache(
   return opp.id;
 }
 
-async function loadExistingJobNumbers(): Promise<Set<string>> {
+async function loadExistingMerchantsByJobNumber(): Promise<Map<string, { id: string }>> {
   const existing = await db.merchantRecord.findMany({
-    select: { jobNumber: true },
+    select: { id: true, jobNumber: true },
   });
-  return new Set(existing.map((e) => e.jobNumber));
+  return new Map(existing.map((e) => [e.jobNumber, { id: e.id }]));
+}
+
+function buildMutableFields(
+  row: ParsedMerchantRow,
+  opportunityId: string | undefined,
+  importLogId: string | undefined
+): Prisma.MerchantRecordUpdateInput {
+  return {
+    merchantPid: row.merchantPid,
+    merchantName: row.merchantName,
+    opportunity: opportunityId ? { connect: { id: opportunityId } } : { disconnect: true },
+    opportunityName: row.opportunityName,
+    photoStatus: row.photoStatus,
+    riskStatus: row.riskStatus,
+    salesActivationStatus: row.salesActivationStatus,
+    riskFailReason: row.riskFailReason,
+    expandDate: row.expandDate,
+    touchCount15d: row.touchCount15d,
+    scanCount15d: row.scanCount15d,
+    transactionCount30d: row.transactionCount30d,
+    sourceMode: "MANUAL_UPLOAD",
+    ...(importLogId ? { importBatch: { connect: { id: importLogId } } } : {}),
+  };
 }
 
 export async function importParsedRows(
@@ -44,9 +72,16 @@ export async function importParsedRows(
     uploadedById?: string;
     parseErrors?: string[];
     silentAlerts?: boolean;
+    autoPrune?: boolean;
   }
 ): Promise<ImportResult> {
-  const { fileName, uploadedById, parseErrors = [], silentAlerts = false } = options;
+  const {
+    fileName,
+    uploadedById,
+    parseErrors = [],
+    silentAlerts = false,
+    autoPrune = true,
+  } = options;
 
   let importLogId: string | undefined;
   if (uploadedById) {
@@ -62,32 +97,38 @@ export async function importParsedRows(
   }
 
   const userIndexes = await buildUserLookupIndexes();
-  const jobNumbers = await loadExistingJobNumbers();
+  const existingByJob = await loadExistingMerchantsByJobNumber();
   const oppCache = new Map<string, string>();
   const seenInBatch = new Set<string>();
 
-  let importedRows = 0;
+  let createdRows = 0;
+  let updatedRows = 0;
   let skippedRows = 0;
   let anomalyRows = 0;
   const errors = [...parseErrors];
   const merchantCreates: Prisma.MerchantRecordCreateManyInput[] = [];
+  const updateTasks: { id: string; data: Prisma.MerchantRecordUpdateInput }[] = [];
   const anomalyCreates: Prisma.AnomalyRecordCreateManyInput[] = [];
 
   for (const row of rows) {
-    const dedupeKey = row.jobNumber;
-    if (jobNumbers.has(row.jobNumber) || seenInBatch.has(dedupeKey)) {
+    if (seenInBatch.has(row.jobNumber)) {
       skippedRows++;
-      if (importLogId) {
-        anomalyCreates.push({
-          type: "DUPLICATE",
-          rawData: row.rawRow as Prisma.InputJsonValue,
-          salesUserName: row.salesUserName,
-          jobNumber: row.jobNumber,
-          merchantPid: row.merchantPid,
-          reason: `重复数据已跳过：作业编号 ${row.jobNumber}`,
-          importBatchId: importLogId,
-        });
+      continue;
+    }
+    seenInBatch.add(row.jobNumber);
+
+    const existing = existingByJob.get(row.jobNumber);
+
+    if (existing) {
+      let opportunityId: string | undefined;
+      if (row.opportunityName) {
+        opportunityId = await upsertOpportunityCache(oppCache, row.opportunityName);
       }
+      updateTasks.push({
+        id: existing.id,
+        data: buildMutableFields(row, opportunityId, importLogId),
+      });
+      updatedRows++;
       continue;
     }
 
@@ -139,9 +180,8 @@ export async function importParsedRows(
       importBatchId: importLogId,
     });
 
-    seenInBatch.add(dedupeKey);
-    jobNumbers.add(row.jobNumber);
-    importedRows++;
+    existingByJob.set(row.jobNumber, { id: `pending-${row.jobNumber}` });
+    createdRows++;
   }
 
   const CHUNK = 500;
@@ -152,28 +192,44 @@ export async function importParsedRows(
     });
   }
 
+  for (let i = 0; i < updateTasks.length; i += CHUNK) {
+    const slice = updateTasks.slice(i, i + CHUNK);
+    await db.$transaction(
+      slice.map(({ id, data }) => db.merchantRecord.update({ where: { id }, data }))
+    );
+  }
+
   for (let i = 0; i < anomalyCreates.length; i += CHUNK) {
     await db.anomalyRecord.createMany({
       data: anomalyCreates.slice(i, i + CHUNK),
     });
   }
 
+  let prunedRows = 0;
+  if (autoPrune) {
+    prunedRows = await pruneMerchantsOutsideRetention();
+  }
+
+  const importedRows = createdRows + updatedRows;
+
   if (anomalyRows > 0 && !silentAlerts) {
     await db.systemAlert.create({
       data: {
         level: "warning",
-        message: `导入 ${fileName}：${anomalyRows} 条姓名未匹配，已归档`,
+        message: `导入 ${fileName}：${anomalyRows} 条未匹配，已归档`,
         source: "import",
       },
     });
   }
 
   const status =
-    importedRows === 0 && rows.length > 0
+    importedRows === 0 && rows.length > 0 && anomalyRows === rows.length
       ? "FAILED"
-      : errors.length > 0 || anomalyRows > 0 || skippedRows > 0
+      : errors.length > 0 || anomalyRows > 0
         ? "PARTIAL"
         : "SUCCESS";
+
+  const summaryLine = `新增 ${createdRows}，更新 ${updatedRows}，删除 ${prunedRows}，未匹配 ${anomalyRows}`;
 
   if (importLogId) {
     await db.importLog.update({
@@ -183,7 +239,8 @@ export async function importParsedRows(
         importedRows,
         skippedRows,
         anomalyRows,
-        errorMessage: errors.length > 0 ? errors.slice(0, 20).join("\n") : null,
+        errorMessage:
+          errors.length > 0 ? `${summaryLine}\n${errors.slice(0, 15).join("\n")}` : summaryLine,
         completedAt: new Date(),
       },
     });
@@ -193,6 +250,9 @@ export async function importParsedRows(
     importLogId,
     totalRows: rows.length,
     importedRows,
+    createdRows,
+    updatedRows,
+    prunedRows,
     skippedRows,
     anomalyRows,
     status,

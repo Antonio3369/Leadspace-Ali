@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Leadspace 支付宝业务数据管理",
+  title: "Leadspace.Alipay",
   description: "支付宝 P 站推广业务数据统计、展示与管理系统",
 };
 

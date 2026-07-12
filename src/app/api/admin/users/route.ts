@@ -68,9 +68,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "无权创建该角色" }, { status: 403 });
     }
 
-    if (user.role === "MANAGER" && body.role === "SALES") {
-      body.managerId = body.managerId ?? user.id;
-      body.teamId = body.teamId ?? user.teamId ?? undefined;
+    if (body.role === "SALES") {
+      return NextResponse.json(
+        { error: "业务员请通过人员名单 Excel 导入，不支持在此创建登录账号" },
+        { status: 400 }
+      );
     }
 
     if (body.role === "SUPERVISOR" && !body.teamId) {
@@ -104,6 +106,7 @@ export async function POST(request: Request) {
         managerId: body.role === "MANAGER" ? undefined : body.managerId ?? user.id,
         aliases: body.aliases ?? [],
         accountLifecycle,
+        mustChangePassword: true,
       },
     });
 

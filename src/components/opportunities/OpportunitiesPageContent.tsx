@@ -1,42 +1,78 @@
 "use client";
 
+import { useCallback } from "react";
 import { useRouter } from "next/navigation";
-import type { UserRole } from "@/generated/prisma/client";
 import { DualViewTabs } from "@/components/layout/DualViewTabs";
 import { OpportunitiesListTable } from "@/components/opportunities/OpportunitiesListTable";
 import type { OpportunityListItem } from "@/services/stats/analytics";
-import { requiresDualView } from "@/lib/permissions";
+import { getPresetRange, type LedgerDatePreset } from "@/lib/ledger-date";
+import {
+  opportunitiesUrlQueryString,
+  type OpportunitiesUrlFilters,
+} from "@/lib/opportunities-url";
+import {
+  DateFilterBar,
+  DateRangeMeta,
+  PageHeader,
+  PageShell,
+} from "@/components/ui/notion";
 
 interface OpportunitiesPageContentProps {
-  user: { role: UserRole };
   activeView: "team" | "personal";
+  showDualView: boolean;
   opportunities: OpportunityListItem[];
+  filters: OpportunitiesUrlFilters;
 }
 
 export function OpportunitiesPageContent({
-  user,
   activeView,
+  showDualView,
   opportunities,
+  filters,
 }: OpportunitiesPageContentProps) {
   const router = useRouter();
-  const showDualView = requiresDualView(user.role);
-  const viewQuery = activeView === "personal" ? "?view=personal" : "";
+  const listQuery = opportunitiesUrlQueryString(filters);
+
+  const pushFilters = useCallback(
+    (patch: Partial<OpportunitiesUrlFilters>) => {
+      const next = { ...filters, ...patch };
+      router.replace(`/opportunities${opportunitiesUrlQueryString(next)}`, { scroll: false });
+    },
+    [filters, router]
+  );
+
+  function applyPreset(preset: LedgerDatePreset) {
+    const range = getPresetRange(preset);
+    pushFilters({
+      datePreset: preset,
+      dateFrom: range.dateFrom,
+      dateTo: range.dateTo,
+    });
+  }
 
   function handleViewChange(view: "team" | "personal") {
-    const q = view === "personal" ? "?view=personal" : "";
-    router.push(`/opportunities${q}`);
+    pushFilters({ view });
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <h1 className="text-xl font-semibold text-gray-900">商机专项分析</h1>
-        {showDualView && (
-          <DualViewTabs activeView={activeView} onChange={handleViewChange} />
-        )}
-      </div>
+    <PageShell>
+      <PageHeader
+        title="商机专项分析"
+        kicker=""
+        meta={<DateRangeMeta dateFrom={filters.dateFrom} dateTo={filters.dateTo} />}
+        trailing={showDualView ? <DualViewTabs activeView={activeView} onChange={handleViewChange} /> : undefined}
+      />
 
-      <OpportunitiesListTable data={opportunities} viewQuery={viewQuery} />
-    </div>
+      <DateFilterBar
+        dateFrom={filters.dateFrom}
+        dateTo={filters.dateTo}
+        datePreset={filters.datePreset}
+        onPreset={applyPreset}
+        onDateFrom={(value) => pushFilters({ dateFrom: value, datePreset: "custom" })}
+        onDateTo={(value) => pushFilters({ dateTo: value, datePreset: "custom" })}
+      />
+
+      <OpportunitiesListTable data={opportunities} viewQuery={listQuery} />
+    </PageShell>
   );
 }

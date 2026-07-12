@@ -1,24 +1,28 @@
 import { notFound, redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
+import { buildTeamDetailsBackHref } from "@/lib/team-details-url";
+import { formatDateRangeLabel } from "@/lib/ledger-date";
 import { getManagerDashboard, getStaffDashboard } from "@/services/stats";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 
 interface PageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ dateFrom?: string; dateTo?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export default async function MemberDetailPage({ params, searchParams }: PageProps) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
-  if (user.role !== "DIRECTOR" && user.role !== "MANAGER") redirect("/members");
+  if (user.role !== "DIRECTOR" && user.role !== "MANAGER") redirect("/teams");
 
   const { id } = await params;
   const query = await searchParams;
+  const backHref = buildTeamDetailsBackHref(query);
   const dateOptions = {
-    dateFrom: query.dateFrom,
-    dateTo: query.dateTo,
+    dateFrom: typeof query.dateFrom === "string" ? query.dateFrom : undefined,
+    dateTo: typeof query.dateTo === "string" ? query.dateTo : undefined,
   };
+  const dateRangeLabel = formatDateRangeLabel(dateOptions.dateFrom ?? "", dateOptions.dateTo ?? "");
 
   try {
     if (user.role === "DIRECTOR") {
@@ -36,9 +40,12 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
           activeView="team"
           pageTitle={`${manager.name} · 数据总览`}
           hideManagerRanking
-          backHref="/members"
+          backHref={backHref}
+          dateRangeLabel={dateRangeLabel}
+          dateFrom={dateOptions.dateFrom ?? ""}
+          dateTo={dateOptions.dateTo ?? ""}
           salesStaffRanking={{
-            monthLabel: salesStaffRanking.monthLabel,
+            periodLabel: salesStaffRanking.rangeLabel,
             data: salesStaffRanking.ranking,
           }}
           charts={{
@@ -61,11 +68,10 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
         activeView="personal"
         pageTitle={`${staff.name} · 数据总览`}
         hideManagerRanking
-        backHref={
-          query.dateFrom || query.dateTo
-            ? `/members?dateFrom=${query.dateFrom ?? ""}&dateTo=${query.dateTo ?? ""}`
-            : "/members"
-        }
+        backHref={backHref}
+        dateRangeLabel={dateRangeLabel}
+        dateFrom={dateOptions.dateFrom ?? ""}
+        dateTo={dateOptions.dateTo ?? ""}
         charts={{
           riskDistribution: charts.riskDistribution,
           salesFailureDistribution: charts.salesFailureDistribution,

@@ -325,12 +325,14 @@ export async function ensureAntonioDirector(defaultPassword = "123456") {
       role: "DIRECTOR",
       status: "ACTIVE",
       accountLifecycle: "ACTIVE",
+      mustChangePassword: false,
     },
     update: {
       passwordHash,
       name: "Antonio",
       role: "DIRECTOR",
       accountLifecycle: "ACTIVE",
+      mustChangePassword: false,
     },
   });
 }

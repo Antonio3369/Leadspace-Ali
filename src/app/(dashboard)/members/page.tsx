@@ -1,5 +1,5 @@
-import { MembersView } from "@/components/members/MembersView";
+import { redirect } from "next/navigation";
 
 export default function MembersPage() {
-  return <MembersView />;
+  redirect("/teams");
 }

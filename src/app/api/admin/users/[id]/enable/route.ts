@@ -25,6 +25,13 @@ export async function POST(
 
     const target = await assertAdminCanManageTarget(actor, id);
 
+    if (target.role === "SALES") {
+      return NextResponse.json(
+        { error: "业务员为纯数据账号，不支持开通登录" },
+        { status: 400 }
+      );
+    }
+
     if (target.accountLifecycle !== "IMPORTED" || target.passwordHash) {
       return NextResponse.json({ error: "该账号已开通或状态不可开通" }, { status: 400 });
     }
@@ -35,17 +42,13 @@ export async function POST(
         ? MANAGER_ENABLED_LIFECYCLE
         : ENABLED_USER_DEFAULTS.accountLifecycle;
 
-    const username =
-      target.role === "SALES"
-        ? await allocatePinyinUsername(target.name, target.id)
-        : target.username;
-
     const updated = await db.user.update({
       where: { id },
       data: {
-        username,
+        username: target.username,
         passwordHash,
         accountLifecycle,
+        mustChangePassword: true,
       },
       select: { id: true, username: true, name: true, role: true, accountLifecycle: true },
     });

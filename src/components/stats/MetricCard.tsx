@@ -1,5 +1,6 @@
 import { CORE_METRICS, COLORS } from "@/lib/constants";
 import { getRateColorLevel } from "@/lib/business-rules";
+import { NotionStatCard, NotionStatGrid } from "@/components/ui/notion";
 
 interface MetricCardProps {
   label: string;
@@ -26,9 +27,9 @@ export function MetricCard({ label, value, suffix = "", isRate = false }: Metric
       : value;
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-      <p className="text-sm text-gray-500 mb-2">{label}</p>
-      <p className="text-2xl font-semibold" style={{ color }}>
+    <div className="flex flex-col gap-1 p-3.5 sm:p-4 border border-[#eef2f7] rounded-[14px] bg-white">
+      <p className="text-[0.82rem] text-[#64748b]">{label}</p>
+      <p className="text-[1.35rem] sm:text-[1.6rem] font-bold leading-tight tabular-nums" style={{ color }}>
         {display}
         {suffix && <span className="text-base ml-0.5">{suffix}</span>}
       </p>
@@ -62,9 +63,9 @@ export function MetricsGrid({
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <NotionStatGrid>
       {items.map((item) => (
-        <MetricCard
+        <NotionStatCard
           key={item.label}
           label={item.label}
           value={item.value}
@@ -72,6 +73,6 @@ export function MetricsGrid({
           suffix={item.suffix}
         />
       ))}
-    </div>
+    </NotionStatGrid>
   );
 }

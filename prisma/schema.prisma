@@ -47,7 +47,7 @@ enum RiskStatus {
 }
 
 enum SalesActivationStatus {
-  NOT_ACTIVATED // 待照片通过（照片待定/不通过，动销未启动）
+  NOT_ACTIVATED // 未动销（照片未通过，动销未启动）
   ACTIVATED     // 已动销
   IN_PROGRESS   // 待动销达标（照片已通过，笔数未达标）
 }
@@ -106,7 +106,8 @@ model User {
   aliases          String[]          @default([]) // 兼容旧匹配，逐步迁移至 SalesPlatformIdentity
   role             UserRole
   status           UserStatus        @default(ACTIVE)
-  accountLifecycle AccountLifecycle  @default(IMPORTED)
+  accountLifecycle   AccountLifecycle  @default(IMPORTED)
+  mustChangePassword Boolean           @default(false)
   teamId           String?
   team             OrgUnit?          @relation(fields: [teamId], references: [id])
   managerId        String?

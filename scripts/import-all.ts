@@ -52,7 +52,7 @@ async function main() {
     console.log("导入:", file.split("/").pop());
     const result = await importExcelFromPath(file, antonio.id, true);
     console.log(
-      `  成功 ${result.importedRows} / 跳过 ${result.skippedRows} / 异常 ${result.anomalyRows}`
+      `  新增 ${result.createdRows} / 更新 ${result.updatedRows} / 清理 ${result.prunedRows} / 异常 ${result.anomalyRows}`
     );
     totalImported += result.importedRows;
     totalAnomaly += result.anomalyRows;

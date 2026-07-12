@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { authConfig } from "@/lib/auth.config";
 import { db } from "@/lib/db";
 import { canSignIn } from "@/lib/account-lifecycle";
-import { canLogin, type SessionUser } from "@/lib/permissions";
+import { canLogin, canRoleSignIn, type SessionUser } from "@/lib/permissions";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -19,6 +19,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.status = user.status;
         token.teamId = user.teamId;
         token.accountLifecycle = user.accountLifecycle;
+        token.mustChangePassword = user.mustChangePassword;
         return token;
       }
 
@@ -27,6 +28,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (live) {
           token.status = live.status;
           token.accountLifecycle = live.accountLifecycle;
+          token.mustChangePassword = live.mustChangePassword;
         }
       }
       return token;
@@ -48,6 +50,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!user) return null;
 
         if (!canLogin(user.status)) return null;
+        if (!canRoleSignIn(user.role)) return null;
         if (!canSignIn(user.accountLifecycle, user.passwordHash)) return null;
 
         const valid = await bcrypt.compare(password, user.passwordHash!);
@@ -61,6 +64,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           status: user.status,
           teamId: user.teamId,
           accountLifecycle: user.accountLifecycle,
+          mustChangePassword: user.mustChangePassword,
         };
       },
     }),
@@ -76,7 +80,7 @@ export async function getSessionUser() {
 async function loadLiveUserState(userId: string) {
   return db.user.findUnique({
     where: { id: userId },
-    select: { status: true, accountLifecycle: true },
+    select: { status: true, accountLifecycle: true, mustChangePassword: true },
   });
 }
 
@@ -90,11 +94,24 @@ export async function ensureLiveSession(): Promise<SessionUser> {
     redirect("/api/auth/session-expired?reason=disabled");
   }
 
-  if (live.status !== user.status || live.accountLifecycle !== user.accountLifecycle) {
+  if (
+    live.status !== user.status ||
+    live.accountLifecycle !== user.accountLifecycle ||
+    live.mustChangePassword !== user.mustChangePassword
+  ) {
     redirect("/api/auth/session-expired?reason=refresh");
   }
 
-  return { ...user, status: live.status, accountLifecycle: live.accountLifecycle };
+  if (live.mustChangePassword) {
+    redirect("/change-password");
+  }
+
+  return {
+    ...user,
+    status: live.status,
+    accountLifecycle: live.accountLifecycle,
+    mustChangePassword: live.mustChangePassword,
+  };
 }
 
 export async function requireSessionUser() {
@@ -108,5 +125,10 @@ export async function requireSessionUser() {
     throw new Error("FORBIDDEN");
   }
 
-  return { ...user, status: live.status, accountLifecycle: live.accountLifecycle };
+  return {
+    ...user,
+    status: live.status,
+    accountLifecycle: live.accountLifecycle,
+    mustChangePassword: live.mustChangePassword,
+  };
 }

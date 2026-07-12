@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { getRateColorLevel } from "@/lib/business-rules";
 import { COLORS } from "@/lib/constants";
 import type { OpportunityListItem } from "@/services/stats/analytics";
+import { NotionLinkButton } from "@/components/ui/notion";
 
 function rateColor(rate: number) {
   const level = getRateColorLevel(rate);
@@ -19,10 +19,10 @@ interface OpportunitiesListTableProps {
 
 export function OpportunitiesListTable({ data, viewQuery = "" }: OpportunitiesListTableProps) {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-500">
+          <thead className="bg-[#f8fafc] text-[#64748b]">
             <tr>
               <th className="text-left px-4 py-3 font-medium">商机名称</th>
               <th className="text-right px-4 py-3 font-medium">拓展数</th>
@@ -42,8 +42,8 @@ export function OpportunitiesListTable({ data, viewQuery = "" }: OpportunitiesLi
               </tr>
             ) : (
               data.map((row) => (
-                <tr key={row.id} className="border-t border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-3 font-medium text-gray-900">{row.name}</td>
+                <tr key={row.id} className="border-t border-[#f1f5f9] hover:bg-[#f8fafc]/60">
+                  <td className="px-4 py-3 font-medium text-[#111827]">{row.name}</td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     {row.totalMerchants.toLocaleString()}
                   </td>
@@ -72,12 +72,9 @@ export function OpportunitiesListTable({ data, viewQuery = "" }: OpportunitiesLi
                     {row.estimatedRiskRate.toFixed(1)}%
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <Link
-                      href={`/opportunities/${encodeURIComponent(row.id)}${viewQuery}`}
-                      className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-[#165DFF] border border-[#165DFF]/30 rounded-lg hover:bg-[#165DFF]/5 transition-colors"
-                    >
+                    <NotionLinkButton href={`/opportunities/${encodeURIComponent(row.id)}${viewQuery}`}>
                       详情
-                    </Link>
+                    </NotionLinkButton>
                   </td>
                 </tr>
               ))

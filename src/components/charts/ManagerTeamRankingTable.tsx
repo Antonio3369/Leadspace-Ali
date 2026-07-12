@@ -79,16 +79,16 @@ export function ManagerTeamRankingTable({
   const colSpan = 2 + COLUMNS.length;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-center gap-3">
-        <h3 className="text-sm font-medium text-gray-700">
+    <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-[#eef2f7] flex items-center justify-center gap-3">
+        <h3 className="text-sm font-medium text-[#111827]">
           经理团队拓展排名
         </h3>
-        <span className="text-xs text-gray-400">{monthLabel}</span>
+        <span className="text-xs text-[#94a3b8]">{monthLabel}</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-500">
+          <thead className="bg-[#f8fafc] text-[#64748b]">
             <tr>
               <th className="text-center px-3 py-3 w-14">排名</th>
               <th className="text-center px-3 py-3 min-w-[88px]">区域经理</th>
@@ -112,17 +112,17 @@ export function ManagerTeamRankingTable({
                 return (
                   <tr
                     key={row.managerId}
-                    className={`border-t border-gray-50 ${
-                      isHighlight ? "bg-blue-50/60" : "hover:bg-gray-50/50"
+                    className={`border-t border-[#f1f5f9] ${
+                      isHighlight ? "bg-[#eff6ff]/60" : "hover:bg-[#f8fafc]/60"
                     }`}
                   >
                     <td className="px-3 py-3 text-center">
                       <RankBadge rank={row.rank} />
                     </td>
-                    <td className="px-3 py-3 text-center font-medium text-gray-900 whitespace-nowrap">
+                    <td className="px-3 py-3 text-center font-medium text-[#111827] whitespace-nowrap">
                       {row.managerName}
                       {isHighlight && (
-                        <span className="ml-1 text-xs text-[#165DFF]">（我）</span>
+                        <span className="ml-1 text-xs text-[#2563eb]">（我）</span>
                       )}
                     </td>
                     {COLUMNS.map((col) => {

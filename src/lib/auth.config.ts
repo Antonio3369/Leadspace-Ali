@@ -8,6 +8,7 @@ declare module "next-auth" {
     status: UserStatus;
     teamId: string | null;
     accountLifecycle: AccountLifecycle;
+    mustChangePassword: boolean;
   }
 
   interface Session {
@@ -19,6 +20,7 @@ declare module "next-auth" {
       status: UserStatus;
       teamId: string | null;
       accountLifecycle: AccountLifecycle;
+      mustChangePassword: boolean;
     };
   }
 }
@@ -31,6 +33,7 @@ declare module "@auth/core/jwt" {
     status: UserStatus;
     teamId: string | null;
     accountLifecycle: AccountLifecycle;
+    mustChangePassword: boolean;
   }
 }
 
@@ -54,6 +57,22 @@ export const authConfig = {
 
       if (auth.user.status !== "ACTIVE") {
         return Response.redirect(new URL("/login?disabled=1", request.nextUrl));
+      }
+
+      const mustChangePassword = auth.user.mustChangePassword;
+      const onChangePassword =
+        pathname.startsWith("/change-password") ||
+        pathname.startsWith("/api/auth/change-password");
+
+      if (mustChangePassword) {
+        if (!onChangePassword) {
+          return Response.redirect(new URL("/change-password", request.nextUrl));
+        }
+        return true;
+      }
+
+      if (onChangePassword) {
+        return Response.redirect(new URL("/", request.nextUrl));
       }
 
       const lifecycle = auth.user.accountLifecycle;
@@ -85,6 +104,7 @@ export const authConfig = {
         token.status = user.status;
         token.teamId = user.teamId;
         token.accountLifecycle = user.accountLifecycle;
+        token.mustChangePassword = user.mustChangePassword;
       }
       return token;
     },
@@ -101,6 +121,7 @@ export const authConfig = {
           status: token.status,
           teamId: token.teamId,
           accountLifecycle: token.accountLifecycle,
+          mustChangePassword: token.mustChangePassword,
         },
       };
     },

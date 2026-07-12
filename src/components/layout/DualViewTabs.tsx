@@ -7,26 +7,26 @@ interface DualViewTabsProps {
 
 export function DualViewTabs({ activeView, onChange }: DualViewTabsProps) {
   return (
-    <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+    <div className="flex gap-1 bg-[#f1f5f9] p-1 rounded-lg w-fit">
       <button
         onClick={() => onChange("team")}
-        className={`px-4 py-2 text-sm rounded-md transition-colors ${
+        className={`px-3 sm:px-4 py-2 text-xs sm:text-sm rounded-md transition-colors whitespace-nowrap ${
           activeView === "team"
-            ? "bg-white text-[#165DFF] shadow-sm font-medium"
-            : "text-gray-600 hover:text-gray-900"
+            ? "bg-white text-[#2563eb] shadow-sm font-medium"
+            : "text-[#64748b] hover:text-[#111827]"
         }`}
       >
-        小组汇总数据区
+        小组汇总
       </button>
       <button
         onClick={() => onChange("personal")}
-        className={`px-4 py-2 text-sm rounded-md transition-colors ${
+        className={`px-3 sm:px-4 py-2 text-xs sm:text-sm rounded-md transition-colors whitespace-nowrap ${
           activeView === "personal"
-            ? "bg-white text-[#165DFF] shadow-sm font-medium"
-            : "text-gray-600 hover:text-gray-900"
+            ? "bg-white text-[#2563eb] shadow-sm font-medium"
+            : "text-[#64748b] hover:text-[#111827]"
         }`}
       >
-        个人外勤数据区
+        个人外勤
       </button>
     </div>
   );

@@ -26,7 +26,7 @@ const METRIC_COLORS = {
 
 interface SalesStaffRankingTableProps {
   title?: string;
-  monthLabel: string;
+  periodLabel: string;
   data: SalesStaffRankingItem[];
 }
 
@@ -68,20 +68,20 @@ const COLUMNS = [
 
 export function SalesStaffRankingTable({
   title = "业务人员拓展排名",
-  monthLabel,
+  periodLabel,
   data,
 }: SalesStaffRankingTableProps) {
   const colSpan = 2 + COLUMNS.length;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-center gap-3">
-        <h3 className="text-sm font-medium text-gray-700">{title}</h3>
-        <span className="text-xs text-gray-400">{monthLabel}</span>
+    <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-[#eef2f7] flex items-center justify-center gap-3">
+        <h3 className="text-sm font-medium text-[#111827]">{title}</h3>
+        <span className="text-xs text-[#94a3b8]">{periodLabel}</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-500">
+          <thead className="bg-[#f8fafc] text-[#64748b]">
             <tr>
               <th className="text-center px-3 py-3 w-14">排名</th>
               <th className="text-center px-3 py-3 min-w-[88px]">业务员</th>
@@ -103,12 +103,12 @@ export function SalesStaffRankingTable({
               data.map((row) => (
                 <tr
                   key={row.salesUserId}
-                  className="border-t border-gray-50 hover:bg-gray-50/50"
+                  className="border-t border-[#f1f5f9] hover:bg-[#f8fafc]/60"
                 >
                   <td className="px-3 py-3 text-center">
                     <RankBadge rank={row.rank} />
                   </td>
-                  <td className="px-3 py-3 text-center font-medium text-gray-900 whitespace-nowrap">
+                  <td className="px-3 py-3 text-center font-medium text-[#111827] whitespace-nowrap">
                     {row.salesName}
                   </td>
                   {COLUMNS.map((col) => {

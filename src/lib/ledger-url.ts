@@ -1,5 +1,5 @@
 import type { LedgerDatePreset } from "@/lib/ledger-date";
-import { appendMultiSearchParam, parseMultiSearchParam } from "@/lib/query-params";
+import { parseMultiSearchParam } from "@/lib/query-params";
 
 const LEDGER_DATE_PRESETS = new Set<LedgerDatePreset>([
   "month",
@@ -15,9 +15,18 @@ export interface LedgerUrlFilters {
   dateTo: string;
   datePreset: LedgerDatePreset;
   search: string;
-  riskStatuses: string[];
-  salesStatuses: string[];
+  managerId: string;
+  salesUserId: string;
+  riskStatus: string;
+  photoStatus: string;
+  salesStatus: string;
   page: number;
+}
+
+function parseSingleFilter(searchParams: URLSearchParams, key: string): string {
+  const multi = parseMultiSearchParam(searchParams, key);
+  if (multi && multi.length > 0) return multi[0]!;
+  return searchParams.get(key) ?? "";
 }
 
 export function parseLedgerUrlFilters(
@@ -38,8 +47,11 @@ export function parseLedgerUrlFilters(
     dateTo: searchParams.get("dateTo") ?? defaults.dateTo,
     datePreset,
     search: searchParams.get("search") ?? "",
-    riskStatuses: parseMultiSearchParam(searchParams, "riskStatus") ?? [],
-    salesStatuses: parseMultiSearchParam(searchParams, "salesActivationStatus") ?? [],
+    managerId: searchParams.get("managerId") ?? "",
+    salesUserId: searchParams.get("salesUserId") ?? "",
+    riskStatus: parseSingleFilter(searchParams, "riskStatus"),
+    photoStatus: parseSingleFilter(searchParams, "photoStatus"),
+    salesStatus: parseSingleFilter(searchParams, "salesActivationStatus"),
     page,
   };
 }
@@ -53,8 +65,11 @@ export function buildLedgerUrlSearchParams(filters: LedgerUrlFilters): URLSearch
   if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters.dateTo) params.set("dateTo", filters.dateTo);
   if (filters.search) params.set("search", filters.search);
-  appendMultiSearchParam(params, "riskStatus", filters.riskStatuses);
-  appendMultiSearchParam(params, "salesActivationStatus", filters.salesStatuses);
+  if (filters.managerId) params.set("managerId", filters.managerId);
+  if (filters.salesUserId) params.set("salesUserId", filters.salesUserId);
+  if (filters.riskStatus) params.set("riskStatus", filters.riskStatus);
+  if (filters.photoStatus) params.set("photoStatus", filters.photoStatus);
+  if (filters.salesStatus) params.set("salesActivationStatus", filters.salesStatus);
   if (filters.page > 1) params.set("page", String(filters.page));
 
   return params;
@@ -65,3 +80,24 @@ export function ledgerUrlQueryString(filters: LedgerUrlFilters): string {
   const query = params.toString();
   return query ? `?${query}` : "";
 }
+
+export function hasActiveLedgerStatusFilters(filters: LedgerUrlFilters): boolean {
+  return Boolean(
+    filters.riskStatus ||
+      filters.photoStatus ||
+      filters.salesStatus ||
+      filters.search ||
+      filters.managerId ||
+      filters.salesUserId
+  );
+}
+
+export const EMPTY_LEDGER_STATUS_FILTERS = {
+  riskStatus: "",
+  photoStatus: "",
+  salesStatus: "",
+  search: "",
+  managerId: "",
+  salesUserId: "",
+  page: 1,
+} as const;

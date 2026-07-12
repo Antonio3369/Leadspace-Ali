@@ -39,9 +39,8 @@ export const MANAGER_ENABLED_LIFECYCLE = "ACTIVE" as const;
 export const ADMIN_TARGET_RELOGIN_HINT = "对方下次访问时将自动退出并需重新登录";
 
 export const ENABLE_NEXT_STEPS = {
-  sales:
-    "请将登录名与初始密码告知对方。对方首次登录须绑定作业账号与个人 PID，完成后方可查看业务数据。",
-  manager: "请将登录名与初始密码告知对方。对方可立即登录经理端使用，无需额外认证步骤。",
+  manager:
+    "请将登录名与初始密码告知对方。对方首次登录须修改密码后方可继续使用。",
 } as const;
 
 export function onboardingTitle(role: UserRole): string {

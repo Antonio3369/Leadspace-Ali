@@ -31,10 +31,6 @@ export const RATE_THRESHOLDS = {
   warning: 60,
 } as const;
 
-/** 顶部常驻业务说明 */
-export const BUSINESS_NOTICE =
-  "所有商机由支付宝系统随机推送，外勤人员无法人工选择或调整。";
-
 export const ROLE_LABELS: Record<string, string> = {
   DIRECTOR: "事业部负责人",
   MANAGER: "区域经理",

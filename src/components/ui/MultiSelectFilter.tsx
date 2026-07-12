@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 export interface MultiSelectOption {
   value: string;
   label: string;
+  description?: string;
 }
 
 interface MultiSelectFilterProps {
@@ -65,19 +66,24 @@ export function MultiSelectFilter({
       </button>
 
       {open && (
-        <div className="absolute z-20 mt-1 min-w-[180px] bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+        <div className="absolute z-20 mt-1 min-w-[240px] bg-white border border-gray-200 rounded-lg shadow-lg py-1">
           {options.map((option) => (
             <label
               key={option.value}
-              className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer"
+              className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer"
             >
               <input
                 type="checkbox"
                 checked={values.includes(option.value)}
                 onChange={() => toggleValue(option.value)}
-                className="rounded border-gray-300 text-[#165DFF] focus:ring-[#165DFF]/30"
+                className="mt-0.5 rounded border-gray-300 text-[#165DFF] focus:ring-[#165DFF]/30"
               />
-              <span>{option.label}</span>
+              <span>
+                <span className="block">{option.label}</span>
+                {option.description && (
+                  <span className="block text-xs text-gray-400 mt-0.5">{option.description}</span>
+                )}
+              </span>
             </label>
           ))}
           {values.length > 0 && (
