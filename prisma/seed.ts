@@ -40,7 +40,8 @@ async function main() {
 
   console.log("\nDemo login:");
   console.log("  Antonio / 123456  (管理员，已激活)");
-  console.log("  经理/业务员 Excel 导入后无密码，须经理开通账号后方可登录");
+  console.log("  经理 Excel 导入后无密码，须在组织管理开通后方可登录");
+  console.log("  业务员为纯数据账号，导入即可，不支持登录");
   console.log("\nRun: npm run import:all  to import merchant Excel files");
 }
 
