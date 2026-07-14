@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatRetentionLabel, getMerchantRetentionCutoff } from "@/lib/merchant-retention";
 import {
   NotionAlert,
   NotionButton,
   NotionPanel,
+  NotionProgressBar,
   NotionTabs,
   PageHeader,
   PageShell,
@@ -35,6 +36,9 @@ interface PersonnelImportResult {
 }
 
 type ImportResult = MerchantImportResult | PersonnelImportResult;
+
+const UPLOAD_PROGRESS_MAX = 35;
+const PROCESSING_PROGRESS_MAX = 92;
 
 const retentionLabel = formatRetentionLabel(getMerchantRetentionCutoff());
 
@@ -66,49 +70,145 @@ function isPersonnelResult(result: ImportResult): result is PersonnelImportResul
   return "managersCreated" in result;
 }
 
+function uploadWithProgress(
+  endpoint: string,
+  file: File,
+  onProgress: (value: number, label: string) => void
+): Promise<ImportResult> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append("file", file);
+
+    let processingTimer: ReturnType<typeof setInterval> | null = null;
+
+    function clearProcessingTimer() {
+      if (processingTimer) {
+        clearInterval(processingTimer);
+        processingTimer = null;
+      }
+    }
+
+    function startProcessingProgress() {
+      let current = UPLOAD_PROGRESS_MAX;
+      onProgress(current, "正在处理数据，请稍候…");
+      processingTimer = setInterval(() => {
+        if (current < PROCESSING_PROGRESS_MAX) {
+          current += current < 60 ? 3 : 1;
+          onProgress(Math.min(current, PROCESSING_PROGRESS_MAX), "正在处理数据，请稍候…");
+        }
+      }, 400);
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) {
+        onProgress(10, "正在上传文件…");
+        return;
+      }
+      const uploadPct = Math.round((event.loaded / event.total) * UPLOAD_PROGRESS_MAX);
+      onProgress(uploadPct, "正在上传文件…");
+    };
+
+    xhr.upload.onload = () => {
+      startProcessingProgress();
+    };
+
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState !== XMLHttpRequest.DONE) return;
+      clearProcessingTimer();
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          onProgress(100, "导入完成");
+          resolve(JSON.parse(xhr.responseText) as ImportResult);
+        } catch {
+          reject(new Error("响应解析失败"));
+        }
+        return;
+      }
+
+      try {
+        const data = JSON.parse(xhr.responseText) as { error?: string };
+        reject(new Error(data.error ?? "上传失败"));
+      } catch {
+        reject(new Error(xhr.status === 0 ? "网络错误，请重试" : "上传失败"));
+      }
+    };
+
+    xhr.onerror = () => {
+      clearProcessingTimer();
+      reject(new Error("网络错误，请重试"));
+    };
+
+    xhr.onabort = () => {
+      clearProcessingTimer();
+      reject(new Error("上传已取消"));
+    };
+
+    xhr.open("POST", endpoint);
+    xhr.send(formData);
+  });
+}
+
 export default function ImportPage() {
   const [kind, setKind] = useState<ImportKind>("personnel");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState("");
+  const uploadAbortRef = useRef(false);
 
   const config = IMPORT_CONFIG[kind];
 
+  useEffect(() => {
+    return () => {
+      uploadAbortRef.current = true;
+    };
+  }, []);
+
   function switchKind(next: ImportKind) {
+    if (loading) return;
     setKind(next);
     setFile(null);
     setResult(null);
     setError("");
+    setProgress(0);
+    setProgressLabel("");
   }
 
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault();
-    if (!file) return;
+    if (!file || loading) return;
 
     setLoading(true);
     setError("");
     setResult(null);
-
-    const formData = new FormData();
-    formData.append("file", file);
+    setProgress(0);
+    setProgressLabel("准备上传…");
+    uploadAbortRef.current = false;
 
     try {
-      const res = await fetch(config.endpoint, {
-        method: "POST",
-        body: formData,
+      const data = await uploadWithProgress(config.endpoint, file, (value, label) => {
+        if (!uploadAbortRef.current) {
+          setProgress(value);
+          setProgressLabel(label);
+        }
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "上传失败");
-        return;
-      }
+      if (uploadAbortRef.current) return;
       setResult(data);
       setFile(null);
-    } catch {
-      setError("网络错误，请重试");
+    } catch (err) {
+      if (!uploadAbortRef.current) {
+        setError(err instanceof Error ? err.message : "上传失败");
+        setProgress(0);
+        setProgressLabel("");
+      }
     } finally {
-      setLoading(false);
+      if (!uploadAbortRef.current) {
+        setLoading(false);
+      }
     }
   }
 
@@ -138,9 +238,18 @@ export default function ImportPage() {
             type="file"
             accept=".xlsx"
             key={kind}
+            disabled={loading}
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="block w-full text-sm text-[#64748b] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#2563eb] file:text-white file:cursor-pointer"
+            className="block w-full text-sm text-[#64748b] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#2563eb] file:text-white file:cursor-pointer disabled:opacity-60"
           />
+
+          {loading && (
+            <NotionProgressBar
+              value={progress}
+              label={progressLabel}
+              indeterminate={progress >= UPLOAD_PROGRESS_MAX && progress < 100}
+            />
+          )}
 
           <NotionButton type="submit" disabled={!file || loading}>
             {loading ? "导入中..." : config.buttonLabel}

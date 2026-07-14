@@ -61,18 +61,19 @@ export const authConfig = {
 
       const mustChangePassword = auth.user.mustChangePassword;
       const onChangePassword =
+        pathname.startsWith("/settings/password") ||
         pathname.startsWith("/change-password") ||
         pathname.startsWith("/api/auth/change-password");
 
       if (mustChangePassword) {
         if (!onChangePassword) {
-          return Response.redirect(new URL("/change-password", request.nextUrl));
+          return Response.redirect(new URL("/settings/password", request.nextUrl));
         }
         return true;
       }
 
-      if (onChangePassword) {
-        return Response.redirect(new URL("/", request.nextUrl));
+      if (pathname.startsWith("/change-password")) {
+        return Response.redirect(new URL("/settings/password", request.nextUrl));
       }
 
       const lifecycle = auth.user.accountLifecycle;

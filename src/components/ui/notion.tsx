@@ -185,6 +185,34 @@ export function NotionAlert({
   );
 }
 
+export function NotionProgressBar({
+  value,
+  label,
+  indeterminate = false,
+}: {
+  value: number;
+  label: string;
+  indeterminate?: boolean;
+}) {
+  const clamped = Math.min(100, Math.max(0, value));
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="text-[#64748b]">{label}</span>
+        {!indeterminate && <span className="text-[#111827] font-medium tabular-nums">{clamped}%</span>}
+      </div>
+      <div className="h-2 rounded-full bg-[#e2e8f0] overflow-hidden">
+        <div
+          className={`h-full rounded-full bg-[#2563eb] transition-[width] duration-300 ease-out ${
+            indeterminate ? "animate-pulse" : ""
+          }`}
+          style={{ width: indeterminate ? "66%" : `${clamped}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function NotionCallout({ children, tone = "info" }: { children: ReactNode; tone?: "info" | "warning" }) {
   const tones = {
     info: "bg-[#eff6ff] border-[#bfdbfe] text-[#1e3a5f]",

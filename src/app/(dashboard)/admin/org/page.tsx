@@ -42,6 +42,11 @@ const TAB_LABELS: Record<OrgTab, string> = {
   disabled: "已停用",
 };
 
+/** 组织管理仅展示可登录角色；业务员为纯数据账号，在团队管理查看 */
+function isOrgVisibleUser(user: UserRow) {
+  return user.role !== "SALES";
+}
+
 export default function AdminOrgPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [tab, setTab] = useState<OrgTab>("all");
@@ -57,7 +62,15 @@ export default function AdminOrgPage() {
   const [actionPassword, setActionPassword] = useState("123456");
   const [enableSuccess, setEnableSuccess] = useState<EnableSuccessState | null>(null);
 
-  const managers = useMemo(() => users.filter((user) => user.role === "MANAGER"), [users]);
+  const managers = useMemo(
+    () => users.filter((user) => user.role === "MANAGER"),
+    [users]
+  );
+
+  const orgUsers = useMemo(
+    () => users.filter(isOrgVisibleUser),
+    [users]
+  );
 
   const tabCounts = useMemo(
     () => ({
@@ -70,15 +83,15 @@ export default function AdminOrgPage() {
 
   const filteredUsers = useMemo(() => {
     if (tab === "pending") {
-      return users.filter(
+      return orgUsers.filter(
         (user) => user.role === "MANAGER" && user.accountLifecycle === "PENDING_ONBOARDING"
       );
     }
     if (tab === "disabled") {
-      return users.filter((user) => user.role === "MANAGER" && user.status === "DISABLED");
+      return orgUsers.filter((user) => user.role === "MANAGER" && user.status === "DISABLED");
     }
-    return users;
-  }, [users, tab]);
+    return orgUsers.filter((user) => user.role === "MANAGER");
+  }, [orgUsers, tab]);
 
   function clearAction() {
     setActionUserId(null);
@@ -341,7 +354,7 @@ export default function AdminOrgPage() {
           Excel 导入的经理默认为「未开通」。管理员<strong>开通账号</strong>时设置密码即可，开通后状态为「已认证」，可立即登录经理端。
         </p>
         <p>
-          「待认证」为历史经理账号；「已停用」账号可在此<strong>启用</strong>。重置密码、停用/启用后，{ADMIN_TARGET_RELOGIN_HINT}
+          业务员为纯数据账号，不在此列表展示，由经理在<strong>团队管理</strong>查看。「待认证」为历史经理账号；「已停用」账号可在此<strong>启用</strong>。重置密码、停用/启用后，{ADMIN_TARGET_RELOGIN_HINT}
         </p>
       </NotionCallout>
 
@@ -408,7 +421,7 @@ export default function AdminOrgPage() {
                     ? "暂无待认证经理"
                     : tab === "disabled"
                       ? "暂无已停用经理"
-                      : "暂无人员数据"}
+                      : "暂无经理数据"}
                 </td>
               </tr>
             ) : (

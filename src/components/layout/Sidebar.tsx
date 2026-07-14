@@ -114,6 +114,17 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
             </Link>
           </>
         )}
+
+        <div className="pt-2 mt-2 border-t border-[rgba(55,53,47,0.06)]">
+          <Link
+            href="/settings/password"
+            onClick={handleClick}
+            className={navLinkClass(isActivePath(pathname, "/settings/password"))}
+          >
+            <span className="w-5 text-center text-sm opacity-80">🔒</span>
+            修改密码
+          </Link>
+        </div>
       </nav>
     </aside>
   );

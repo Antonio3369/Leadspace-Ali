@@ -102,9 +102,7 @@ export async function ensureLiveSession(): Promise<SessionUser> {
     redirect("/api/auth/session-expired?reason=refresh");
   }
 
-  if (live.mustChangePassword) {
-    redirect("/change-password");
-  }
+  // 首登改密由 middleware 统一跳转 /settings/password，此处不可再 redirect，否则会与 /change-password _legacy 重定向形成死循环
 
   return {
     ...user,

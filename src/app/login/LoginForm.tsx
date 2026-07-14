@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { NotionAlert, NotionButton, NotionInput } from "@/components/ui/notion";
@@ -10,13 +10,22 @@ export default function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/";
   const onboarded = searchParams.get("onboarded") === "1";
-  const disabled = searchParams.get("disabled") === "1";
   const sessionRefresh = searchParams.get("session") === "refresh";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.has("disabled") || params.has("session")) {
+      params.delete("disabled");
+      params.delete("session");
+      const qs = params.toString();
+      router.replace(qs ? `/login?${qs}` : "/login");
+    }
+  }, [router, searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -74,9 +83,6 @@ export default function LoginForm() {
         <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm p-6 sm:p-8 space-y-4">
           {onboarded && (
             <NotionAlert tone="success">实名认证已完成，请重新登录</NotionAlert>
-          )}
-          {disabled && (
-            <NotionAlert tone="error">账号已停用或离职，无法登录</NotionAlert>
           )}
           {sessionRefresh && (
             <NotionAlert tone="warning">账号状态已更新，请重新登录</NotionAlert>

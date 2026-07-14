@@ -42,6 +42,21 @@ async function loadExistingMerchantsByJobNumber(): Promise<Map<string, { id: str
   return new Map(existing.map((e) => [e.jobNumber, { id: e.id }]));
 }
 
+async function runBatchedUpdates(
+  tasks: { id: string; data: Prisma.MerchantRecordUpdateInput }[],
+  concurrency = 8
+) {
+  for (let i = 0; i < tasks.length; i += concurrency) {
+    const slice = tasks.slice(i, i + concurrency);
+    await Promise.all(
+      slice.map(({ id, data }) => {
+        if (id.startsWith("pending-")) return Promise.resolve();
+        return db.merchantRecord.update({ where: { id }, data });
+      })
+    );
+  }
+}
+
 function buildMutableFields(
   row: ParsedMerchantRow,
   opportunityId: string | undefined,
@@ -184,24 +199,20 @@ export async function importParsedRows(
     createdRows++;
   }
 
-  const CHUNK = 500;
-  for (let i = 0; i < merchantCreates.length; i += CHUNK) {
+  const CREATE_CHUNK = 500;
+
+  for (let i = 0; i < merchantCreates.length; i += CREATE_CHUNK) {
     await db.merchantRecord.createMany({
-      data: merchantCreates.slice(i, i + CHUNK),
+      data: merchantCreates.slice(i, i + CREATE_CHUNK),
       skipDuplicates: true,
     });
   }
 
-  for (let i = 0; i < updateTasks.length; i += CHUNK) {
-    const slice = updateTasks.slice(i, i + CHUNK);
-    await db.$transaction(
-      slice.map(({ id, data }) => db.merchantRecord.update({ where: { id }, data }))
-    );
-  }
+  await runBatchedUpdates(updateTasks);
 
-  for (let i = 0; i < anomalyCreates.length; i += CHUNK) {
+  for (let i = 0; i < anomalyCreates.length; i += CREATE_CHUNK) {
     await db.anomalyRecord.createMany({
-      data: anomalyCreates.slice(i, i + CHUNK),
+      data: anomalyCreates.slice(i, i + CREATE_CHUNK),
     });
   }
 

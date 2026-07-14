@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-06-14 · commit `4a7dfd3`
+**最后更新**：2026-07-13（含生产部署规范）
 
 ---
 
@@ -488,7 +488,107 @@ src/
 
 ---
 
-## 15. 后续待办
+## 15. 生产部署规范
+
+### 15.1 线上环境
+
+| 项 | 值 |
+|---|---|
+| 访问地址 | https://ali.orblead.com |
+| 服务器 | 腾讯云轻量，与 **hk.orblead** 共用（`43.136.25.181`） |
+| SSH 别名 | `sales-cloud`（`~/.ssh/config`） |
+| 项目目录 | `/opt/leadspace-alipay` |
+| 应用容器 | `leadspace-alipay-app` → `127.0.0.1:3001` |
+| 数据库 | Docker `leadspace-postgres`（仅内网，不与 hk 混库） |
+| Nginx 配置 | `/etc/nginx/conf.d/ali-orblead.conf` |
+| hk 影响 | hk 走独立容器 `3080`，Leadspace 部署**通常不影响** hk |
+
+### 15.2 与 hk.orblead 部署方式的差异
+
+| | hk.orblead | Leadspace.Alipay |
+|---|---|---|
+| 习惯流程 | 本地 build → 打 `tgz` → 上传服务器 → 重启 | `rsync` 源码 → 服务器内 `docker compose build` |
+| 项目路径 | `/opt/sales-data-agent` | `/opt/leadspace-alipay` |
+| 触发 | 手动 / 固定发布脚本 | **须先本地验证 + 负责人确认后再部署** |
+
+两种方式都能用；Leadspace 默认用仓库内 `deploy/` 脚本，但**不自动上线**。
+
+### 15.3 默认发布流程（必须遵守）
+
+**有用户在使用时，禁止跳过本地验证直接部署。**
+
+```
+1. 本地改代码
+2. npm run build                    # 类型与构建必须通过
+3. npm run dev                      # 浏览器点验关键路径（登录、改密、台账等）
+4. 负责人确认「可以部署」
+5. 同步代码并重建应用容器
+6. 线上抽查 https://ali.orblead.com
+7. 回报「已上线，请刷新验证」
+```
+
+**仅当负责人明确说「直接上线」**（紧急修线上 bug）时，可跳过第 3～4 步，但仍须 `npm run build` 通过。
+
+**与 AI / Cursor 协作时**：默认只改代码、本地验证；**不得**在未经确认的情况下 SSH 部署生产环境。
+
+### 15.4 部署对用户的影响
+
+| 操作 | 影响 |
+|---|---|
+| `docker compose up -d --build app` | 应用重启约 **10～30 秒**，期间可能无法登录 |
+| 构建失败 | 服务可能起不来，需回滚或修复后重部署 |
+| 数据库 schema 变更 | 风险更高，须提前备份并单独评估 |
+| hk.orblead | 独立服务，一般不受影响 |
+
+经理已开始日常使用后，避免在工作时段频繁部署；可攒一批改动一次发。
+
+### 15.5 部署命令参考
+
+```bash
+# 本地：构建验证（部署前必做）
+npm run build
+
+# 方式 A：一键（须已确认可部署）
+./deploy/push-and-deploy.sh
+
+# 方式 B：分步
+rsync -avz --delete \
+  --exclude node_modules --exclude .next --exclude .git --exclude '.env' --exclude 'src/generated' \
+  ./ sales-cloud:/opt/leadspace-alipay/
+
+ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/server-deploy.sh'
+
+# 仅重建应用（不改数据库）
+ssh sales-cloud 'cd /opt/leadspace-alipay && sudo docker compose -f docker-compose.prod.yml up -d --build app'
+
+# 首次 SSL（DNS 生效后）
+ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/setup-ssl.sh'
+```
+
+相关文件：
+
+```
+deploy/
+├── push-and-deploy.sh      # 本机 rsync + 远程 server-deploy
+├── server-deploy.sh        # 服务器：build、up、db push、seed
+├── setup-ssl.sh            # Let's Encrypt + Nginx HTTPS
+├── env.production.example
+└── nginx/ali.orblead.com.conf
+docker-compose.prod.yml
+Dockerfile
+```
+
+### 15.6 部署后检查
+
+- [ ] https://ali.orblead.com/login 可打开
+- [ ] Antonio / 经理账号可登录
+- [ ] 数据总览、台账有数据（已导入前提下）
+- [ ] `sudo docker ps` 中 `leadspace-alipay-app`、`leadspace-postgres` 为 Up
+- [ ] hk.orblead.com 仍正常
+
+---
+
+## 16. 后续待办
 
 ### 产品路线图（README 规划）
 
@@ -507,7 +607,7 @@ src/
 
 ---
 
-## 16. 开发约定
+## 17. 开发约定
 
 1. **改 UI 优先复用** `notion.tsx`，不要各页单独写样式
 2. **新筛选页** 参照 `dashboard-url.ts` 模式：parse → build → queryString，URL 为唯一状态源
@@ -515,10 +615,11 @@ src/
 4. **Prisma schema 变更** 后跑 `npm run db:generate && npm run db:push`
 5. **提交前** 跑 `npm run build` 验证类型
 6. **不主动 git commit/push**，除非用户明确要求
+7. **不主动部署生产**，除非本地已验证且负责人确认（见 §15.3）；紧急线上修复除外
 
 ---
 
-## 17. 快速定位问题
+## 18. 快速定位问题
 
 | 问题类型 | 先看 |
 |---|---|

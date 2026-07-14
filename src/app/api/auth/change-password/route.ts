@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 const changePasswordSchema = z.object({
+  currentPassword: z.string().optional(),
   newPassword: z.string().min(6, "密码至少 6 位"),
 });
 
@@ -18,17 +19,35 @@ export async function POST(request: Request) {
     const body = changePasswordSchema.parse(await request.json());
     const user = await db.user.findUnique({
       where: { id: session.user.id },
-      select: { mustChangePassword: true },
+      select: { passwordHash: true, mustChangePassword: true },
     });
 
-    if (!user?.mustChangePassword) {
-      return NextResponse.json({ error: "当前无需修改密码" }, { status: 400 });
+    if (!user?.passwordHash) {
+      return NextResponse.json({ error: "账号尚未开通" }, { status: 400 });
+    }
+
+    if (user.mustChangePassword) {
+      const passwordHash = await bcrypt.hash(body.newPassword, 10);
+      await db.user.update({
+        where: { id: session.user.id },
+        data: { passwordHash, mustChangePassword: false },
+      });
+      return NextResponse.json({ ok: true, forced: true });
+    }
+
+    if (!body.currentPassword) {
+      return NextResponse.json({ error: "请输入当前密码" }, { status: 400 });
+    }
+
+    const currentOk = await bcrypt.compare(body.currentPassword, user.passwordHash);
+    if (!currentOk) {
+      return NextResponse.json({ error: "当前密码不正确" }, { status: 400 });
     }
 
     const passwordHash = await bcrypt.hash(body.newPassword, 10);
     await db.user.update({
       where: { id: session.user.id },
-      data: { passwordHash, mustChangePassword: false },
+      data: { passwordHash },
     });
 
     return NextResponse.json({ ok: true });

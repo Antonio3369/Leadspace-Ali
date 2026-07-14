@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: leadspace-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-leadspace}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-leadspace}
+    volumes:
+      - leadspace_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-leadspace} -d ${POSTGRES_DB:-leadspace}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: leadspace-alipay-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leadspace}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-leadspace}?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      AUTH_URL: ${AUTH_URL:-https://ali.orblead.com}
+      AUTH_TRUST_HOST: "true"
+
+  db-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    profiles: ["init"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leadspace}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-leadspace}?schema=public
+    restart: "no"
+
+volumes:
+  leadspace_pg_data:

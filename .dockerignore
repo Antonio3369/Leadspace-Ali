@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.gitignore
+.env*
+!.env.example
+deploy/env.production.example
+README.md
+Leadspace.Ali.md
+*.md
+.DS_Store
+npm-debug.log*
+.cursor
+agent-transcripts

@@ -41,7 +41,11 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ ok: false, code: "ERROR", message: "服务器错误" }, { status: 500 });
+  } catch (err) {
+    console.error("[check-account]", err);
+    return NextResponse.json(
+      { ok: false, code: "ERROR", message: "数据库连接异常，请稍后重试" },
+      { status: 500 }
+    );
   }
 }

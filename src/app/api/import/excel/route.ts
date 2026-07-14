@@ -31,6 +31,12 @@ export async function POST(request: Request) {
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
+    if (/connection|Connection|closed the connection/i.test(message)) {
+      return NextResponse.json(
+        { error: "数据库连接中断，请稍后重试（沙箱环境可重启 npx prisma dev -d）" },
+        { status: 500 }
+      );
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
