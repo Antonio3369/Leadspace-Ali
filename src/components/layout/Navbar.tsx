@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { signOut } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/constants";
+import { XLH_BASE, xlhPath } from "@/lib/business-lines";
 import type { UserRole } from "@/generated/prisma/client";
 
 interface NavbarProps {
@@ -11,10 +12,10 @@ interface NavbarProps {
 }
 
 const NAV_ITEMS = [
-  { href: "/", label: "数据总览" },
-  { href: "/teams", label: "团队明细" },
-  { href: "/opportunities", label: "商机分析" },
-  { href: "/ledger", label: "风控台账" },
+  { href: XLH_BASE, label: "数据总览" },
+  { href: xlhPath("/teams"), label: "团队明细" },
+  { href: xlhPath("/opportunities"), label: "商机分析" },
+  { href: xlhPath("/ledger"), label: "风控台账" },
 ];
 
 export function Navbar({ user }: NavbarProps) {
@@ -38,7 +39,7 @@ export function Navbar({ user }: NavbarProps) {
               ))}
               {user.role === "DIRECTOR" && (
                 <Link
-                  href="/screen"
+                  href={xlhPath("/screen")}
                   className="px-3 py-1.5 rounded-md text-sm text-white/90 hover:text-white hover:bg-white/10 transition-colors"
                 >
                   公共大屏
@@ -47,14 +48,14 @@ export function Navbar({ user }: NavbarProps) {
               {(user.role === "DIRECTOR" || user.role === "MANAGER") && (
                 <>
                   <Link
-                    href={user.role === "MANAGER" ? "/admin/team" : "/admin/org"}
+                    href={user.role === "MANAGER" ? xlhPath("/admin/team") : xlhPath("/admin/org")}
                     className="px-3 py-1.5 rounded-md text-sm text-white/90 hover:text-white hover:bg-white/10 transition-colors"
                   >
                     {user.role === "MANAGER" ? "团队管理" : "组织管理"}
                   </Link>
                   {user.role === "DIRECTOR" && (
                     <Link
-                      href="/admin/import"
+                      href={xlhPath("/admin/import")}
                       className="px-3 py-1.5 rounded-md text-sm text-white/90 hover:text-white hover:bg-white/10 transition-colors"
                     >
                       数据上传
@@ -103,7 +104,7 @@ export function Navbar({ user }: NavbarProps) {
           ))}
           {user.role === "DIRECTOR" && (
             <Link
-              href="/screen"
+              href={xlhPath("/screen")}
               className="px-3 py-1.5 rounded-md text-xs text-white/90 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap shrink-0"
             >
               公共大屏
@@ -112,14 +113,14 @@ export function Navbar({ user }: NavbarProps) {
           {(user.role === "DIRECTOR" || user.role === "MANAGER") && (
             <>
               <Link
-                href={user.role === "MANAGER" ? "/admin/team" : "/admin/org"}
+                href={user.role === "MANAGER" ? xlhPath("/admin/team") : xlhPath("/admin/org")}
                 className="px-3 py-1.5 rounded-md text-xs text-white/90 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap shrink-0"
               >
                 {user.role === "MANAGER" ? "团队管理" : "组织管理"}
               </Link>
               {user.role === "DIRECTOR" && (
                 <Link
-                  href="/admin/import"
+                  href={xlhPath("/admin/import")}
                   className="px-3 py-1.5 rounded-md text-xs text-white/90 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap shrink-0"
                 >
                   数据上传

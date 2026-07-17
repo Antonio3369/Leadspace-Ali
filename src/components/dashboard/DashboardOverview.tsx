@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import type { UserRole } from "@/generated/prisma/client";
 import { AlertBanner } from "@/components/stats/AlertBanner";
@@ -12,6 +13,12 @@ import type { ManagerTeamRankingItem } from "@/components/charts/ManagerTeamRank
 import { SalesStaffRankingTable } from "@/components/charts/SalesStaffRankingTable";
 import type { SalesStaffRankingItem } from "@/components/charts/SalesStaffRankingTable";
 import { MetricsGrid } from "@/components/stats/MetricCard";
+import type { LedgerDatePreset } from "@/lib/ledger-date";
+import {
+  buildMetricLedgerHref,
+  ledgerHrefForRiskSlice,
+  ledgerHrefForSalesFailureSlice,
+} from "@/lib/ledger-url";
 import { requiresDualView } from "@/lib/permissions";
 import { DateRangeMeta, PageHeader, PageShell } from "@/components/ui/notion";
 
@@ -56,6 +63,11 @@ interface DashboardOverviewProps {
   dateRangeLabel?: string;
   dateFrom?: string;
   dateTo?: string;
+  datePreset?: LedgerDatePreset;
+  ledgerScope?: {
+    managerId?: string;
+    salesUserId?: string;
+  };
 }
 
 export function DashboardOverview({
@@ -72,12 +84,37 @@ export function DashboardOverview({
   dateRangeLabel,
   dateFrom = "",
   dateTo = "",
+  datePreset = "custom",
+  ledgerScope,
 }: DashboardOverviewProps) {
   const router = useRouter();
   const showDualView = requiresDualView(user.role);
 
+  const ledgerContext = useMemo(
+    () => ({
+      dateFrom,
+      dateTo,
+      datePreset,
+      managerId: ledgerScope?.managerId,
+      salesUserId: ledgerScope?.salesUserId,
+    }),
+    [dateFrom, dateTo, datePreset, ledgerScope?.managerId, ledgerScope?.salesUserId]
+  );
+
+  const p2Count = Math.max(0, metrics.riskUnderReview - metrics.riskReviewActivated);
+  const p2Href = buildMetricLedgerHref("riskPendingNotActivated", ledgerContext);
+
+  const riskSliceHref = useCallback(
+    (name: string) => ledgerHrefForRiskSlice(name, ledgerContext),
+    [ledgerContext]
+  );
+  const salesFailureSliceHref = useCallback(
+    (name: string) => ledgerHrefForSalesFailureSlice(name, ledgerContext),
+    [ledgerContext]
+  );
+
   function handleViewChange(view: "team" | "personal") {
-    router.push(`/?view=${view}`);
+    router.push(`/xlh?view=${view}`);
   }
 
   const meta = dateRangeLabel ? (
@@ -98,7 +135,7 @@ export function DashboardOverview({
       />
 
       <AlertBanner message={alert.message} visible={alert.visible} />
-      <MetricsGrid metrics={metrics} />
+      <MetricsGrid metrics={metrics} ledgerContext={ledgerContext} />
 
       {salesStaffRanking && (
         <SalesStaffRankingTable
@@ -116,8 +153,21 @@ export function DashboardOverview({
       )}
 
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <PieChartCard title="风控状态分布" data={charts.riskDistribution} />
-        <PieChartCard title="动销未达标原因分布" data={charts.salesFailureDistribution} />
+        <PieChartCard
+          title="风控状态分布"
+          data={charts.riskDistribution}
+          getSliceHref={riskSliceHref}
+          footerLink={
+            p2Count > 0
+              ? { href: p2Href, label: `查看审核中未动销 ${p2Count.toLocaleString()} →` }
+              : undefined
+          }
+        />
+        <PieChartCard
+          title="动销未达标原因分布"
+          data={charts.salesFailureDistribution}
+          getSliceHref={salesFailureSliceHref}
+        />
       </section>
 
       <DailyTrendChart data={charts.dailyTrend} />

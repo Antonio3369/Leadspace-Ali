@@ -72,7 +72,7 @@ export function OpportunitiesListTable({ data, viewQuery = "" }: OpportunitiesLi
                     {row.estimatedRiskRate.toFixed(1)}%
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <NotionLinkButton href={`/opportunities/${encodeURIComponent(row.id)}${viewQuery}`}>
+                    <NotionLinkButton href={`/xlh/opportunities/${encodeURIComponent(row.id)}${viewQuery}`}>
                       详情
                     </NotionLinkButton>
                   </td>

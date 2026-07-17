@@ -9,6 +9,8 @@ export type UserLookupMap = Map<string, User>;
 
 export interface UserLookupIndexes {
   byName: UserLookupMap;
+  /** 仅 MANAGER，供 N7「所属经理」匹配，避免同名业务员抢绑 */
+  byManagerName: UserLookupMap;
   byPersonalPid: Map<string, User>;
 }
 
@@ -31,6 +33,14 @@ export function findUserInIndexes(
     if (byPid) return byPid;
   }
   return indexes.byName.get(normalizeName(salesUserName)) ?? null;
+}
+
+/** N7 所属经理：只匹配经理角色账号 */
+export function findManagerInIndexes(
+  indexes: UserLookupIndexes,
+  managerName: string
+): User | null {
+  return indexes.byManagerName.get(normalizeName(managerName)) ?? null;
 }
 
 /** 从人员名单 Excel 行构建内存索引（分析脚本用） */
@@ -61,7 +71,7 @@ export function buildPersonnelLookupFromRows(
     byName.set(normalizeName(accountName), user);
   }
 
-  return { byName, byPersonalPid };
+  return { byName, byManagerName: new Map(), byPersonalPid };
 }
 
 export function findUserInMap(

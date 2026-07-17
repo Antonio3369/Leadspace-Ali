@@ -10,6 +10,7 @@ export interface ParsedMerchantRow {
   jobNumber: string;
   merchantPid?: string;
   merchantName: string;
+  merchantType?: string;
   salesUserName: string;
   salesEmployeePid?: string;
   opportunityName?: string;
@@ -29,6 +30,7 @@ const COLUMN_ALIASES: Record<string, string[]> = {
   jobNumber: ["作业编号", "作业号"],
   merchantPid: ["商家PID", "商家 PID", "PID"],
   merchantName: ["商家名称", "商户名称"],
+  merchantType: ["商户类型", "商家类型"],
   salesUserName: ["员工名称", "业务员", "业务员姓名", "拓展人"],
   salesEmployeePid: ["员工id", "员工ID", "员工 Id"],
   opportunityName: ["商机内容", "商机", "商机类型", "商机名称"],
@@ -229,10 +231,17 @@ function parseSheetRows(
     const opportunityFromCell =
       String(getCell(rawRow, colMap.opportunityName) ?? "").trim() || undefined;
 
+    const merchantTypeRaw = String(getCell(rawRow, colMap.merchantType) ?? "").trim();
+    const merchantType =
+      merchantTypeRaw && merchantTypeRaw !== "-"
+        ? merchantTypeRaw.toUpperCase()
+        : undefined;
+
     rows.push({
       jobNumber,
       merchantPid: String(getCell(rawRow, colMap.merchantPid) ?? "").trim() || undefined,
       merchantName: merchantName || jobNumber,
+      merchantType,
       salesUserName,
       salesEmployeePid,
       opportunityName: opportunityFromCell ?? sheetName,

@@ -8,18 +8,21 @@ import { DualViewTabs } from "@/components/layout/DualViewTabs";
 import { PieChartCard } from "@/components/charts/PieChartCard";
 import { DailyTrendChart } from "@/components/charts/DailyTrendChart";
 import { OpportunityStatsTable } from "@/components/charts/OpportunityStatsTable";
-import { CORE_METRICS } from "@/lib/constants";
+import { MetricsGrid } from "@/components/stats/MetricCard";
 import { getPresetRange, type LedgerDatePreset } from "@/lib/ledger-date";
 import {
   dashboardUrlQueryString,
   type DashboardUrlFilters,
 } from "@/lib/dashboard-url";
+import {
+  buildMetricLedgerHref,
+  ledgerHrefForRiskSlice,
+  ledgerHrefForSalesFailureSlice,
+} from "@/lib/ledger-url";
 import { requiresDualView } from "@/lib/permissions";
 import {
   DateFilterBar,
   DateRangeMeta,
-  NotionStatCard,
-  NotionStatGrid,
   PageHeader,
   PageShell,
 } from "@/components/ui/notion";
@@ -67,24 +70,31 @@ export function DashboardView({
   const router = useRouter();
   const showDualView = requiresDualView(user.role);
 
-  const statItems = useMemo(
-    () => [
-      { label: CORE_METRICS.TOTAL_MERCHANTS, value: metrics.totalMerchants },
-      { label: CORE_METRICS.PHOTO_PASS_RATE, value: metrics.photoPassRate, isRate: true, suffix: "%" },
-      { label: CORE_METRICS.SALES_ACTIVATION_RATE, value: metrics.salesActivationRate, isRate: true, suffix: "%" },
-      { label: CORE_METRICS.RISK_COMPLIANCE_RATE, value: metrics.riskComplianceRate, isRate: true, suffix: "%" },
-      { label: CORE_METRICS.RISK_UNDER_REVIEW, value: metrics.riskUnderReview },
-      { label: CORE_METRICS.RISK_REVIEW_ACTIVATED, value: metrics.riskReviewActivated },
-      { label: CORE_METRICS.RISK_FAILED, value: metrics.riskFailed },
-      { label: CORE_METRICS.ESTIMATED_RISK_RATE, value: metrics.estimatedRiskRate, isRate: true, suffix: "%" },
-    ],
-    [metrics]
+  const ledgerContext = useMemo(
+    () => ({
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo,
+      datePreset: filters.datePreset,
+    }),
+    [filters.dateFrom, filters.dateTo, filters.datePreset]
+  );
+
+  const p2Count = Math.max(0, metrics.riskUnderReview - metrics.riskReviewActivated);
+  const p2Href = buildMetricLedgerHref("riskPendingNotActivated", ledgerContext);
+
+  const riskSliceHref = useCallback(
+    (name: string) => ledgerHrefForRiskSlice(name, ledgerContext),
+    [ledgerContext]
+  );
+  const salesFailureSliceHref = useCallback(
+    (name: string) => ledgerHrefForSalesFailureSlice(name, ledgerContext),
+    [ledgerContext]
   );
 
   const pushFilters = useCallback(
     (patch: Partial<DashboardUrlFilters>) => {
       const next = { ...filters, ...patch };
-      router.replace(`/${dashboardUrlQueryString(next)}`, { scroll: false });
+      router.replace(`/xlh${dashboardUrlQueryString(next)}`, { scroll: false });
     },
     [filters, router]
   );
@@ -121,21 +131,24 @@ export function DashboardView({
 
       <AlertBanner message={alert.message} visible={alert.visible} />
 
-      <NotionStatGrid>
-        {statItems.map((item) => (
-          <NotionStatCard
-            key={item.label}
-            label={item.label}
-            value={item.value}
-            isRate={item.isRate}
-            suffix={item.suffix}
-          />
-        ))}
-      </NotionStatGrid>
+      <MetricsGrid metrics={metrics} ledgerContext={ledgerContext} />
 
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <PieChartCard title="风控状态分布" data={charts.riskDistribution} />
-        <PieChartCard title="动销未达标原因分布" data={charts.salesFailureDistribution} />
+        <PieChartCard
+          title="风控状态分布"
+          data={charts.riskDistribution}
+          getSliceHref={riskSliceHref}
+          footerLink={
+            p2Count > 0
+              ? { href: p2Href, label: `查看审核中未动销 ${p2Count.toLocaleString()} →` }
+              : undefined
+          }
+        />
+        <PieChartCard
+          title="动销未达标原因分布"
+          data={charts.salesFailureDistribution}
+          getSliceHref={salesFailureSliceHref}
+        />
       </section>
 
       <DailyTrendChart data={charts.dailyTrend} />

@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   PieChart,
@@ -28,9 +30,14 @@ function getSliceColor(name: string, index: number): string {
 interface PieChartCardProps {
   title: string;
   data: { name: string; value: number }[];
+  /** 按扇区名称生成台账钻取链接 */
+  getSliceHref?: (name: string) => string | undefined;
+  /** 饼图下方附加钻取入口（如 P2 审核中未动销） */
+  footerLink?: { href: string; label: string };
 }
 
-export function PieChartCard({ title, data }: PieChartCardProps) {
+export function PieChartCard({ title, data, getSliceHref, footerLink }: PieChartCardProps) {
+  const router = useRouter();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const enriched = useMemo(() => {
@@ -39,8 +46,9 @@ export function PieChartCard({ title, data }: PieChartCardProps) {
       ...d,
       color: getSliceColor(d.name, i),
       percent: total > 0 ? (d.value / total) * 100 : 0,
+      href: getSliceHref?.(d.name),
     }));
-  }, [data]);
+  }, [data, getSliceHref]);
 
   const total = enriched.reduce((s, d) => s + d.value, 0);
   const active = activeIndex != null ? enriched[activeIndex] : null;
@@ -71,6 +79,7 @@ export function PieChartCard({ title, data }: PieChartCardProps) {
               outerRadius={78}
               paddingAngle={2}
               stroke="none"
+              style={{ cursor: getSliceHref ? "pointer" : undefined }}
               shape={(props) => {
                 const isActive = props.index === activeIndex;
                 const outer = (props.outerRadius as number) + (isActive ? 6 : 0);
@@ -84,15 +93,18 @@ export function PieChartCard({ title, data }: PieChartCardProps) {
               }}
               onMouseEnter={(_, index) => setActiveIndex(index)}
               onMouseLeave={() => setActiveIndex(null)}
+              onClick={(_, index) => {
+                const href = enriched[index]?.href;
+                if (href) router.push(href);
+              }}
             >
-              {enriched.map((entry, i) => (
+              {enriched.map((entry) => (
                 <Cell key={entry.name} fill={entry.color} />
               ))}
             </Pie>
           </PieChart>
         </ResponsiveContainer>
 
-        {/* 中心：hover 显示占比，否则显示总计 */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           {active ? (
             <>
@@ -117,19 +129,15 @@ export function PieChartCard({ title, data }: PieChartCardProps) {
         </div>
       </div>
 
-      {/* 图例列表：完整展示名称 + 数量 + 占比 */}
       <ul className="mt-3 space-y-2 border-t border-[#f1f5f9] pt-3">
         {enriched.map((item, index) => {
           const isActive = activeIndex === index;
-          return (
-            <li
-              key={item.name}
-              className={`flex items-start gap-2.5 rounded-lg px-2 py-1.5 transition-colors cursor-default ${
-                isActive ? "bg-gray-50" : ""
-              }`}
-              onMouseEnter={() => setActiveIndex(index)}
-              onMouseLeave={() => setActiveIndex(null)}
-            >
+          const rowClass = `flex items-start gap-2.5 rounded-lg px-2 py-1.5 transition-colors ${
+            isActive ? "bg-gray-50" : ""
+          } ${item.href ? "hover:bg-[#f8fbff] cursor-pointer" : "cursor-default"}`;
+
+          const content = (
+            <>
               <span
                 className="mt-1.5 w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: item.color }}
@@ -146,10 +154,42 @@ export function PieChartCard({ title, data }: PieChartCardProps) {
                   {item.percent.toFixed(1)}%
                 </span>
               </span>
+            </>
+          );
+
+          return item.href ? (
+            <li key={item.name}>
+              <Link
+                href={item.href}
+                className={rowClass}
+                title={`查看「${item.name}」明细`}
+                onMouseEnter={() => setActiveIndex(index)}
+                onMouseLeave={() => setActiveIndex(null)}
+              >
+                {content}
+              </Link>
+            </li>
+          ) : (
+            <li
+              key={item.name}
+              className={rowClass}
+              onMouseEnter={() => setActiveIndex(index)}
+              onMouseLeave={() => setActiveIndex(null)}
+            >
+              {content}
             </li>
           );
         })}
       </ul>
+
+      {footerLink && (
+        <Link
+          href={footerLink.href}
+          className="mt-3 block text-center text-sm text-[#2563eb] hover:text-[#1d4ed8] transition-colors"
+        >
+          {footerLink.label}
+        </Link>
+      )}
     </div>
   );
 }

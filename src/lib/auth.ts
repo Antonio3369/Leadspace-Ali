@@ -5,6 +5,10 @@ import { redirect } from "next/navigation";
 import { authConfig } from "@/lib/auth.config";
 import { db } from "@/lib/db";
 import { canSignIn } from "@/lib/account-lifecycle";
+import {
+  resolveAccessibleBusinessLines,
+  type BusinessLineId,
+} from "@/lib/business-lines";
 import { canLogin, canRoleSignIn, type SessionUser } from "@/lib/permissions";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -20,6 +24,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.teamId = user.teamId;
         token.accountLifecycle = user.accountLifecycle;
         token.mustChangePassword = user.mustChangePassword;
+        token.businessLines = user.businessLines;
         return token;
       }
 
@@ -29,6 +34,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.status = live.status;
           token.accountLifecycle = live.accountLifecycle;
           token.mustChangePassword = live.mustChangePassword;
+          token.businessLines = resolveAccessibleBusinessLines(
+            token.role as string,
+            live.businessLines
+          );
         }
       }
       return token;
@@ -56,6 +65,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const valid = await bcrypt.compare(password, user.passwordHash!);
         if (!valid) return null;
 
+        const storedLines =
+          "businessLines" in user && Array.isArray(user.businessLines)
+            ? user.businessLines
+            : ["xlh", "n7"];
+
         return {
           id: user.id,
           name: user.name,
@@ -65,6 +79,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           teamId: user.teamId,
           accountLifecycle: user.accountLifecycle,
           mustChangePassword: user.mustChangePassword,
+          businessLines: resolveAccessibleBusinessLines(user.role, storedLines),
         };
       },
     }),
@@ -78,10 +93,31 @@ export async function getSessionUser() {
 }
 
 async function loadLiveUserState(userId: string) {
-  return db.user.findUnique({
-    where: { id: userId },
-    select: { status: true, accountLifecycle: true, mustChangePassword: true },
-  });
+  try {
+    return await db.user.findUnique({
+      where: { id: userId },
+      select: {
+        status: true,
+        accountLifecycle: true,
+        mustChangePassword: true,
+        businessLines: true,
+        role: true,
+      },
+    });
+  } catch {
+    // Prisma Client 未热更新时兜底，避免登录后 JWT 整段失败被踢回登录页
+    const fallback = await db.user.findUnique({
+      where: { id: userId },
+      select: {
+        status: true,
+        accountLifecycle: true,
+        mustChangePassword: true,
+        role: true,
+      },
+    });
+    if (!fallback) return null;
+    return { ...fallback, businessLines: ["xlh", "n7"] as string[] };
+  }
 }
 
 /** 与数据库同步 session：停用或生命周期变更时强制退出 */
@@ -102,13 +138,17 @@ export async function ensureLiveSession(): Promise<SessionUser> {
     redirect("/api/auth/session-expired?reason=refresh");
   }
 
-  // 首登改密由 middleware 统一跳转 /settings/password，此处不可再 redirect，否则会与 /change-password _legacy 重定向形成死循环
+  const businessLines = resolveAccessibleBusinessLines(
+    live.role,
+    live.businessLines
+  );
 
   return {
     ...user,
     status: live.status,
     accountLifecycle: live.accountLifecycle,
     mustChangePassword: live.mustChangePassword,
+    businessLines,
   };
 }
 
@@ -128,5 +168,9 @@ export async function requireSessionUser() {
     status: live.status,
     accountLifecycle: live.accountLifecycle,
     mustChangePassword: live.mustChangePassword,
+    businessLines: resolveAccessibleBusinessLines(
+      live.role,
+      live.businessLines
+    ) as BusinessLineId[],
   };
 }

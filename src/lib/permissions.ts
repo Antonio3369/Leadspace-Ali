@@ -1,4 +1,5 @@
 import type { AccountLifecycle, UserRole, UserStatus } from "@/generated/prisma/client";
+import type { BusinessLineId } from "@/lib/business-lines";
 
 export type DataScope = "global" | "team" | "personal";
 
@@ -11,6 +12,7 @@ export interface SessionUser {
   teamId: string | null;
   accountLifecycle: AccountLifecycle;
   mustChangePassword: boolean;
+  businessLines?: BusinessLineId[];
 }
 
 export interface AccessibleScope {

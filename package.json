@@ -16,7 +16,8 @@
     "import:reset": "tsx scripts/reset-import-data.ts",
     "import:fresh": "tsx scripts/reset-import-data.ts --confirm --personnel --reimport",
     "import:analyze": "tsx scripts/analyze-import-match.ts",
-    "backfill:merchant-owners": "tsx scripts/backfill-merchant-owners.ts"
+    "backfill:merchant-owners": "tsx scripts/backfill-merchant-owners.ts",
+    "deploy:bootstrap": "tsx scripts/deploy-bootstrap.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

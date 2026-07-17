@@ -36,7 +36,7 @@ export function OpportunitiesPageContent({
   const pushFilters = useCallback(
     (patch: Partial<OpportunitiesUrlFilters>) => {
       const next = { ...filters, ...patch };
-      router.replace(`/opportunities${opportunitiesUrlQueryString(next)}`, { scroll: false });
+      router.replace(`/xlh/opportunities${opportunitiesUrlQueryString(next)}`, { scroll: false });
     },
     [filters, router]
   );

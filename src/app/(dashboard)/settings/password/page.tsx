@@ -12,7 +12,13 @@ export default async function SettingsPasswordPage() {
       <PageHeader
         title="修改密码"
         kicker=""
-        meta="更新您的登录密码"
+        meta={
+          user.mustChangePassword
+            ? "首次登录须设置新密码后方可继续使用"
+            : "登录账号共用一套密码，改后小蓝环与 N7 均生效"
+        }
+        showBack={!user.mustChangePassword}
+        backLabel="← 返回"
       />
       <ChangePasswordForm forced={user.mustChangePassword} />
     </PageShell>

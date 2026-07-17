@@ -1,6 +1,12 @@
 import type { NextAuthConfig } from "next-auth";
 import type { AccountLifecycle, UserRole, UserStatus } from "@/generated/prisma/client";
 import { needsOnboarding } from "@/lib/account-lifecycle";
+import {
+  canAccessBusinessLine,
+  isN7Path,
+  isXlhPath,
+  type BusinessLineId,
+} from "@/lib/business-lines";
 
 declare module "next-auth" {
   interface User {
@@ -9,6 +15,7 @@ declare module "next-auth" {
     teamId: string | null;
     accountLifecycle: AccountLifecycle;
     mustChangePassword: boolean;
+    businessLines: BusinessLineId[];
   }
 
   interface Session {
@@ -21,6 +28,7 @@ declare module "next-auth" {
       teamId: string | null;
       accountLifecycle: AccountLifecycle;
       mustChangePassword: boolean;
+      businessLines: BusinessLineId[];
     };
   }
 }
@@ -34,6 +42,7 @@ declare module "@auth/core/jwt" {
     teamId: string | null;
     accountLifecycle: AccountLifecycle;
     mustChangePassword: boolean;
+    businessLines: BusinessLineId[];
   }
 }
 
@@ -91,7 +100,21 @@ export const authConfig = {
         return Response.redirect(new URL("/", request.nextUrl));
       }
 
-      if (pathname.startsWith("/screen") && auth?.user?.role !== "DIRECTOR") {
+      if (pathname.startsWith("/xlh/screen") && auth?.user?.role !== "DIRECTOR") {
+        return Response.redirect(new URL("/", request.nextUrl));
+      }
+
+      const lines = auth.user.businessLines ?? [];
+      if (
+        isXlhPath(pathname) &&
+        !canAccessBusinessLine(auth.user.role, lines, "xlh")
+      ) {
+        return Response.redirect(new URL("/", request.nextUrl));
+      }
+      if (
+        isN7Path(pathname) &&
+        !canAccessBusinessLine(auth.user.role, lines, "n7")
+      ) {
         return Response.redirect(new URL("/", request.nextUrl));
       }
 
@@ -106,6 +129,7 @@ export const authConfig = {
         token.teamId = user.teamId;
         token.accountLifecycle = user.accountLifecycle;
         token.mustChangePassword = user.mustChangePassword;
+        token.businessLines = user.businessLines;
       }
       return token;
     },
@@ -123,6 +147,7 @@ export const authConfig = {
           teamId: token.teamId,
           accountLifecycle: token.accountLifecycle,
           mustChangePassword: token.mustChangePassword,
+          businessLines: token.businessLines ?? [],
         },
       };
     },

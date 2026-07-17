@@ -108,6 +108,8 @@ model User {
   status           UserStatus        @default(ACTIVE)
   accountLifecycle   AccountLifecycle  @default(IMPORTED)
   mustChangePassword Boolean           @default(false)
+  /** 可访问业务线：xlh / n7；负责人忽略此字段（始终全开） */
+  businessLines      String[]          @default(["xlh", "n7"])
   teamId           String?
   team             OrgUnit?          @relation(fields: [teamId], references: [id])
   managerId        String?
@@ -116,6 +118,8 @@ model User {
   profile          UserProfile?
   platformIdentities SalesPlatformIdentity[]
   merchants        MerchantRecord[]
+  n7DevicesAsSales   N7DeviceRecord[] @relation("N7DeviceSales")
+  n7DevicesAsManager N7DeviceRecord[] @relation("N7DeviceManager")
   teamHistory      UserTeamHistory[]
   importLogs       ImportLog[]
   createdAt        DateTime          @default(now())
@@ -183,6 +187,7 @@ model MerchantRecord {
   jobNumber             String                @unique // 作业编号，去重主键
   merchantPid           String?               // 商家 PID（可重复，同一商户多条作业）
   merchantName          String
+  merchantType          String?               // 商户类型 A/B/C（来自 P 站表格）
   salesUserId           String?               // 匹配到的后台用户
   salesUser             User?                 @relation(fields: [salesUserId], references: [id])
   salesUserName         String                // P 站原始业务员姓名
@@ -244,11 +249,65 @@ model ImportLog {
   anomalyRows    Int              @default(0)
   errorMessage   String?
   merchants      MerchantRecord[]
+  n7Devices      N7DeviceRecord[]
   createdAt      DateTime         @default(now())
   completedAt    DateTime?
 
   @@index([uploadedById])
   @@index([createdAt])
+}
+
+// ─── N7 机具考核（按设备 SN）────────────────────────────────────────────────
+
+/** 支付宝 N7：以设备 SN 为考核单元的导入明细 */
+model N7DeviceRecord {
+  id                 String    @id @default(cuid())
+  deviceSn           String    @unique
+  registeredAt       DateTime?
+  litAt              DateTime?
+  subscribedAt       DateTime?
+  firstCheckInAt     DateTime?
+  notLit             Boolean   @default(false)
+  notSubscribed      Boolean   @default(false)
+  notCheckedIn       Boolean   @default(false)
+  assessmentStartAt  DateTime?
+  assessmentEndAt    DateTime?
+  /** 剩余考核天数；已结束为 null 且 remainingEnded=true；未进考核期两者皆空/false */
+  remainingDays      Int?
+  remainingEnded     Boolean   @default(false)
+  effectiveDays      Int       @default(0)
+  effectiveUsers     Int       @default(0)
+  isQualified        Boolean   @default(false)
+  operatorName       String
+  managerName        String
+  companyName        String?
+  phase2Days         Int       @default(0)
+  phase2Users        Int       @default(0)
+  storeId            String?
+  storeName          String?
+  storeAddress       String?
+  storePhone         String?
+  merchantId         String?
+  merchantAccount    String?
+  merchantPhone      String?
+  salesUserId        String?
+  salesUser          User?     @relation("N7DeviceSales", fields: [salesUserId], references: [id])
+  managerUserId      String?
+  managerUser        User?     @relation("N7DeviceManager", fields: [managerUserId], references: [id])
+  sourceMode         DataMode  @default(MANUAL_UPLOAD)
+  importBatchId      String?
+  importBatch        ImportLog? @relation(fields: [importBatchId], references: [id])
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([salesUserId])
+  @@index([managerUserId])
+  @@index([managerName])
+  @@index([operatorName])
+  @@index([registeredAt])
+  @@index([isQualified])
+  @@index([remainingEnded, remainingDays])
+  @@index([storeId])
 }
 
 model ApiSyncLog {

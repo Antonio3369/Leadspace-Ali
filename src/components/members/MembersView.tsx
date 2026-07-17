@@ -118,7 +118,7 @@ export function MembersView() {
     const params = new URLSearchParams();
     appendDateParams(params, dateFrom, dateTo);
     const q = params.toString();
-    return `/members/${id}${q ? `?${q}` : ""}`;
+    return `/xlh/members/${id}${q ? `?${q}` : ""}`;
   }
 
   async function handleExport() {

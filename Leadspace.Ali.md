@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-07-13（含生产部署规范）
+**最后更新**：2026-07-16（业务线选择页 + 小蓝环/N7 分区 + 指标钻取）
 
 ---
 
@@ -12,9 +12,12 @@
 | 项 | 说明 |
 |---|---|
 | 产品名 | **Leadspace.Alipay**（副标题：数据工作台 / 数据管理） |
-| 业务 | 推广商户拓展数据导入、指标统计、风控台账、商机分析、团队/人员管理 |
+| 定位 | 支付宝业务数据工作台；**顶层按业务线分区**，当前含「小蓝环」与「支付宝 N7」 |
+| 业务 | 小蓝环：推广商户拓展数据导入、指标统计、风控台账、商机分析、团队/人员管理；N7：一期仅入口占位 |
 | 用户 | 事业部负责人、区域经理、团队主管、一线业务员（业务员为数据账号，不可登录） |
 | 数据来源 | 现阶段以 Excel 人工上传为主；P 站 API 同步为后续阶段 |
+
+**约定**：「业务线」是最上层；「商机」只属于某一业务线内部（目前仅小蓝环），不要把 N7 做成小蓝环下的一个商机。
 
 ---
 
@@ -63,7 +66,7 @@ Docker 默认：`postgresql://leadspace:leadspace@localhost:5432/leadspace`
 
 | 账号 | 密码 | 角色 | 说明 |
 |---|---|---|---|
-| `Antonio` | `123456` | DIRECTOR（事业部负责人） | 全权限，已激活 |
+| `admin` | `123456` | DIRECTOR（事业部负责人） | 全权限，已激活 |
 
 Excel 导入后分三类处理：
 
@@ -77,7 +80,7 @@ Excel 导入后分三类处理：
 npm run dev              # 开发服务器
 npm run build            # 生产构建（改代码后建议跑一遍）
 npm run db:push          # 同步 schema
-npm run db:seed          # Antonio + 人员名单
+npm run db:seed          # admin + 人员名单
 npm run db:studio        # Prisma Studio
 npm run import:all       # CLI 批量导入商户 Excel
 npm run import:fresh     # 重置并重新导入
@@ -122,27 +125,49 @@ src/components/ui/notion.tsx
 
 ```
 src/components/layout/
-├── AppShell.tsx      # 侧边栏 + 主内容区
-├── Sidebar.tsx       # 左侧导航（替代旧 Navbar）
+├── AppShell.tsx      # 业务选择页轻量顶栏 / 业务内：侧边栏 + 主内容区
+├── Sidebar.tsx       # 左侧导航（含「切换业务」）
 └── SignOutButton.tsx
+src/components/business/
+└── BusinessHub.tsx   # 登录后业务选择页（小蓝环 / N7）
+src/lib/business-lines.ts  # 业务线常量与路径工具
 ```
 
-**Sidebar 导航项**（按顺序）：
+- `/`：业务选择页，**无侧栏**
+- `/xlh/*`、`/n7/*`：业务内完整侧栏；顶部显示当前业务名 + **← 切换业务**
 
-1. 数据总览 `/`
-2. 团队明细 `/teams`
-3. 商机分析 `/opportunities`
-4. 风控台账 `/ledger`
-5. 组织管理 `/admin/org` 或 团队管理 `/admin/team`（按角色）
-6. 数据上传 `/admin/import`（仅 DIRECTOR）
-7. 公共大屏 `/screen`（仅 DIRECTOR）
+**小蓝环 Sidebar 导航项**（按顺序）：
 
-品牌区显示 **Leadspace.Alipay** + **数据工作台**；经理角色侧边栏显示「经理」而非「区域经理」。
+1. 数据总览 `/xlh`
+2. 团队明细 `/xlh/teams`
+3. 商机分析 `/xlh/opportunities`
+4. 风控台账 `/xlh/ledger`
+5. 组织管理 `/xlh/admin/org` 或 团队管理 `/xlh/admin/team`（按角色）
+6. 数据上传 `/xlh/admin/import`（仅 DIRECTOR）
+7. 公共大屏 `/xlh/screen`（仅 DIRECTOR）
+8. 修改密码 `/settings/password`（全局）
+
+品牌区显示 **Leadspace.Alipay** + 当前业务名；经理角色侧边栏显示「经理」而非「区域经理」。
 
 ### 4.3 尚未 Notion 化的页面
 
 - `/onboarding` — 实名认证（经理/主管；业务员不使用）
 - `/change-password` — 强制改密（功能已有，样式较简）
+
+### 4.4 业务线分区（2026-07-16）
+
+方案：**登录后先选业务，再进各自空间**（方案 2）。
+
+| 路径 | 含义 |
+|---|---|
+| `/` | 业务选择页（小蓝环 / 支付宝 N7 两张卡片） |
+| `/xlh/*` | 小蓝环：现有看板能力（总览、团队、商机、台账、管理） |
+| `/n7` | 支付宝 N7：一期占位「建设中」 |
+| `/login` `/onboarding` `/change-password` `/settings/password` | 全局，不挂业务前缀 |
+
+旧书签兼容（`next.config.ts` redirects）：`/ledger`、`/teams`、`/opportunities`、`/members`、`/admin/*`、`/screen` → 对应 `/xlh/...`。
+
+一期权限：所有已登录角色都能看到两张业务卡片；N7 仅占位。按业务线拆组织/数据权限留待 N7 样表确定后。
 
 ---
 
@@ -201,37 +226,45 @@ Excel 导入 → IMPORTED（无密码）
 
 ## 6. 页面与路由地图
 
-### 6.1 业务页面（需登录，`src/app/(dashboard)/`）
+### 6.1 业务选择与分区
 
 | 路径 | 页面 | 要点 |
 |---|---|---|
-| `/` | 数据总览 | URL 日期筛选，默认**本月**；主管双区 |
-| `/teams` | 团队明细 | 按人员/团队列表，可进经理详情 |
-| `/teams?…` | 团队详情展开 | `TeamDetailsView`，URL 日期+搜索+排序 |
-| `/members` | 人员明细 | 列表 + 导出 |
-| `/members/[id]` | 经理/主管详情 | **统一日期范围**（Option A）：指标、图表、排行同一 `dateFrom/dateTo` |
-| `/opportunities` | 商机分析 | URL 日期筛选，默认本月；列表按拓展日期过滤 |
-| `/opportunities/[id]` | 商机详情 | 返回链接保留日期参数 |
-| `/ledger` | 风控台账 | 分页、多维筛选、URL 持久化、Excel 导出 |
-| `/screen` | 公共大屏 | 仅 DIRECTOR，占位/待增强 |
+| `/` | 业务选择页 | `BusinessHub`：小蓝环 / 支付宝 N7 |
+| `/xlh` | 小蓝环 · 数据总览 | 原首页逻辑；URL 日期筛选，默认本月；主管双区 |
+| `/n7` | 支付宝 N7 | 一期建设中占位 |
 
-### 6.2 管理页面
+### 6.2 小蓝环业务页面（需登录，`src/app/(dashboard)/xlh/`）
+
+| 路径 | 页面 | 要点 |
+|---|---|---|
+| `/xlh/teams` | 团队明细 | 按人员/团队列表，可进经理详情 |
+| `/xlh/teams?…` | 团队详情展开 | `TeamDetailsView`，URL 日期+搜索+排序 |
+| `/xlh/members` | 人员明细 | 列表 + 导出（会重定向到团队相关流） |
+| `/xlh/members/[id]` | 经理/主管详情 | **统一日期范围**：指标、图表、排行同一 `dateFrom/dateTo` |
+| `/xlh/opportunities` | 商机分析 | URL 日期筛选，默认本月；列表按拓展日期过滤 |
+| `/xlh/opportunities/[id]` | 商机详情 | 返回链接保留日期参数 |
+| `/xlh/ledger` | 风控台账 | 分页、多维筛选、URL 持久化、Excel 导出；支持指标/饼图钻取 |
+| `/xlh/screen` | 公共大屏 | 仅 DIRECTOR，占位/待增强 |
+
+### 6.3 管理页面（小蓝环）
 
 | 路径 | 角色 | 功能 |
 |---|---|---|
-| `/admin/org` | DIRECTOR | 经理开通/创建、主管开通、Tab 筛选、重置密码、停用启用 |
-| `/admin/team` | MANAGER | 业务员花名册（纯数据账号）：查看作业账号/PID、停用/启用数据状态 |
-| `/admin/import` | DIRECTOR | 人员名单 + 商户明细 Excel 上传 |
+| `/xlh/admin/org` | DIRECTOR | 经理开通/创建、主管开通、Tab 筛选、重置密码、停用启用 |
+| `/xlh/admin/team` | MANAGER | 业务员花名册（纯数据账号）：查看作业账号/PID、停用/启用数据状态 |
+| `/xlh/admin/import` | DIRECTOR | 人员名单 + 商户明细 Excel 上传 |
 
-### 6.3 认证页面
+### 6.4 认证页面
 
 | 路径 | 说明 |
 |---|---|
-| `/login` | Notion 风格登录（Leadspace.Alipay / 数据管理）；业务员账号会被拒绝 |
+| `/login` | Notion 风格登录（Leadspace.Alipay / 数据管理）；业务员账号会被拒绝；登录成功默认进 `/` 业务选择 |
 | `/onboarding` | 实名认证（经理填手机邮箱；主管完成认证。**业务员不使用此页**） |
 | `/change-password` | 首登强制改密（可登录角色） |
+| `/settings/password` | 修改密码 |
 
-### 6.4 主要 API
+### 6.5 主要 API
 
 ```
 src/app/api/
@@ -261,7 +294,7 @@ src/app/api/
 | `all` | 全部时间 |
 | `custom` | 自定义 dateFrom/dateTo |
 
-### 7.1 数据总览 `/`
+### 7.1 小蓝环数据总览 `/xlh`
 
 解析：`src/lib/dashboard-url.ts`
 
@@ -271,15 +304,15 @@ src/app/api/
 | `preset` | 日期预设 |
 | `view` | `team` / `personal`（主管双区） |
 
-### 7.2 商机分析 `/opportunities`
+### 7.2 商机分析 `/xlh/opportunities`
 
 解析：`src/lib/opportunities-url.ts`（与 dashboard 同结构）
 
 列表与详情 API 均传入 `dateFrom`/`dateTo` 过滤 `expandDate`。
 
-### 7.3 风控台账 `/ledger`
+### 7.3 风控台账 `/xlh/ledger`
 
-解析：`src/lib/ledger-url.ts`
+解析：`src/lib/ledger-url.ts`（含指标钻取 `buildMetricLedgerHref`）
 
 | 参数 | 说明 |
 |---|---|
@@ -287,20 +320,21 @@ src/app/api/
 | `search` | 关键词 |
 | `managerId` | 经理筛选（Director 可见下拉） |
 | `salesUserId` | 业务员筛选（Manager 可见下拉） |
-| `riskStatus` | 风控状态 |
+| `opportunityId` | 商机范围（从商机详情钻取时） |
+| `riskStatus` | 风控状态（可多值逗号/重复 key） |
 | `photoStatus` | 照片状态 |
-| `salesActivationStatus` | 动销进度 |
+| `salesActivationStatus` | 动销进度（可多值，如 P2：`IN_PROGRESS,NOT_ACTIVATED`） |
 | `page` | 页码 |
 
 台账 UX 要点：
 
 - 搜索 debounce
-- 快捷筛选 chips（`LEDGER_QUICK_FILTERS`）
+- 快捷筛选 chips（`LEDGER_QUICK_FILTERS`：审核中已动销、审核中未动销、待动销达标、风控不通过、风控审核中）
 - 三维度状态图例（`SalesStatusLegend` + `ledger-labels.ts`）
 - 状态列带颜色 tone（`LEDGER_STATUS_TONE_CLASS`）
 - 风控「不通过」时才显示不通过原因列
 
-### 7.4 团队明细 `/teams`
+### 7.4 团队明细 `/xlh/teams`
 
 解析：`src/lib/team-details-url.ts`
 
@@ -314,6 +348,36 @@ src/app/api/
 
 ---
 
+## 7.5 小蓝环看板怎么看 + 指标钻取（给经理）
+
+首页（`/xlh`）看「这段时间拓展商户质量」，重点两件事：**动销过了没有**、**风控过了没有**。
+
+| 指标 | 白话 |
+|---|---|
+| 累计拓展商户 | 这段时间一共拓展了多少户 |
+| 照片审核通过率 | 进件照片质量（一般很高） |
+| 整体动销通过率 | 真正「跑起来」的占比 |
+| 当前风控达标率 | 已明确风控通过的占比 |
+| 风控审核中 | 还在排队等风控结果 |
+| 审核中已动销（可转化） | 生意已起来，就差风控出结果——最值得催 |
+| 风控不通过 | 已被驳回 |
+| 预估风控达标率 | 若「审核中已动销」也过了，达标率大概能到多少 |
+
+左饼图：风控通过 / 审核中 / 不通过。右饼图：动销未达标原因（多数为碰笔/扫码/交易不够）。
+
+**跟进优先级（P0→P2）与点击钻取：**
+
+| 优先级 | 人群 | 怎么点开明细 | 台账自动筛选 |
+|---|---|---|---|
+| P0 | 审核中已动销 | 点指标卡「审核中已动销（可转化）」 | `riskStatus=PENDING` + `salesActivationStatus=ACTIVATED` |
+| P1 | 待动销达标（碰笔/扫码/交易未达标） | 点「整体动销通过率」，或右饼「碰笔/扫码/交易未达标」 | `photoStatus=APPROVED` + `salesActivationStatus=IN_PROGRESS` |
+| P2 | 审核中未动销 | 点指标下「审核中未动销 N」，或左饼底部链接 | `riskStatus=PENDING` + 动销为未动销/待达标（排除已动销） |
+
+先选好日期再点数字，台账会带同一段日期。落地后快捷筛会高亮。
+
+实现：`src/lib/ledger-url.ts`（`METRIC_LEDGER_DRILLDOWNS`）、`PieChartCard` 扇区/图例可点、`MetricsGrid` / `DashboardView`。
+
+---
 ## 8. 核心业务规则
 
 定义分散在：
@@ -428,36 +492,52 @@ Prisma client 生成路径：`src/generated/prisma/`（import 时用 `@/generate
 ```
 src/
 ├── app/
-│   ├── (dashboard)/          # 所有业务页
-│   ├── login/                # 登录（Notion 化）
-│   ├── change-password/      # 强制改密
-│   └── onboarding/           # 实名认证（经理/主管）
+│   ├── (dashboard)/
+│   │   ├── page.tsx              # 业务选择页 /
+│   │   ├── xlh/                  # 小蓝环业务空间
+│   │   ├── n7/                   # N7 占位
+│   │   └── settings/password/
+│   ├── login/
+│   ├── change-password/
+│   └── onboarding/
 ├── components/
-│   ├── ui/notion.tsx         # ★ 全站 UI 基础
-│   ├── layout/AppShell.tsx   # ★ 布局壳
-│   ├── layout/Sidebar.tsx    # ★ 侧边栏
+│   ├── business/BusinessHub.tsx  # ★ 业务选择
+│   ├── ui/notion.tsx             # ★ 全站 UI 基础
+│   ├── layout/AppShell.tsx       # ★ 布局壳
+│   ├── layout/Sidebar.tsx        # ★ 侧边栏 + 切换业务
 │   ├── dashboard/DashboardView.tsx
 │   ├── ledger/LedgerView.tsx
 │   ├── teams/TeamDetailsView.tsx
 │   └── opportunities/OpportunitiesPageContent.tsx
 ├── lib/
-│   ├── permissions.ts        # ★ 权限
-│   ├── auth.config.ts        # ★ 中间件路由守卫
-│   ├── ledger-date.ts        # ★ 日期工具
+│   ├── business-lines.ts         # ★ 业务线常量与路径
+│   ├── permissions.ts
+│   ├── auth.config.ts
+│   ├── ledger-date.ts
 │   ├── dashboard-url.ts
 │   ├── opportunities-url.ts
-│   ├── ledger-url.ts
+│   ├── ledger-url.ts             # ★ 含指标钻取 href
 │   ├── team-details-url.ts
 │   ├── business-rules.ts
 │   └── ledger-labels.ts
 └── services/
-    ├── stats/analytics.ts    # ★ 统计主逻辑
+    ├── stats/analytics.ts
     └── import/excel-importer.ts
 ```
 
 ---
 
-## 13. 近期已完成（2026-06-14）
+## 13. 近期已完成
+
+### 2026-07-16
+
+- [x] 业务选择页 `/`（小蓝环 / 支付宝 N7）
+- [x] 小蓝环整站迁入 `/xlh/*`；N7 `/n7` 占位
+- [x] 侧栏「切换业务」；旧路径 redirects 到 `/xlh/...`
+- [x] 指标/饼图钻取台账（P0 审核中已动销、P1 待动销达标、P2 审核中未动销）
+- [x] 台账快捷筛：审核中已动销 / 审核中未动销 / 待动销达标 等
+
+### 2026-06-14
 
 一次大提交 `4a7dfd3`，主要包括：
 
@@ -479,9 +559,9 @@ src/
 按优先级，只需保证**可登录角色**能顺畅使用；业务员无需任何登录操作。
 
 1. **数据就绪** — 人员名单 + 商户明细 Excel 导入完成，归属匹配正常
-2. **开通经理** — 管理员在 `/admin/org` 为各区域经理开通账号
+2. **开通经理** — 管理员在 `/xlh/admin/org` 为各区域经理开通账号
 3. **开通主管**（如有）— 经理登录后创建/开通团队主管
-4. **经理试用** — 登录后确认数据总览、团队明细、风控台账、商机分析数据正确
+4. **经理试用** — 登录 → 业务选择 → 进小蓝环，确认总览、团队明细、风控台账、商机分析与钻取
 5. **环境稳定** — 生产库连接稳定（开发环境 Prisma Dev 长跑易 OOM）
 
 **不需要做的事**：给业务员开通账号、发密码、引导实名认证或 onboarding。
@@ -581,7 +661,7 @@ Dockerfile
 ### 15.6 部署后检查
 
 - [ ] https://ali.orblead.com/login 可打开
-- [ ] Antonio / 经理账号可登录
+- [ ] admin / 经理账号可登录
 - [ ] 数据总览、台账有数据（已导入前提下）
 - [ ] `sudo docker ps` 中 `leadspace-alipay-app`、`leadspace-postgres` 为 Up
 - [ ] hk.orblead.com 仍正常
@@ -594,6 +674,7 @@ Dockerfile
 
 | 阶段 | 内容 |
 |---|---|
+| N7 | 样表/指标确定后：N7 数据模型、导入、看板与权限（可按业务线隔离） |
 | P3 | P 站 API 拉取、定时任务、异常数据管理 |
 | P4 | 公共大屏增强（自动刷新、投屏） |
 | P5 | 后台管理（模式切换、日志中心、历史回溯） |
@@ -602,8 +683,9 @@ Dockerfile
 
 - onboarding / change-password 页面 Notion 化
 - Director 首页经理团队排行（`shouldShowManagerRanking` 相关代码已存在）
-- `/screen` 公共大屏实现或隐藏占位
+- `/xlh/screen` 公共大屏实现或隐藏占位
 - 浏览器 tab / metadata 标题统一为 Leadspace.Alipay
+- 记住上次进入的业务线（cookie），登录后可直达
 
 ---
 
@@ -629,7 +711,7 @@ Dockerfile
 | 导入失败 | `excel-parser.ts`, `excel-importer.ts`, `user-matcher.ts` |
 | 台账筛选 | `ledger-url.ts`, `LedgerView.tsx`, `buildLedgerWhere` |
 | 日期默认值 | `ledger-date.ts` → `getCurrentMonthRange()` |
-| UI 不一致 | `notion.tsx`, 对照 `/` 或 `/ledger` 页面 |
+| UI 不一致 | `notion.tsx`, 对照 `/xlh` 或 `/xlh/ledger` 页面 |
 
 ---
 

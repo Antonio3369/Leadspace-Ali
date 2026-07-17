@@ -1,6 +1,7 @@
 import type { User } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import {
+  findManagerInIndexes,
   findUserInIndexes,
   findUserInMap,
   type UserLookupIndexes,
@@ -8,7 +9,7 @@ import {
 } from "@/services/org/lookup-indexes";
 
 export type { UserLookupIndexes, UserLookupMap };
-export { findUserInIndexes, findUserInMap };
+export { findUserInIndexes, findUserInMap, findManagerInIndexes };
 
 function normalizeName(name: string): string {
   return name.trim().toLowerCase();
@@ -28,6 +29,7 @@ export async function buildUserLookupIndexes(): Promise<UserLookupIndexes> {
   ]);
 
   const byName: UserLookupMap = new Map();
+  const byManagerName: UserLookupMap = new Map();
   const byPersonalPid = new Map<string, User>();
 
   for (const user of users) {
@@ -35,6 +37,14 @@ export async function buildUserLookupIndexes(): Promise<UserLookupIndexes> {
     for (const alias of user.aliases) {
       if (alias.trim()) {
         byName.set(normalizeName(alias), user);
+      }
+    }
+    if (user.role === "MANAGER") {
+      byManagerName.set(normalizeName(user.name), user);
+      for (const alias of user.aliases) {
+        if (alias.trim()) {
+          byManagerName.set(normalizeName(alias), user);
+        }
       }
     }
   }
@@ -47,7 +57,7 @@ export async function buildUserLookupIndexes(): Promise<UserLookupIndexes> {
     }
   }
 
-  return { byName, byPersonalPid };
+  return { byName, byManagerName, byPersonalPid };
 }
 
 /** @deprecated 使用 buildUserLookupIndexes */

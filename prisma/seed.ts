@@ -3,7 +3,7 @@ import fs from "fs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import {
-  ensureAntonioDirector,
+  ensureAdminDirector,
   importPersonnelFromFile,
 } from "../src/services/import/personnel-importer";
 
@@ -15,9 +15,9 @@ const PERSONNEL_FILE =
   "/Users/xin/Desktop/应用开发/alipay/支付宝作业人员名单.xlsx";
 
 async function main() {
-  console.log("Seeding Antonio + personnel...");
+  console.log("Seeding admin + personnel...");
 
-  await ensureAntonioDirector("123456");
+  await ensureAdminDirector("123456");
 
   await db.systemConfig.upsert({
     where: { id: "singleton" },
@@ -25,7 +25,7 @@ async function main() {
     update: {},
   });
 
-  const division = await db.orgUnit.upsert({
+  await db.orgUnit.upsert({
     where: { id: "div-leadspace" },
     create: { id: "div-leadspace", name: "Leadspace 事业部", type: "DIVISION" },
     update: {},
@@ -35,11 +35,11 @@ async function main() {
     const result = await importPersonnelFromFile(PERSONNEL_FILE);
     console.log("Personnel imported:", result);
   } else {
-    console.log("No personnel file, Antonio only.");
+    console.log("No personnel file, admin only.");
   }
 
   console.log("\nDemo login:");
-  console.log("  Antonio / 123456  (管理员，已激活)");
+  console.log("  admin / 123456  (管理员，已激活)");
   console.log("  经理 Excel 导入后无密码，须在组织管理开通后方可登录");
   console.log("  业务员为纯数据账号，导入即可，不支持登录");
   console.log("\nRun: npm run import:all  to import merchant Excel files");

@@ -3,7 +3,7 @@ import fs from "fs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import {
-  ensureAntonioDirector,
+  ensureAdminDirector,
   importPersonnelFromFile,
 } from "../src/services/import/personnel-importer";
 import { importExcelFromPath } from "../src/services/import/excel-importer";
@@ -31,7 +31,7 @@ function printUsage() {
 
 选项:
   --confirm     必填，确认执行删除
-  --personnel   同时清空经理/业务员/组织/PID 身份（保留 Antonio 总监）
+  --personnel   同时清空经理/业务员/组织/PID 身份（保留 admin 总监）
   --reimport    重置完成后自动导入人员名单 + 商户明细
 
 示例:
@@ -77,7 +77,7 @@ async function resetPersonnelData() {
 
 async function runReimport() {
   console.log("\n=== 重新导入 ===");
-  const antonio = await ensureAntonioDirector();
+  const admin = await ensureAdminDirector();
 
   await db.systemConfig.upsert({
     where: { id: "singleton" },
@@ -103,7 +103,7 @@ async function runReimport() {
       continue;
     }
     console.log("商户明细:", file.split("/").pop());
-    const result = await importExcelFromPath(file, antonio.id, true);
+    const result = await importExcelFromPath(file, admin.id, true);
     console.log(
       `  新增 ${result.createdRows} / 更新 ${result.updatedRows} / 清理 ${result.prunedRows} / 异常 ${result.anomalyRows}`
     );

@@ -6,6 +6,7 @@ import {
   formatDateRangeLabel,
   type LedgerDatePreset,
 } from "@/lib/ledger-date";
+import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 
 export const DATE_PRESET_OPTIONS: { key: LedgerDatePreset; label: string }[] = [
   { key: "month", label: "本月" },
@@ -47,34 +48,37 @@ export function PageHeader({
   meta,
   backHref,
   backLabel = "← 返回",
+  showBack = false,
   actions,
   trailing,
 }: {
   title: string;
   kicker?: string;
   meta?: ReactNode;
+  /** 无历史记录时的回退地址；有历史时优先返回上一页并保留滚动位置 */
   backHref?: string;
   backLabel?: string;
+  /** 仅显示返回（无 fallback 时也走 history.back） */
+  showBack?: boolean;
   actions?: ReactNode;
   trailing?: ReactNode;
 }) {
+  const canBack = showBack || Boolean(backHref);
   return (
     <section className="space-y-4">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div className="space-y-2 min-w-0">
-          {backHref && (
-            <Link href={backHref} className="inline-block text-sm text-[#64748b] hover:text-[#2563eb] transition-colors">
-              {backLabel}
-            </Link>
+          {canBack && (
+            <HistoryBackLink label={backLabel} fallbackHref={backHref} />
           )}
           {kicker && <p className={notion.kicker}>{kicker}</p>}
           <h1 className={notion.title}>{title}</h1>
           {meta && <div className={notion.subtitle}>{meta}</div>}
         </div>
         {(actions || trailing) && (
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
-            {trailing}
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-end gap-3 shrink-0 w-full lg:w-auto">
             {actions}
+            {trailing}
           </div>
         )}
       </div>
@@ -194,19 +198,19 @@ export function NotionProgressBar({
   label: string;
   indeterminate?: boolean;
 }) {
-  const clamped = Math.min(100, Math.max(0, value));
+  const clamped = Math.min(100, Math.max(0, Math.round(value)));
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-3 text-xs">
         <span className="text-[#64748b]">{label}</span>
-        {!indeterminate && <span className="text-[#111827] font-medium tabular-nums">{clamped}%</span>}
+        <span className="text-[#111827] font-medium tabular-nums shrink-0">{clamped}%</span>
       </div>
       <div className="h-2 rounded-full bg-[#e2e8f0] overflow-hidden">
         <div
           className={`h-full rounded-full bg-[#2563eb] transition-[width] duration-300 ease-out ${
             indeterminate ? "animate-pulse" : ""
           }`}
-          style={{ width: indeterminate ? "66%" : `${clamped}%` }}
+          style={{ width: `${clamped}%` }}
         />
       </div>
     </div>
@@ -267,24 +271,44 @@ export function NotionStatCard({
   value,
   suffix = "",
   isRate = false,
+  href,
 }: {
   label: string;
   value: number;
   suffix?: string;
   isRate?: boolean;
+  /** 点击钻取到台账等页面 */
+  href?: string;
 }) {
   const display = isRate ? value.toFixed(1) : value.toLocaleString();
   const color = isRate ? rateColor(value) : COLORS.primary;
 
-  return (
-    <div className="flex flex-col gap-1 p-3.5 sm:p-4 border border-[#eef2f7] rounded-[14px] bg-white">
+  const content = (
+    <>
       <span className="text-[0.82rem] text-[#64748b]">{label}</span>
       <span className="text-[1.35rem] sm:text-[1.6rem] font-bold leading-tight tabular-nums" style={{ color }}>
         {display}
         {suffix}
       </span>
-    </div>
+    </>
   );
+
+  const className =
+    "flex flex-col gap-1 p-3.5 sm:p-4 border border-[#eef2f7] rounded-[14px] bg-white";
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className={`${className} transition-colors hover:border-[#bfdbfe] hover:bg-[#f8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]/25`}
+        title={`查看「${label}」明细`}
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className={className}>{content}</div>;
 }
 
 export function NotionStatGrid({ children }: { children: ReactNode }) {

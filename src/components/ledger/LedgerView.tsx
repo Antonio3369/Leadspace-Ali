@@ -27,6 +27,7 @@ import {
   buildLedgerUrlSearchParams,
   hasActiveLedgerStatusFilters,
   ledgerUrlQueryString,
+  normalizeStatusFilter,
   parseLedgerUrlFilters,
   type LedgerUrlFilters,
 } from "@/lib/ledger-url";
@@ -47,6 +48,7 @@ interface LedgerRecord {
   id: string;
   jobNumber: string;
   merchantName: string;
+  merchantType: string | null;
   salesUserName: string;
   team: { name: string } | null;
   opportunity: { name: string } | null;
@@ -133,7 +135,7 @@ export function LedgerView({
   const pushFilters = useCallback(
     (patch: Partial<LedgerUrlFilters>) => {
       const next = { ...filters, ...patch };
-      router.replace(`/ledger${ledgerUrlQueryString(next)}`, { scroll: false });
+      router.replace(`/xlh/ledger${ledgerUrlQueryString(next)}`, { scroll: false });
     },
     [filters, router]
   );
@@ -241,9 +243,12 @@ export function LedgerView({
     const preset = LEDGER_QUICK_FILTERS.find((item) => item.key === key);
     if (!preset) return false;
     return (
-      filters.riskStatus === preset.filters.riskStatus &&
-      filters.photoStatus === preset.filters.photoStatus &&
-      filters.salesStatus === preset.filters.salesStatus
+      normalizeStatusFilter(filters.riskStatus) ===
+        normalizeStatusFilter(preset.filters.riskStatus) &&
+      normalizeStatusFilter(filters.photoStatus) ===
+        normalizeStatusFilter(preset.filters.photoStatus) &&
+      normalizeStatusFilter(filters.salesStatus) ===
+        normalizeStatusFilter(preset.filters.salesStatus)
     );
   }
 
@@ -284,7 +289,7 @@ export function LedgerView({
   const { dateFrom, dateTo, datePreset, riskStatus, photoStatus, salesStatus, managerId, salesUserId, page } =
     filters;
   const showFailReasonColumn = riskStatus === "FAILED" || summary.risk.FAILED > 0;
-  const columnCount = 8 + (showTeamColumn ? 1 : 0) + (showFailReasonColumn ? 1 : 0);
+  const columnCount = 9 + (showTeamColumn ? 1 : 0) + (showFailReasonColumn ? 1 : 0);
   const exportBlocked = total > exportLimit;
 
   return (
@@ -413,6 +418,7 @@ export function LedgerView({
               <tr>
                 <th className="text-left px-3 py-3">作业编号</th>
                 <th className="text-left px-3 py-3">商家名称</th>
+                <th className="text-left px-3 py-3">商户类型</th>
                 <th className="text-left px-3 py-3">业务员</th>
                 {showTeamColumn && <th className="text-left px-3 py-3">团队</th>}
                 <th className="text-left px-3 py-3">商机</th>
@@ -443,6 +449,7 @@ export function LedgerView({
                   <tr key={r.id} className={notion.row}>
                     <td className="px-3 py-2.5 font-mono text-xs">{r.jobNumber}</td>
                     <td className="px-3 py-2.5">{r.merchantName}</td>
+                    <td className="px-3 py-2.5">{r.merchantType ?? "-"}</td>
                     <td className="px-3 py-2.5">{r.salesUserName}</td>
                     {showTeamColumn && (
                       <td className="px-3 py-2.5">{r.team?.name ?? "-"}</td>

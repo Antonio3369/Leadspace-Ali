@@ -11,6 +11,7 @@ import {
   getPersonnelCompanyName,
   getPersonnelManagerName,
   getPersonnelPersonalPid,
+  looksLikePersonnelSheet,
 } from "@/services/import/personnel-columns";
 
 export interface PersonnelImportResult {
@@ -163,21 +164,63 @@ async function findOrCreateSalesUser(
   return { userId: user.id, created: true };
 }
 
-export async function importPersonnelFromBuffer(buffer: Buffer): Promise<PersonnelImportResult> {
-  const wb = XLSX.read(buffer, { type: "buffer" });
-  const rows = XLSX.utils.sheet_to_json<Record<string, string>>(wb.Sheets[wb.SheetNames[0]!], {
+function sheetToRows(wb: XLSX.WorkBook, sheetName: string): Record<string, string>[] {
+  return XLSX.utils.sheet_to_json<Record<string, string>>(wb.Sheets[sheetName]!, {
     defval: "",
   });
+}
 
+/** 从「付呗作业员名单」等附表按姓名补齐 uid/PID */
+function buildPidByNameLookup(wb: XLSX.WorkBook): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const sheetName of wb.SheetNames) {
+    const rows = sheetToRows(wb, sheetName);
+    if (rows.length === 0) continue;
+    for (const row of rows) {
+      const name = getPersonnelAccountName(row);
+      const pid = getPersonnelPersonalPid(row);
+      if (name && pid && !map.has(name)) {
+        map.set(name, pid);
+      }
+    }
+  }
+  return map;
+}
+
+function pickPersonnelRows(wb: XLSX.WorkBook): Record<string, string>[] {
+  // 优先 N7 主表；否则选第一张能识别出姓名列的表
+  const preferred = ["N7作业名单", "作业名单", "人员名单"];
+  for (const name of preferred) {
+    if (wb.SheetNames.includes(name)) {
+      const rows = sheetToRows(wb, name);
+      if (looksLikePersonnelSheet(rows)) return rows;
+    }
+  }
+  for (const name of wb.SheetNames) {
+    const rows = sheetToRows(wb, name);
+    if (looksLikePersonnelSheet(rows)) return rows;
+  }
+  return sheetToRows(wb, wb.SheetNames[0]!);
+}
+
+export async function importPersonnelFromBuffer(buffer: Buffer): Promise<PersonnelImportResult> {
+  const wb = XLSX.read(buffer, { type: "buffer" });
+  if (wb.SheetNames.length === 0) {
+    throw new Error("人员名单 Excel 无工作表");
+  }
+
+  const rows = pickPersonnelRows(wb);
   if (rows.length === 0) {
     throw new Error("人员名单 Excel 无有效数据");
   }
 
-  return importPersonnelRows(rows);
+  const pidByName = buildPidByNameLookup(wb);
+  return importPersonnelRows(rows, pidByName);
 }
 
 async function importPersonnelRows(
-  rows: Record<string, string>[]
+  rows: Record<string, string>[],
+  pidByName: Map<string, string> = new Map()
 ): Promise<PersonnelImportResult> {
   const division = await db.orgUnit.upsert({
     where: { id: "div-leadspace" },
@@ -200,6 +243,12 @@ async function importPersonnelRows(
   const managerNames = [
     ...new Set(rows.map((r) => getPersonnelManagerName(r)).filter(Boolean)),
   ];
+
+  if (managerNames.length === 0 && !rows.some((r) => getPersonnelAccountName(r))) {
+    throw new Error(
+      "未识别到人员列。请使用含「作业员（姓名）/员工名称」与「所属经理」的名单表（如 N7作业名单）。"
+    );
+  }
 
   const managerMap = new Map<string, string>();
   let managersCreated = 0;
@@ -261,8 +310,11 @@ async function importPersonnelRows(
 
   for (const row of rows) {
     const accountName = getPersonnelAccountName(row);
-    const personalPid = getPersonnelPersonalPid(row);
-    if (!accountName || !personalPid) continue;
+    if (!accountName) continue;
+
+    // N7 主表常无员工 id：允许仅按姓名建号；有附表 uid 时自动补齐
+    const personalPid =
+      getPersonnelPersonalPid(row) || pidByName.get(accountName) || "";
 
     const mgrName = getPersonnelManagerName(row);
     const aliases = getPersonnelAliases(row, accountName);
@@ -294,7 +346,10 @@ async function importPersonnelRows(
       if (result.created) salesCreated++;
     }
 
-    if (await upsertSalesPlatformIdentity(userId, accountName, personalPid)) {
+    if (
+      personalPid &&
+      (await upsertSalesPlatformIdentity(userId, accountName, personalPid))
+    ) {
       identitiesUpserted++;
     }
   }
@@ -314,25 +369,54 @@ export async function importPersonnelFromFile(
   return importPersonnelFromBuffer(buffer);
 }
 
-export async function ensureAntonioDirector(defaultPassword = "123456") {
-  const passwordHash = await bcrypt.hash(defaultPassword, 10);
-  return db.user.upsert({
+/** 确保管理员账号 admin 存在；历史 Antonio 会自动改名为 admin（不重置密码） */
+export async function ensureAdminDirector(defaultPassword = "123456") {
+  const admin = await db.user.findUnique({
+    where: { username: "admin" },
+    select: { id: true },
+  });
+  if (admin) {
+    return db.user.update({
+      where: { id: admin.id },
+      data: {
+        name: "admin",
+        role: "DIRECTOR",
+        status: "ACTIVE",
+        accountLifecycle: "ACTIVE",
+      },
+    });
+  }
+
+  const legacy = await db.user.findUnique({
     where: { username: "Antonio" },
-    create: {
-      username: "Antonio",
+    select: { id: true },
+  });
+  if (legacy) {
+    return db.user.update({
+      where: { id: legacy.id },
+      data: {
+        username: "admin",
+        name: "admin",
+        role: "DIRECTOR",
+        status: "ACTIVE",
+        accountLifecycle: "ACTIVE",
+      },
+    });
+  }
+
+  const passwordHash = await bcrypt.hash(defaultPassword, 10);
+  return db.user.create({
+    data: {
+      username: "admin",
       passwordHash,
-      name: "Antonio",
+      name: "admin",
       role: "DIRECTOR",
       status: "ACTIVE",
       accountLifecycle: "ACTIVE",
       mustChangePassword: false,
     },
-    update: {
-      passwordHash,
-      name: "Antonio",
-      role: "DIRECTOR",
-      accountLifecycle: "ACTIVE",
-      mustChangePassword: false,
-    },
   });
 }
+
+/** @deprecated 使用 ensureAdminDirector */
+export const ensureAntonioDirector = ensureAdminDirector;

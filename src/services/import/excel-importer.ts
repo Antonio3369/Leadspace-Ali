@@ -1,4 +1,4 @@
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { parseExcelBuffer, type ParsedMerchantRow } from "@/services/import/excel-parser";
 import { pruneMerchantsOutsideRetention } from "@/services/import/merchant-retention";
@@ -42,42 +42,103 @@ async function loadExistingMerchantsByJobNumber(): Promise<Map<string, { id: str
   return new Map(existing.map((e) => [e.jobNumber, { id: e.id }]));
 }
 
-async function runBatchedUpdates(
-  tasks: { id: string; data: Prisma.MerchantRecordUpdateInput }[],
-  concurrency = 8
-) {
-  for (let i = 0; i < tasks.length; i += concurrency) {
-    const slice = tasks.slice(i, i + concurrency);
-    await Promise.all(
-      slice.map(({ id, data }) => {
-        if (id.startsWith("pending-")) return Promise.resolve();
-        return db.merchantRecord.update({ where: { id }, data });
-      })
-    );
-  }
-}
+type MerchantUpdateRow = {
+  id: string;
+  merchantPid: string | null;
+  merchantName: string;
+  merchantType: string | null;
+  opportunityId: string | null;
+  opportunityName: string | null;
+  photoStatus: string;
+  riskStatus: string;
+  salesActivationStatus: string;
+  riskFailReason: string | null;
+  expandDate: Date;
+  touchCount15d: number;
+  scanCount15d: number;
+  transactionCount30d: number;
+  importBatchId: string | null;
+};
 
-function buildMutableFields(
+function buildUpdateRow(
+  id: string,
   row: ParsedMerchantRow,
   opportunityId: string | undefined,
   importLogId: string | undefined
-): Prisma.MerchantRecordUpdateInput {
+): MerchantUpdateRow {
   return {
-    merchantPid: row.merchantPid,
+    id,
+    merchantPid: row.merchantPid ?? null,
     merchantName: row.merchantName,
-    opportunity: opportunityId ? { connect: { id: opportunityId } } : { disconnect: true },
-    opportunityName: row.opportunityName,
+    merchantType: row.merchantType ?? null,
+    opportunityId: opportunityId ?? null,
+    opportunityName: row.opportunityName ?? null,
     photoStatus: row.photoStatus,
     riskStatus: row.riskStatus,
     salesActivationStatus: row.salesActivationStatus,
-    riskFailReason: row.riskFailReason,
+    riskFailReason: row.riskFailReason ?? null,
     expandDate: row.expandDate,
     touchCount15d: row.touchCount15d,
     scanCount15d: row.scanCount15d,
     transactionCount30d: row.transactionCount30d,
-    sourceMode: "MANUAL_UPLOAD",
-    ...(importLogId ? { importBatch: { connect: { id: importLogId } } } : {}),
+    importBatchId: importLogId ?? null,
   };
+}
+
+/** 单条 UPDATE 会打爆 Prisma Dev 连接池；改为按块 VALUES 批量更新 */
+async function runBulkUpdates(rows: MerchantUpdateRow[]) {
+  const CHUNK = 100;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    await db.$executeRaw`
+      UPDATE "MerchantRecord" AS m
+      SET
+        "merchantPid" = NULLIF(v."merchantPid", '')::text,
+        "merchantName" = v."merchantName"::text,
+        -- 表格缺列/空值时保留原商户类型，避免无该列的旧文件回写把 A/B/C 清掉
+        "merchantType" = COALESCE(NULLIF(v."merchantType", '')::text, m."merchantType"),
+        "opportunityId" = NULLIF(v."opportunityId", '')::text,
+        "opportunityName" = NULLIF(v."opportunityName", '')::text,
+        "photoStatus" = v."photoStatus"::"PhotoStatus",
+        "riskStatus" = v."riskStatus"::"RiskStatus",
+        "salesActivationStatus" = v."salesActivationStatus"::"SalesActivationStatus",
+        "riskFailReason" = NULLIF(v."riskFailReason", '')::text,
+        "expandDate" = v."expandDate"::timestamp,
+        "touchCount15d" = v."touchCount15d"::integer,
+        "scanCount15d" = v."scanCount15d"::integer,
+        "transactionCount30d" = v."transactionCount30d"::integer,
+        "sourceMode" = 'MANUAL_UPLOAD'::"DataMode",
+        "importBatchId" = NULLIF(v."importBatchId", '')::text,
+        "updatedAt" = NOW()
+      FROM (VALUES ${Prisma.join(
+        chunk.map(
+          (r) =>
+            Prisma.sql`(
+              ${r.id},
+              ${r.merchantPid ?? ""},
+              ${r.merchantName},
+              ${r.merchantType ?? ""},
+              ${r.opportunityId ?? ""},
+              ${r.opportunityName ?? ""},
+              ${r.photoStatus},
+              ${r.riskStatus},
+              ${r.salesActivationStatus},
+              ${r.riskFailReason ?? ""},
+              ${r.expandDate.toISOString()},
+              ${r.touchCount15d},
+              ${r.scanCount15d},
+              ${r.transactionCount30d},
+              ${r.importBatchId ?? ""}
+            )`
+        )
+      )}) AS v(
+        id, "merchantPid", "merchantName", "merchantType", "opportunityId", "opportunityName",
+        "photoStatus", "riskStatus", "salesActivationStatus", "riskFailReason",
+        "expandDate", "touchCount15d", "scanCount15d", "transactionCount30d", "importBatchId"
+      )
+      WHERE m.id = v.id
+    `;
+  }
 }
 
 export async function importParsedRows(
@@ -116,13 +177,24 @@ export async function importParsedRows(
   const oppCache = new Map<string, string>();
   const seenInBatch = new Set<string>();
 
+  const uniqueOppNames = [
+    ...new Set(
+      rows
+        .map((row) => row.opportunityName?.trim())
+        .filter((name): name is string => Boolean(name))
+    ),
+  ];
+  for (const name of uniqueOppNames) {
+    await upsertOpportunityCache(oppCache, name);
+  }
+
   let createdRows = 0;
   let updatedRows = 0;
   let skippedRows = 0;
   let anomalyRows = 0;
   const errors = [...parseErrors];
   const merchantCreates: Prisma.MerchantRecordCreateManyInput[] = [];
-  const updateTasks: { id: string; data: Prisma.MerchantRecordUpdateInput }[] = [];
+  const updateRows: MerchantUpdateRow[] = [];
   const anomalyCreates: Prisma.AnomalyRecordCreateManyInput[] = [];
 
   for (const row of rows) {
@@ -133,16 +205,13 @@ export async function importParsedRows(
     seenInBatch.add(row.jobNumber);
 
     const existing = existingByJob.get(row.jobNumber);
+    const opportunityId = row.opportunityName
+      ? oppCache.get(row.opportunityName)
+      : undefined;
 
     if (existing) {
-      let opportunityId: string | undefined;
-      if (row.opportunityName) {
-        opportunityId = await upsertOpportunityCache(oppCache, row.opportunityName);
-      }
-      updateTasks.push({
-        id: existing.id,
-        data: buildMutableFields(row, opportunityId, importLogId),
-      });
+      if (existing.id.startsWith("pending-")) continue;
+      updateRows.push(buildUpdateRow(existing.id, row, opportunityId, importLogId));
       updatedRows++;
       continue;
     }
@@ -169,15 +238,11 @@ export async function importParsedRows(
       continue;
     }
 
-    let opportunityId: string | undefined;
-    if (row.opportunityName) {
-      opportunityId = await upsertOpportunityCache(oppCache, row.opportunityName);
-    }
-
     merchantCreates.push({
       jobNumber: row.jobNumber,
       merchantPid: row.merchantPid,
       merchantName: row.merchantName,
+      merchantType: row.merchantType,
       salesUserId: matchedUser.id,
       salesUserName: row.salesUserName,
       teamId: matchedUser.teamId,
@@ -199,7 +264,7 @@ export async function importParsedRows(
     createdRows++;
   }
 
-  const CREATE_CHUNK = 500;
+  const CREATE_CHUNK = 200;
 
   for (let i = 0; i < merchantCreates.length; i += CREATE_CHUNK) {
     await db.merchantRecord.createMany({
@@ -208,7 +273,7 @@ export async function importParsedRows(
     });
   }
 
-  await runBatchedUpdates(updateTasks);
+  await runBulkUpdates(updateRows);
 
   for (let i = 0; i < anomalyCreates.length; i += CREATE_CHUNK) {
     await db.anomalyRecord.createMany({

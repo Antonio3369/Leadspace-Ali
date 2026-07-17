@@ -1,47 +1,31 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
-import { getCurrentMonthRange, parseDateFromParam, parseDateToParam } from "@/lib/ledger-date";
-import { parseDashboardUrlFilters } from "@/lib/dashboard-url";
-import { getDashboardBundle } from "@/services/stats/analytics";
-import { DashboardView } from "@/components/dashboard/DashboardView";
+import { db } from "@/lib/db";
+import { resolveAccessibleBusinessLines } from "@/lib/business-lines";
+import { BusinessHub } from "@/components/business/BusinessHub";
 
-interface PageProps {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}
-
-export default async function HomePage({ searchParams }: PageProps) {
+export default async function HomePage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
-  const rawParams = await searchParams;
-  const urlSearchParams = new URLSearchParams();
-  for (const [key, value] of Object.entries(rawParams)) {
-    if (typeof value === "string") urlSearchParams.set(key, value);
-  }
+  const live = await db.user.findUnique({
+    where: { id: user.id },
+    select: { role: true, businessLines: true },
+  }).catch(async () =>
+    db.user.findUnique({
+      where: { id: user.id },
+      select: { role: true },
+    }).then((row) =>
+      row ? { ...row, businessLines: ["xlh", "n7"] as string[] } : null
+    )
+  );
 
-  const defaultRange = getCurrentMonthRange();
-  const filters = parseDashboardUrlFilters(urlSearchParams, defaultRange);
-  const activeView =
-    user.role === "SUPERVISOR" ? filters.view : ("team" as const);
-
-  const dateFrom = filters.dateFrom ? parseDateFromParam(filters.dateFrom) : undefined;
-  const dateTo = filters.dateTo ? parseDateToParam(filters.dateTo) : undefined;
-
-  const { metrics, alert, charts } = await getDashboardBundle(user, {
-    view: user.role === "SUPERVISOR" ? activeView : undefined,
-    dateFrom,
-    dateTo,
-  });
+  const accessibleLines = resolveAccessibleBusinessLines(
+    live?.role ?? user.role,
+    live?.businessLines ?? user.businessLines
+  );
 
   return (
-    <DashboardView
-      user={user}
-      metrics={metrics}
-      alert={alert}
-      activeView={activeView}
-      charts={charts}
-      filters={filters}
-      pageTitle={user.role === "MANAGER" ? "团队数据总览" : "数据总览"}
-    />
+    <BusinessHub userName={user.name} accessibleLines={accessibleLines} />
   );
 }

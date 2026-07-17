@@ -7,6 +7,7 @@ import type { SessionUser } from "@/lib/permissions";
 const ALL_EXPORT_COLUMNS = [
   { key: "jobNumber", header: "作业编号" },
   { key: "merchantName", header: "商家名称" },
+  { key: "merchantType", header: "商户类型" },
   { key: "salesUserName", header: "业务员" },
   { key: "teamName", header: "团队" },
   { key: "opportunityName", header: "商机" },
@@ -33,6 +34,7 @@ export async function exportLedgerExcel(
   const rows = records.map((r) => ({
     jobNumber: r.jobNumber,
     merchantName: r.merchantName,
+    merchantType: r.merchantType ?? "",
     salesUserName: r.salesUserName,
     teamName: r.team?.name ?? "",
     opportunityName: r.opportunity?.name ?? r.opportunityName ?? "",

@@ -3,7 +3,7 @@ import fs from "fs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import {
-  ensureAntonioDirector,
+  ensureAdminDirector,
   importPersonnelFromFile,
 } from "../src/services/import/personnel-importer";
 import { importExcelFromPath } from "../src/services/import/excel-importer";
@@ -21,9 +21,9 @@ const MERCHANT_FILES = [
 ].filter((f) => f);
 
 async function main() {
-  console.log("=== 初始化 Antonio 管理员 ===");
-  const antonio = await ensureAntonioDirector();
-  console.log("Director:", antonio.username);
+  console.log("=== 初始化 admin 管理员 ===");
+  const admin = await ensureAdminDirector();
+  console.log("Director:", admin.username);
 
   await db.systemConfig.upsert({
     where: { id: "singleton" },
@@ -50,7 +50,7 @@ async function main() {
       continue;
     }
     console.log("导入:", file.split("/").pop());
-    const result = await importExcelFromPath(file, antonio.id, true);
+    const result = await importExcelFromPath(file, admin.id, true);
     console.log(
       `  新增 ${result.createdRows} / 更新 ${result.updatedRows} / 清理 ${result.prunedRows} / 异常 ${result.anomalyRows}`
     );

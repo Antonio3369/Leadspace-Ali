@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
-import { canExport } from "@/lib/permissions";
+import { PermissionError, canExport } from "@/lib/permissions";
+import { assertCanViewXlh } from "@/services/xlh/xlh-scope";
 import { parseMultiSearchParam } from "@/lib/query-params";
 import { exportLedgerExcel } from "@/services/export/ledger-exporter";
 
 export async function GET(request: Request) {
   try {
     const user = await requireSessionUser();
+    assertCanViewXlh(user);
     if (!canExport(user.role, user.status)) {
       return NextResponse.json({ error: "当前账号不可导出" }, { status: 403 });
     }
@@ -35,6 +37,9 @@ export async function GET(request: Request) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "服务器错误";
+    if (err instanceof PermissionError) {
+      return NextResponse.json({ error: message }, { status: 403 });
+    }
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }

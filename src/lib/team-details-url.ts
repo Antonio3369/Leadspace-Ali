@@ -112,10 +112,10 @@ export function buildTeamDetailsBackHref(
   }
 
   const query = kept.toString();
-  return query ? `/teams?${query}` : "/teams";
+  return query ? `/xlh/teams?${query}` : "/xlh/teams";
 }
 
 export function buildTeamDetailsBackHrefFromFilters(filters: TeamDetailsUrlFilters): string {
   const query = buildTeamDetailsUrlSearchParams(filters).toString();
-  return query ? `/teams?${query}` : "/teams";
+  return query ? `/xlh/teams?${query}` : "/xlh/teams";
 }

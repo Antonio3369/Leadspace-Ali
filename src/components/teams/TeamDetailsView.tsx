@@ -112,7 +112,7 @@ export function TeamDetailsView({ role }: TeamDetailsViewProps) {
     (patch: Partial<TeamDetailsUrlFilters>) => {
       const next = { ...filtersRef.current, ...patch };
       persistTeamDetailsFilters(next);
-      router.replace(`/teams${teamDetailsUrlQueryString(next)}`, { scroll: false });
+      router.replace(`/xlh/teams${teamDetailsUrlQueryString(next)}`, { scroll: false });
     },
     [router]
   );
@@ -121,7 +121,7 @@ export function TeamDetailsView({ role }: TeamDetailsViewProps) {
     if (urlSearchParams.toString()) return;
     const stored = sessionStorage.getItem(TEAM_DETAILS_FILTERS_STORAGE_KEY);
     if (stored && typeof window !== "undefined" && !window.location.search) {
-      router.replace(`/teams?${stored}`, { scroll: false });
+      router.replace(`/xlh/teams?${stored}`, { scroll: false });
     }
   }, [urlSearchParams, router]);
 
@@ -194,7 +194,7 @@ export function TeamDetailsView({ role }: TeamDetailsViewProps) {
   function buildDetailHref(id: string) {
     persistTeamDetailsFilters(filters);
     const q = buildTeamDetailsUrlSearchParams(filters).toString();
-    return `/members/${id}${q ? `?${q}` : ""}`;
+    return `/xlh/members/${id}${q ? `?${q}` : ""}`;
   }
 
   async function handleExport() {

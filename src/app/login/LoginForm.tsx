@@ -67,7 +67,7 @@ export default function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f4f6f9] px-4 py-10">
+    <div className="min-h-full flex-1 flex items-center justify-center bg-[#f4f6f9] px-4 py-10">
       <div className="w-full max-w-[400px]">
         <div className="mb-6 space-y-1 text-center">
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[#eff6ff] text-[#2563eb] text-lg font-bold mb-2">
@@ -123,7 +123,7 @@ export default function LoginForm() {
         <p className="text-xs text-[#94a3b8] mt-5 text-center leading-relaxed">
           {process.env.NODE_ENV === "production"
             ? "仅经理与事业部负责人可登录；业务员为数据账号"
-            : "开发环境：Antonio / 123456；业务员账号不支持登录"}
+            : "开发环境：admin / 123456；业务员账号不支持登录"}
         </p>
       </div>
     </div>

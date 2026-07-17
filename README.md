@@ -1,6 +1,8 @@
 # Leadspace 支付宝业务数据管理
 
-支付宝 P 站推广业务数据统计、展示与管理系统。
+支付宝业务数据统计、展示与管理系统（Leadspace.Alipay）。
+
+登录后先选择业务线：**小蓝环**（完整看板）或 **支付宝 N7**（建设中）。产品约定与路由详见 [Leadspace.Ali.md](./Leadspace.Ali.md)。
 
 ## 技术栈
 
@@ -39,11 +41,11 @@ npm run db:push
 npm run db:seed
 ```
 
-`db:seed` 会创建管理员 **Antonio** 并尝试从 `PERSONNEL_FILE` 导入人员名单 Excel（路径见 `.env` 或 `prisma/seed.ts` 默认值）。
+`db:seed` 会创建管理员 **admin** 并尝试从 `PERSONNEL_FILE` 导入人员名单 Excel（路径见 `.env` 或 `prisma/seed.ts` 默认值）。
 
 ### 5. 导入业务数据
 
-**方式一：后台上传（推荐）** — 管理员登录后打开 `/admin/import`：
+**方式一：后台上传（推荐）** — 管理员登录后进入小蓝环，打开 `/xlh/admin/import`：
 
 1. **人员名单** — 创建/更新经理、主管、业务员与团队；经理/主管导入后须开通方可登录，**业务员为纯数据账号，导入即可、不支持登录**  
 2. **商户明细** — 导入推广商家数据（作业编号去重，按 P 站姓名匹配业务员归属）
@@ -94,7 +96,7 @@ npm run dev
 
 | 账号 | 角色 | 说明 |
 |------|------|------|
-| `Antonio` | 管理员（事业部负责人） | 已激活，全量数据 + 组织管理 + 数据上传 |
+| `admin` | 管理员（事业部负责人） | 已激活，全量数据 + 组织管理 + 数据上传 |
 | Excel 导入的经理 | 区域经理 | 默认「未开通」，须在 **组织管理** 开通后方可登录 |
 | Excel 导入的主管 | 团队主管 | 须开通或由经理创建账号；开通后须完成实名认证 |
 | Excel 导入的业务员 | 业务员 | **纯数据账号**，导入即可，无需开通、无法登录 |
@@ -109,19 +111,26 @@ npx tsx scripts/enable-manager.ts <登录名> [密码]
 
 | 路径 | 角色 | 功能 |
 |------|------|------|
-| `/admin/org` | 管理员 | 经理开通/创建、主管开通、待认证/已停用 Tab、重置密码、停用启用 |
-| `/admin/team` | 区域经理 | 业务员花名册：查看作业账号/PID、停用/启用数据状态（**不支持开通登录**） |
-| `/admin/import` | 管理员 | 人员名单 + 商户明细 Excel 上传（经理无上传权限） |
+| `/` | 已登录 | 业务选择（小蓝环 / 支付宝 N7） |
+| `/xlh/admin/org` | 管理员 | 经理开通/创建、主管开通、待认证/已停用 Tab、重置密码、停用启用 |
+| `/xlh/admin/team` | 区域经理 | 业务员花名册：查看作业账号/PID、停用/启用数据状态（**不支持开通登录**） |
+| `/xlh/admin/import` | 管理员 | 人员名单 + 商户明细 Excel 上传（经理无上传权限） |
 | `/onboarding` | 经理/主管 | 首次登录实名认证（**业务员不使用**） |
 
 管理员代操作（重置密码、停用/启用、完成认证）后，目标用户下次访问将自动退出并需重新登录。
 
 ## 已实现功能
 
-### 数据与指标
+### 业务线与入口
+
+- 登录后业务选择页：小蓝环 `/xlh`、支付宝 N7 `/n7`（一期占位）
+- 侧栏「切换业务」；旧路径 `/ledger` 等自动跳转 `/xlh/...`
+
+### 数据与指标（小蓝环）
 
 - 四级角色 RBAC + 中间件权限拦截
 - 8 项核心指标、预估风控达标率、动销判定、自动预警文案
+- 指标卡 / 饼图点击钻取风控台账（审核中已动销、待动销达标、审核中未动销等）
 - Excel 上传导入（P 站列名、去重、姓名匹配组织）
 - 首页双饼图、商机统计表、每日拓展/动销趋势
 - 风控台账（分页、多选筛选、**URL 筛选持久化**、Excel 导出）
@@ -138,6 +147,7 @@ npx tsx scripts/enable-manager.ts <登录名> [密码]
 
 | 阶段 | 内容 |
 |------|------|
+| N7 | 样表确定后：数据模型、导入、看板与权限 |
 | P3 | P 站 API 拉取、定时任务、异常数据管理 |
 | P4 | 公共大屏增强（自动刷新、投屏优化） |
 | P5 | 后台管理（模式切换、日志中心、历史回溯） |
@@ -147,17 +157,17 @@ npx tsx scripts/enable-manager.ts <登录名> [密码]
 ```
 src/
 ├── app/
-│   ├── (dashboard)/     # 需登录的业务页面
+│   ├── (dashboard)/     # / 业务选择；/xlh 小蓝环；/n7 N7
 │   ├── api/             # API 路由
 │   └── login/           # 登录页
-├── components/          # UI 组件
-├── lib/                 # 工具、权限、业务规则
+├── components/          # UI 组件（含 business/BusinessHub）
+├── lib/                 # 工具、权限、业务规则、business-lines
 └── services/
     ├── stats/           # 指标计算引擎
     └── import/          # Excel 导入
 prisma/
 ├── schema.prisma        # 数据模型
-└── seed.ts              # 种子数据（Antonio + 人员名单）
+└── seed.ts              # 种子数据（admin + 人员名单）
 scripts/
 ├── import-all.ts        # 批量导入商户 Excel
 ├── enable-manager.ts    # 命令行开通经理
@@ -171,7 +181,7 @@ npm run dev                        # 开发服务器
 npm run build                      # 生产构建
 npm run db:push                    # 同步数据库 schema
 npm run db:migrate                 # 创建迁移
-npm run db:seed                    # 填充 Antonio + 人员名单
+npm run db:seed                    # 填充 admin + 人员名单
 npm run db:studio                  # Prisma Studio
 npm run import:all                 # 批量导入商户 Excel
 npm run backfill:merchant-owners   # 回填商户归属
@@ -197,4 +207,4 @@ npm run backfill:merchant-owners   # 回填商户归属
 | `search` | 搜索关键词 |
 | `page` | 页码 |
 
-示例：`/ledger?dateFrom=2026-06-01&dateTo=2026-06-30&riskStatus=PENDING&salesActivationStatus=ACTIVATED`
+示例：`/xlh/ledger?dateFrom=2026-06-01&dateTo=2026-06-30&riskStatus=PENDING&salesActivationStatus=ACTIVATED`

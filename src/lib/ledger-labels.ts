@@ -129,14 +129,28 @@ export const LEDGER_STATUS_TONE_CLASS: Record<LedgerStatusTone, string> = {
 
 export const LEDGER_QUICK_FILTERS = [
   {
-    key: "riskFailed",
-    label: "风控不通过",
-    filters: { riskStatus: "FAILED", photoStatus: "", salesStatus: "" },
+    key: "riskReviewActivated",
+    label: "审核中已动销",
+    filters: { riskStatus: "PENDING", photoStatus: "", salesStatus: "ACTIVATED" },
+  },
+  {
+    key: "riskPendingNotActivated",
+    label: "审核中未动销",
+    filters: {
+      riskStatus: "PENDING",
+      photoStatus: "",
+      salesStatus: "IN_PROGRESS,NOT_ACTIVATED",
+    },
   },
   {
     key: "salesPending",
     label: "待动销达标",
     filters: { riskStatus: "", photoStatus: "APPROVED", salesStatus: "IN_PROGRESS" },
+  },
+  {
+    key: "riskFailed",
+    label: "风控不通过",
+    filters: { riskStatus: "FAILED", photoStatus: "", salesStatus: "" },
   },
   {
     key: "riskPending",

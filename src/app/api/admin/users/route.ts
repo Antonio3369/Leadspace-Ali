@@ -107,6 +107,7 @@ export async function POST(request: Request) {
         aliases: body.aliases ?? [],
         accountLifecycle,
         mustChangePassword: true,
+        businessLines: ["xlh", "n7"],
       },
     });
 

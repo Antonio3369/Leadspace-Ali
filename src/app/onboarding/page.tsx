@@ -16,7 +16,7 @@ export default async function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F7FA] flex flex-col">
+    <div className="min-h-full flex-1 bg-[#F5F7FA] flex flex-col">
       <header className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
         <span className="font-semibold text-[#165DFF]">Leadspace 数据管理</span>
         <form

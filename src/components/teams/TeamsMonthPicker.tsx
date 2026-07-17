@@ -20,7 +20,7 @@ export function TeamsMonthPicker({ month, monthLabel }: TeamsMonthPickerProps) {
       params.set("month", nextMonth);
     }
     const qs = params.toString();
-    router.push(qs ? `/teams?${qs}` : "/teams");
+    router.push(qs ? `/xlh/teams?${qs}` : "/xlh/teams");
   }
 
   return (
