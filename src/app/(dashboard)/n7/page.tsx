@@ -34,6 +34,7 @@ export default async function N7HomePage() {
           <HistoryBackLink
             label="← 返回"
             fallbackHref="/"
+            preferHistoryBack
             className="inline-flex text-sm font-medium text-[#2563eb] hover:text-[#1d4ed8]"
           />
         </div>

@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   applyN7DateRangeToParams,
   n7DateRangeQuery,
   readN7DateRangeFromSearchParams,
 } from "@/lib/n7-date";
 import { n7Path } from "@/lib/business-lines";
+import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
+import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 import {
   NotionAlert,
   NotionInput,
@@ -23,8 +25,10 @@ import {
   n7PriorityButtonClass,
   n7TabButtonClass,
 } from "@/components/n7/n7-filter-styles";
+import { N7FollowUpBadge } from "@/components/n7/N7FollowUpBadge";
 
 type Tab = "followUp" | "qualified" | "all";
+type FollowFilter = "all" | "pending" | "done";
 
 interface DeviceRow {
   id: string;
@@ -43,6 +47,8 @@ interface DeviceRow {
   notSubscribed: boolean;
   notCheckedIn: boolean;
   merchantPhone: string | null;
+  followUpDone: boolean;
+  followUpNote: string | null;
 }
 
 interface ApiResponse {
@@ -104,6 +110,7 @@ export function N7StaffDevicesView({
   backHref?: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { dateFrom, dateTo } = readN7DateRangeFromSearchParams(searchParams);
   const rangeQs = n7DateRangeQuery(dateFrom, dateTo);
@@ -115,8 +122,15 @@ export function N7StaffDevicesView({
   const [loading, setLoading] = useState(true);
   const [searchDraft, setSearchDraft] = useState(search);
 
+  const parentListKey = backHref
+    ? n7Path()
+    : n7Path(`/managers/${encodeURIComponent(managerKey)}`);
+
+  useRestoreListScroll(pathname, !loading && !!data);
+
   const priorityFilter = searchParams.get("priority");
   const behaviorFilter = searchParams.get("behavior");
+  const followFilter = (searchParams.get("follow") as FollowFilter) || "all";
 
   function pushQuery(
     patch: Partial<{
@@ -126,6 +140,7 @@ export function N7StaffDevicesView({
       q: string;
       priority: string | null;
       behavior: string | null;
+      follow: FollowFilter;
     }>
   ) {
     const params = new URLSearchParams(searchParams.toString());
@@ -144,6 +159,10 @@ export function N7StaffDevicesView({
     if (patch.behavior !== undefined) {
       if (patch.behavior) params.set("behavior", patch.behavior);
       else params.delete("behavior");
+    }
+    if (patch.follow != null) {
+      if (patch.follow === "all") params.delete("follow");
+      else params.set("follow", patch.follow);
     }
     if (patch.q != null) {
       if (patch.q) params.set("q", patch.q);
@@ -206,6 +225,11 @@ export function N7StaffDevicesView({
     } else if (behaviorFilter === "notLit") {
       list = list.filter((d) => d.notLit);
     }
+    if (followFilter === "pending") {
+      list = list.filter((d) => !d.followUpDone);
+    } else if (followFilter === "done") {
+      list = list.filter((d) => d.followUpDone);
+    }
     if (!search.trim()) return list;
     const q = search.trim().toLowerCase();
     return list.filter(
@@ -214,7 +238,18 @@ export function N7StaffDevicesView({
         (d.storeName ?? "").toLowerCase().includes(q) ||
         (d.merchantPhone ?? "").includes(q)
     );
-  }, [data, search, priorityFilter, behaviorFilter]);
+  }, [data, search, priorityFilter, behaviorFilter, followFilter]);
+
+  const followCounts = useMemo(() => {
+    if (!data) return { pending: 0, done: 0, all: 0 };
+    let pending = 0;
+    let done = 0;
+    for (const d of data.devices) {
+      if (d.followUpDone) done += 1;
+      else pending += 1;
+    }
+    return { pending, done, all: data.devices.length };
+  }, [data]);
 
   return (
     <PageShell>
@@ -223,16 +258,17 @@ export function N7StaffDevicesView({
         kicker={data?.staff.managerName ? `${data.staff.managerName} · 队员` : "队员明细"}
         meta={
           <p className="text-sm text-[#64748b]">
-            <Link
-              href={
+            <HistoryBackLink
+              label={backHref ? "← 团队看板" : "← 队员排行"}
+              fallbackHref={
                 backHref
                   ? `${backHref}${backHref.includes("?") ? "&" : "?"}${rangeQs}`
                   : `${n7Path(`/managers/${encodeURIComponent(managerKey)}`)}?${rangeQs}`
               }
+              listScrollKey={parentListKey}
+              preferHistoryBack
               className="text-[#2563eb] hover:text-[#1d4ed8]"
-            >
-              ← {backHref ? "团队看板" : "队员排行"}
-            </Link>
+            />
           </p>
         }
         actions={
@@ -318,6 +354,25 @@ export function N7StaffDevicesView({
                 );
               })}
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-[#94a3b8] mr-0.5 w-full sm:w-auto">处理状态</span>
+              {(
+                [
+                  { id: "all" as const, label: "全部", count: followCounts.all },
+                  { id: "pending" as const, label: "未处理", count: followCounts.pending },
+                  { id: "done" as const, label: "已处理", count: followCounts.done },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => pushQuery({ follow: item.id })}
+                  className={`${n7FilterChipBaseClass()} ${n7TabButtonClass(followFilter === item.id)}`}
+                >
+                  {item.label} {item.count}
+                </button>
+              ))}
+            </div>
             {behaviorFilter && (
               <p className="text-xs text-[#64748b]">
                 当前筛选：
@@ -344,10 +399,10 @@ export function N7StaffDevicesView({
                   <th className="px-3 py-3 font-semibold">优先级</th>
                   <th className="px-3 py-3 font-semibold">剩余天数</th>
                   <th className="px-3 py-3 font-semibold">门店</th>
-                  <th className="px-3 py-3 font-semibold">SN</th>
-                  <th className="px-3 py-3 font-semibold text-right">天数</th>
-                  <th className="px-3 py-3 font-semibold text-right">用户</th>
-                  <th className="px-3 py-3 font-semibold">缺口 / 原因</th>
+                  <th className="px-3 py-3 font-semibold">处理状态</th>
+                  <th className="px-3 py-3 font-semibold text-right">已用天数</th>
+                  <th className="px-3 py-3 font-semibold text-right">已有用户</th>
+                  <th className="px-3 py-3 font-semibold">缺口</th>
                   <th className="px-3 py-3 font-semibold">行为</th>
                 </tr>
               </thead>
@@ -362,6 +417,7 @@ export function N7StaffDevicesView({
                   filtered.map((d) => (
                     <tr
                       key={d.id}
+                      data-list-anchor={d.deviceSn}
                       className="border-b border-[#f1f5f9] last:border-0 hover:bg-[#f8fafc]"
                     >
                       <td className="px-3 py-2.5">
@@ -382,17 +438,18 @@ export function N7StaffDevicesView({
                           {d.storeName || "未命名门店"}
                         </Link>
                       </td>
-                      <td className="px-3 py-2.5 font-mono text-xs text-[#64748b]">
-                        {d.deviceSn}
+                      <td className="px-3 py-2.5">
+                        <N7FollowUpBadge
+                          done={Boolean(d.followUpDone)}
+                          note={d.followUpNote}
+                        />
                       </td>
                       <td className="px-3 py-2.5 text-right tabular-nums">{d.effectiveDays}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums">{d.effectiveUsers}</td>
                       <td className="px-3 py-2.5 text-[#64748b]">
                         {d.isQualified
                           ? "已达标"
-                          : `差${d.daysGap}天·差${d.usersGap}人${
-                              d.failReason ? ` · ${d.failReason}` : ""
-                            }`}
+                          : `差${d.daysGap}天·差${d.usersGap}人`}
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex flex-wrap gap-1">

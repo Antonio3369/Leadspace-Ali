@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-07-16（业务线选择页 + 小蓝环/N7 分区 + 指标钻取）
+**最后更新**：2026-07-18（本阶段暂告一段落：小蓝环 Excel 约定、首登改密、滚动返回、N7 处理状态已上线）
 
 ---
 
@@ -13,11 +13,26 @@
 |---|---|
 | 产品名 | **Leadspace.Alipay**（副标题：数据工作台 / 数据管理） |
 | 定位 | 支付宝业务数据工作台；**顶层按业务线分区**，当前含「小蓝环」与「支付宝 N7」 |
-| 业务 | 小蓝环：推广商户拓展数据导入、指标统计、风控台账、商机分析、团队/人员管理；N7：一期仅入口占位 |
+| 业务 | 小蓝环：推广商户拓展数据导入、指标统计、风控台账、商机分析、团队/人员管理；N7：机具考核看板与跟进（Excel 导入） |
 | 用户 | 事业部负责人、区域经理、团队主管、一线业务员（业务员为数据账号，不可登录） |
-| 数据来源 | 现阶段以 Excel 人工上传为主；P 站 API 同步为后续阶段 |
+| 数据来源 | **现行：Excel 人工上传**（小蓝环人员名单 + 商户明细；N7 考核表）。P 站 API 自动拉取为后续阶段，**尚未上线** |
 
 **约定**：「业务线」是最上层；「商机」只属于某一业务线内部（目前仅小蓝环），不要把 N7 做成小蓝环下的一个商机。
+
+### 1.1 已确认约定（勿再误判）
+
+| 约定 | 说明 |
+|---|---|
+| 小蓝环商户明细靠运营上传 | 管理员在 `/xlh/admin/import` →「商户明细」上传 `.xlsx`。这是**当前唯一正规入口**（另有 CLI `npm run import:all` 供开发/运维） |
+| 不要收掉商户上传 UI | `SystemConfig.dataMode = API_SYNC` 仅为预留字段；**在 P 站 API 同步真正交付前，禁止据此关闭或隐藏 Excel 上传** |
+| 账号一套、密码一套 | 全站共用 `User`；开通一次即可进小蓝环与 N7；改密两边同时生效 |
+| 首登改密只改一次 | 开通时 `mustChangePassword=true` → 登录后进 `/settings/password` 设新密码 → 静默重登刷新 JWT → 进业务选择页。**不得**再踢回改密页或要求改第二次 |
+| N7 处理状态 | 设备详情可标记「已处理/未处理」+ 备注；与考核「待跟进」名单**相互独立**。列表/队员明细对经理与管理员可见。现阶段由经理/管理员代记；日后业务员端也可写入同一字段 |
+| 滚动与返回 | 主滚动在 `#app-scroll`（非 window）；列表进详情再返回应恢复位置；侧栏切换业务页须滚到顶部 |
+
+### 1.2 本阶段停在哪里（2026-07-18）
+
+已上线到 https://ali.orblead.com，当前可暂停新功能开发。下次接着做时优先看 §16 可选优化与 N7 业务员端处理状态写入。
 
 ---
 
@@ -162,12 +177,12 @@ src/lib/business-lines.ts  # 业务线常量与路径工具
 |---|---|
 | `/` | 业务选择页（小蓝环 / 支付宝 N7 两张卡片） |
 | `/xlh/*` | 小蓝环：现有看板能力（总览、团队、商机、台账、管理） |
-| `/n7` | 支付宝 N7：一期占位「建设中」 |
+| `/n7/*` | 支付宝 N7：看板、达标跟进、设备详情、导入（见 §6.2b） |
 | `/login` `/onboarding` `/change-password` `/settings/password` | 全局，不挂业务前缀 |
 
 旧书签兼容（`next.config.ts` redirects）：`/ledger`、`/teams`、`/opportunities`、`/members`、`/admin/*`、`/screen` → 对应 `/xlh/...`。
 
-一期权限：所有已登录角色都能看到两张业务卡片；N7 仅占位。按业务线拆组织/数据权限留待 N7 样表确定后。
+权限：可登录角色按 `User.businessLines` 进入对应业务线；N7 与小蓝环共用同一套账号。
 
 ---
 
@@ -213,10 +228,13 @@ Excel 导入 → IMPORTED（无密码）
 
 额外规则（针对可登录角色）：
 
-- 首登须改密：`mustChangePassword=true` → 强制跳转 `/change-password`
+- 首登须改密：`mustChangePassword=true` → 中间件强制跳转 `/settings/password`（`/change-password` 仅重定向到此页）
+- 改密成功后：前端用新密码静默 `signIn` 刷新 JWT，再进 `/`；**不要**再走「退出 → 手动登录 → 又挡回改密」的双次改密路径
+- 改密页挂在 `(account)` 布局（`getSessionUser`），**不**跑 `ensureLiveSession`，避免改密瞬间会话漂移被误踢
+- `ensureLiveSession`：仅在管理员重置导致 `mustChangePassword` 从 `false→true`、或被重新置为待认证时强制重登；用户刚改完密（`true→false`）不得踢出
 - 停用账号：`status=DISABLED` → 踢回登录页
-- 管理员代操作（重置密码、停用等）后，目标用户下次访问自动退出
-- Session 与 DB 状态通过 middleware 同步校验
+- 管理员代操作（重置密码、停用等）后，目标用户下次访问可能需重新登录以刷新 JWT
+- 中间件用 JWT 校验角色/改密/业务线；Node 侧 JWT callback 会从 DB 同步 `mustChangePassword` 等字段
 
 ### 5.3 数据可见性
 
@@ -231,8 +249,8 @@ Excel 导入 → IMPORTED（无密码）
 | 路径 | 页面 | 要点 |
 |---|---|---|
 | `/` | 业务选择页 | `BusinessHub`：小蓝环 / 支付宝 N7 |
-| `/xlh` | 小蓝环 · 数据总览 | 原首页逻辑；URL 日期筛选，默认本月；主管双区 |
-| `/n7` | 支付宝 N7 | 一期建设中占位 |
+| `/xlh` | 小蓝环 · 数据总览 | URL 日期筛选，默认本月；主管双区 |
+| `/n7` | 支付宝 N7 · 看板 | 经理/管理员看板；达标跟进入口 |
 
 ### 6.2 小蓝环业务页面（需登录，`src/app/(dashboard)/xlh/`）
 
@@ -253,28 +271,50 @@ Excel 导入 → IMPORTED（无密码）
 |---|---|---|
 | `/xlh/admin/org` | DIRECTOR | 经理开通/创建、主管开通、Tab 筛选、重置密码、停用启用 |
 | `/xlh/admin/team` | MANAGER | 业务员花名册（纯数据账号）：查看作业账号/PID、停用/启用数据状态 |
-| `/xlh/admin/import` | DIRECTOR | 人员名单 + 商户明细 Excel 上传 |
+| `/xlh/admin/import` | DIRECTOR | **现行数据入口**：人员名单 + 商户明细 Excel 上传（两 Tab 均需保留） |
+
+### 6.2b 支付宝 N7 页面（需登录，`src/app/(dashboard)/n7/`）
+
+| 路径 | 要点 |
+|---|---|
+| `/n7` | 数据看板（经理看本队；管理员看全局） |
+| `/n7/follow-up` | **考核「待跟进」**设备列表；含 **处理状态**列与筛选（未处理/已处理） |
+| `/n7/managers/[managerKey]` | 经理下队员排行 |
+| `/n7/managers/.../staff/[staffKey]` | 队员设备明细（待跟进 / 已达标 / 全部）；含处理状态 |
+| `/n7/devices/[sn]` | 设备问题详情：进度、联系、**处理状态**（已处理/未处理 + 备注，经理/管理员可代记） |
+| `/n7/daily` | 每日绩效 |
+| `/n7/admin/import` | DIRECTOR：N7 考核表 Excel 导入 |
+
+**两套「跟进」勿混用**：
+
+| 名称 | 含义 |
+|---|---|
+| 待跟进（考核） | 未达标、仍在考核期内的设备（P0–P3），由 Excel 指标自动算 |
+| 处理状态 | 人是否已联系/处理过（`followUpDone` / `followUpNote`）；Excel 重导**不覆盖** |
+
+列表列名约定：已用天数、已有用户、缺口；列表不展示 SN（详情页可见）。
 
 ### 6.4 认证页面
 
 | 路径 | 说明 |
 |---|---|
 | `/login` | Notion 风格登录（Leadspace.Alipay / 数据管理）；业务员账号会被拒绝；登录成功默认进 `/` 业务选择 |
-| `/onboarding` | 实名认证（经理填手机邮箱；主管完成认证。**业务员不使用此页**） |
-| `/change-password` | 首登强制改密（可登录角色） |
-| `/settings/password` | 修改密码 |
+| `/onboarding` | 实名认证（主管等 `PENDING_ONBOARDING`；经理开通后多为 `ACTIVE` 可跳过。**业务员不使用此页**） |
+| `/settings/password` | 改密（含首登强制）；路由组 `(account)`，见 §5.2 |
+| `/change-password` | 兼容旧链，重定向到 `/settings/password` |
 
 ### 6.5 主要 API
 
 ```
 src/app/api/
 ├── auth/           check-account, change-password, session-expired
-├── admin/users/    用户 CRUD、开通、重置密码
-├── import/         excel, personnel
+├── admin/users/    用户 CRUD、开通、重置密码、business-lines
+├── import/         excel, personnel, n7
 ├── ledger/         台账分页 + export
 ├── stats/          指标 + charts
 ├── members/        人员列表 + export
 ├── teams/          团队明细 + export
+├── n7/             managers, follow-up, devices/[sn]（GET+PATCH 处理状态）, daily
 └── onboarding/
 ```
 
@@ -432,13 +472,14 @@ Schema：`prisma/schema.prisma`
 | 模型 | 说明 |
 |---|---|
 | `OrgUnit` | 组织树：事业部 → 区域 → 团队 |
-| `User` | 用户；`role` + `status` + `accountLifecycle` + `mustChangePassword` |
+| `User` | 用户；`role` + `status` + `accountLifecycle` + `mustChangePassword` + `businessLines`（`xlh` / `n7`） |
 | `SalesPlatformIdentity` | 业务员 P 站身份（作业账号 + 个人 PID）；导入或回填写入，供花名册展示与匹配 |
-| `MerchantRecord` | 商户明细（核心业务表） |
+| `MerchantRecord` | 商户明细（核心业务表；现行靠 Excel 导入写入） |
+| `N7DeviceRecord` | N7 设备考核；含 `followUpDone` / `followUpNote` / `followUpAt` / `followUpById`（处理状态，Excel 重导不覆盖） |
 | `Opportunity` | 商机 |
 | `ImportLog` | 导入批次日志 |
 | `AnomalyRecord` | 异常数据（姓名不匹配等） |
-| `SystemConfig` | 全局配置（数据模式、API 同步 cron 等，后续用） |
+| `SystemConfig` | 全局配置；`dataMode`（`MANUAL_UPLOAD` / `API_SYNC`）为**预留**，API 同步未上线前默认/实际均按人工上传处理 |
 
 Prisma client 生成路径：`src/generated/prisma/`（import 时用 `@/generated/prisma/client`）。
 
@@ -446,17 +487,24 @@ Prisma client 生成路径：`src/generated/prisma/`（import 时用 `@/generate
 
 ## 10. 导入与导出
 
-### 10.1 导入流程
+### 10.1 小蓝环导入流程（现行，已确认）
 
-1. **人员名单** — `personnel-importer.ts`：创建/更新经理、主管、业务员与团队结构（业务员导入后为纯数据账号，`IMPORTED`，无密码）
-2. **商户明细** — `excel-importer.ts`：解析 P 站列名 → upsert by jobNumber → **按 P 站姓名匹配业务员**（`salesUserId`）
+运营日常路径（管理员 DIRECTOR）：
 
-导入入口：
+1. 登录 → 业务选择 → 小蓝环 → 侧栏「数据上传」`/xlh/admin/import`
+2. **先**导入「人员名单」— `personnel-importer.ts`：创建/更新经理、主管、业务员与团队（业务员为纯数据账号，`IMPORTED`，无密码）
+3. **再**导入「商户明细」— `excel-importer.ts`：解析 P 站列名 → upsert by `jobNumber` → **按 P 站姓名匹配业务员**（`salesUserId`）
 
-- 后台 `/admin/import`（推荐）
-- CLI `npm run import:all`
+| 入口 | 用途 |
+|---|---|
+| `/xlh/admin/import`（推荐） | 运营日常上传人员名单 + 商户明细 |
+| CLI `npm run import:all` | 开发/运维批量导入，不替代后台上传 |
+
+**禁止**：在 API 同步未交付前，以「已改 API 模式」为由去掉「商户明细」Tab，或让 `importExcelFile` 因 `dataMode === API_SYNC` 直接拒绝上传。
 
 导入结果字段：`createdRows` / `updatedRows` / `prunedRows` / `skippedRows` / `anomalyRows`
+
+N7 考核表走独立入口 `/n7/admin/import`（`n7-excel-importer.ts`），与小蓝环商户明细不是同一套表。
 
 ### 10.2 导出
 
@@ -465,6 +513,7 @@ Prisma client 生成路径：`src/generated/prisma/`（import 时用 `@/generate
 | 风控台账 | `src/services/export/ledger-exporter.ts` |
 | 人员明细 | `src/services/export/members-exporter.ts` |
 | 团队明细 | `src/services/export/team-details-exporter.ts` |
+| N7 待跟进 | `src/services/export/n7-follow-up-exporter.ts`（含处理状态与备注） |
 
 ---
 
@@ -495,7 +544,7 @@ src/
 │   ├── (dashboard)/
 │   │   ├── page.tsx              # 业务选择页 /
 │   │   ├── xlh/                  # 小蓝环业务空间
-│   │   ├── n7/                   # N7 占位
+│   │   ├── n7/                   # N7 看板 / 跟进 / 设备 / 导入
 │   │   └── settings/password/
 │   ├── login/
 │   ├── change-password/
@@ -529,6 +578,16 @@ src/
 
 ## 13. 近期已完成
 
+### 2026-07-18（本阶段暂告一段落，已部署生产）
+
+- [x] **确认**小蓝环商户明细现行入口为 Excel 上传（§1.1 / §10.1）；禁止在 API 同步未上线前收掉上传 Tab；`importExcelFile` 不再因 `API_SYNC` 硬拒
+- [x] 首登改密只改一次：`(account)/settings/password`、成功后静默重登、`ensureLiveSession` 不误踢 `mustChangePassword true→false`
+- [x] 列表滚动记忆 / 返回定位（`#app-scroll` + `mainScroll.ts` + `HistoryBackLink`）；侧栏点击滚回顶部
+- [x] 组织管理等宽表移动端可横滑
+- [x] N7 列表列：已用天数 / 已有用户 / 缺口；去掉列表 SN 列
+- [x] N7 **处理状态**（已处理/未处理 + 备注）：详情可代记；待跟进列表与队员明细可见可筛；导出带状态；与考核「待跟进」独立
+- [x] 文档同步 §1.1 / §6.2b；生产 `ali.orblead.com` 已含上述能力
+
 ### 2026-07-16
 
 - [x] 业务选择页 `/`（小蓝环 / 支付宝 N7）
@@ -558,11 +617,13 @@ src/
 
 按优先级，只需保证**可登录角色**能顺畅使用；业务员无需任何登录操作。
 
-1. **数据就绪** — 人员名单 + 商户明细 Excel 导入完成，归属匹配正常
-2. **开通经理** — 管理员在 `/xlh/admin/org` 为各区域经理开通账号
-3. **开通主管**（如有）— 经理登录后创建/开通团队主管
-4. **经理试用** — 登录 → 业务选择 → 进小蓝环，确认总览、团队明细、风控台账、商机分析与钻取
-5. **环境稳定** — 生产库连接稳定（开发环境 Prisma Dev 长跑易 OOM）
+1. **数据就绪** — 管理员在 `/xlh/admin/import` 上传人员名单 + 商户明细 Excel，归属匹配正常
+2. **开通经理** — 管理员在 `/xlh/admin/org` 为各区域经理开通账号（告知登录名与初始密码）
+3. **经理首登** — 登录 → `/settings/password` 改一次密 → 自动进入业务选择（不应再被要求改密）
+4. **开通主管**（如有）— 经理登录后创建/开通团队主管
+5. **经理试用（小蓝环）** — 业务选择 → 进小蓝环，确认总览、团队明细、风控台账、商机分析与钻取
+6. **经理试用（N7）** — 看板 → 待跟进 → 设备详情标记处理状态 → 列表可见「已处理/未处理」
+7. **环境稳定** — 生产库连接稳定（开发环境 Prisma Dev 长跑易 OOM）
 
 **不需要做的事**：给业务员开通账号、发密码、引导实名认证或 onboarding。
 
@@ -674,17 +735,19 @@ Dockerfile
 
 | 阶段 | 内容 |
 |---|---|
-| N7 | 样表/指标确定后：N7 数据模型、导入、看板与权限（可按业务线隔离） |
-| P3 | P 站 API 拉取、定时任务、异常数据管理 |
+| N7 | 业务员端写入处理状态；看板/空态/移动端宽表体验；权限与文案继续打磨 |
+| P3 | **P 站 API 拉取**（真正上线后才可切换 `dataMode=API_SYNC` 并考虑关闭商户 Excel 上传） |
 | P4 | 公共大屏增强（自动刷新、投屏） |
 | P5 | 后台管理（模式切换、日志中心、历史回溯） |
 
 ### 可选优化（非紧急）
 
-- onboarding / change-password 页面 Notion 化
+- 无业务线权限时中间件踢回 `/` 应带说明，避免「静默回首页」
+- 单业务线经理登录后可跳过业务选择页直达
+- 经理首登后空态补充「下一步」指引（谁导入数据、先看哪页）
+- N7：列表展示处理备注摘要（现仅悬停 title）；按处理人筛选
 - Director 首页经理团队排行（`shouldShowManagerRanking` 相关代码已存在）
 - `/xlh/screen` 公共大屏实现或隐藏占位
-- 浏览器 tab / metadata 标题统一为 Leadspace.Alipay
 - 记住上次进入的业务线（cookie），登录后可直达
 
 ---
@@ -698,6 +761,8 @@ Dockerfile
 5. **提交前** 跑 `npm run build` 验证类型
 6. **不主动 git commit/push**，除非用户明确要求
 7. **不主动部署生产**，除非本地已验证且负责人确认（见 §15.3）；紧急线上修复除外
+8. **小蓝环数据入口**：未交付 P 站 API 同步前，保留 `/xlh/admin/import` 的「人员名单」与「商户明细」两 Tab（见 §1.1）
+9. **架构/产品约定变更** 时同步更新本文档与 README.md
 
 ---
 
@@ -705,10 +770,13 @@ Dockerfile
 
 | 问题类型 | 先看 |
 |---|---|
-| 登录/Session | `auth.config.ts`, `check-account/route.ts` |
-| 权限/越权 | `permissions.ts`, `manager-scope.ts` |
-| 指标不对 | `business-rules.ts`, `analytics.ts` |
-| 导入失败 | `excel-parser.ts`, `excel-importer.ts`, `user-matcher.ts` |
+| 登录/Session | `auth.ts`, `auth.config.ts`, `check-account/route.ts`, `session-expired` |
+| 首登改密 | `ChangePasswordForm.tsx`, `(account)/settings/password`, `api/auth/change-password` |
+| 滚动/返回 | `mainScroll.ts`, `ScrollMemory.tsx`, `HistoryBackLink.tsx`, `AppShell` `#app-scroll` |
+| N7 处理状态 | `N7DeviceDetailView`, `N7FollowUpBadge`, `api/n7/devices/[sn]` PATCH, `analytics.updateN7DeviceFollowUp` |
+| 权限/越权 | `permissions.ts`, `manager-scope.ts`, `business-lines.ts`, `n7-scope.ts` |
+| 指标不对 | `business-rules.ts`, `analytics.ts`（小蓝环）/ `services/n7/analytics.ts`（N7） |
+| 导入失败 | `excel-parser.ts`, `excel-importer.ts`, `n7-excel-importer.ts`；入口 `/xlh/admin/import`、`/n7/admin/import` |
 | 台账筛选 | `ledger-url.ts`, `LedgerView.tsx`, `buildLedgerWhere` |
 | 日期默认值 | `ledger-date.ts` → `getCurrentMonthRange()` |
 | UI 不一致 | `notion.tsx`, 对照 `/xlh` 或 `/xlh/ledger` 页面 |

@@ -4,24 +4,38 @@ import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { NotionAlert, NotionButton, NotionInput } from "@/components/ui/notion";
+import { NotionPasswordInput } from "@/components/ui/NotionPasswordInput";
 
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/";
-  const onboarded = searchParams.get("onboarded") === "1";
-  const sessionRefresh = searchParams.get("session") === "refresh";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // 进页时锁住提示，避免清理 query 后闪一下就消失
+  const [banner] = useState(() => {
+    if (searchParams.get("disabled") === "1") return "disabled" as const;
+    if (searchParams.get("onboarded") === "1") return "onboarded" as const;
+    if (searchParams.get("passwordChanged") === "1") return "passwordChanged" as const;
+    if (searchParams.get("session") === "refresh") return "session" as const;
+    return null;
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
-    if (params.has("disabled") || params.has("session")) {
+    if (
+      params.has("disabled") ||
+      params.has("session") ||
+      params.has("passwordChanged") ||
+      params.has("onboarded")
+    ) {
       params.delete("disabled");
       params.delete("session");
+      params.delete("passwordChanged");
+      params.delete("onboarded");
       const qs = params.toString();
       router.replace(qs ? `/login?${qs}` : "/login");
     }
@@ -67,7 +81,7 @@ export default function LoginForm() {
   }
 
   return (
-    <div className="min-h-full flex-1 flex items-center justify-center bg-[#f4f6f9] px-4 py-10">
+    <div className="h-full min-h-0 flex-1 overflow-y-auto flex items-center justify-center bg-[#f4f6f9] px-4 py-10">
       <div className="w-full max-w-[400px]">
         <div className="mb-6 space-y-1 text-center">
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[#eff6ff] text-[#2563eb] text-lg font-bold mb-2">
@@ -81,11 +95,17 @@ export default function LoginForm() {
         </div>
 
         <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm p-6 sm:p-8 space-y-4">
-          {onboarded && (
+          {banner === "disabled" && (
+            <NotionAlert tone="error">账号已停用，请联系管理员</NotionAlert>
+          )}
+          {banner === "onboarded" && (
             <NotionAlert tone="success">实名认证已完成，请重新登录</NotionAlert>
           )}
-          {sessionRefresh && (
+          {banner === "session" && (
             <NotionAlert tone="warning">账号状态已更新，请重新登录</NotionAlert>
+          )}
+          {banner === "passwordChanged" && (
+            <NotionAlert tone="success">密码已更新，请使用新密码登录</NotionAlert>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -102,13 +122,13 @@ export default function LoginForm() {
             </div>
             <div>
               <label className="block text-sm font-medium text-[#111827] mb-1.5">密码</label>
-              <NotionInput
-                type="password"
+              <NotionPasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="请输入密码"
                 className="w-full"
                 required
+                autoComplete="current-password"
               />
             </div>
 

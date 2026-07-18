@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   applyN7DateRangeToParams,
   n7DateRangeQuery,
   readN7DateRangeFromSearchParams,
 } from "@/lib/n7-date";
 import { n7Path } from "@/lib/business-lines";
+import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
   NotionAlert,
   NotionInput,
@@ -37,6 +38,7 @@ interface ApiResponse {
 
 export function N7ManagerBoard() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { dateFrom, dateTo } = readN7DateRangeFromSearchParams(searchParams);
   const search = searchParams.get("search") ?? "";
@@ -46,6 +48,8 @@ export function N7ManagerBoard() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [searchDraft, setSearchDraft] = useState(search);
+
+  useRestoreListScroll(pathname, !loading && !!data);
 
   function pushQuery(patch: {
     dateFrom?: string;

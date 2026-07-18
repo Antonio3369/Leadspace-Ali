@@ -24,6 +24,9 @@ export const notion = {
   panel: "rounded-[14px] border border-[#eef2f7] bg-white shadow-sm",
   panelMuted: "rounded-[14px] border border-[#eef2f7] bg-[#f8fafc]",
   tableWrap: "rounded-[14px] border border-[#eef2f7] bg-white shadow-sm overflow-hidden",
+  /** 宽表：自身作为横向滚动容器（勿再包一层 overflow-hidden） */
+  tableScroll:
+    "rounded-[14px] border border-[#eef2f7] bg-white shadow-sm min-w-0 w-full max-w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]",
   thead: "bg-[#f8fafc] text-[#64748b]",
   row: "border-t border-[#f1f5f9] hover:bg-[#f8fafc]/60",
   input:
@@ -69,7 +72,11 @@ export function PageHeader({
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div className="space-y-2 min-w-0">
           {canBack && (
-            <HistoryBackLink label={backLabel} fallbackHref={backHref} />
+            <HistoryBackLink
+              label={backLabel}
+              fallbackHref={backHref}
+              preferHistoryBack
+            />
           )}
           {kicker && <p className={notion.kicker}>{kicker}</p>}
           <h1 className={notion.title}>{title}</h1>
@@ -104,10 +111,8 @@ export function NotionPanel({
 
 export function NotionTable({ children, minWidth }: { children: ReactNode; minWidth?: string }) {
   return (
-    <div className={notion.tableWrap}>
-      <div className="overflow-x-auto">
-        <table className={`w-full text-sm ${minWidth ? `min-w-[${minWidth}]` : ""}`}>{children}</table>
-      </div>
+    <div className={notion.tableScroll}>
+      <table className={`w-full text-sm ${minWidth ? `min-w-[${minWidth}]` : ""}`}>{children}</table>
     </div>
   );
 }
@@ -141,10 +146,19 @@ export function NotionButton({
   );
 }
 
-export function NotionLinkButton({ href, children }: { href: string; children: ReactNode }) {
+export function NotionLinkButton({
+  href,
+  children,
+  onClick,
+}: {
+  href: string;
+  children: ReactNode;
+  onClick?: () => void;
+}) {
   return (
     <Link
       href={href}
+      onClick={onClick}
       className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-[#2563eb] border border-[#bfdbfe] rounded-lg hover:bg-[#eff6ff] transition-colors"
     >
       {children}

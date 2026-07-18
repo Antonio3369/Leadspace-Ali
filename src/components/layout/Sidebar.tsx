@@ -12,6 +12,7 @@ import {
   n7Path,
   xlhPath,
 } from "@/lib/business-lines";
+import { markSidebarNavTop } from "@/lib/mainScroll";
 import type { UserRole } from "@/generated/prisma/client";
 
 interface SidebarProps {
@@ -66,7 +67,13 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
   const line = lineId ? BUSINESS_LINES[lineId] : null;
   const inN7 = isN7Path(pathname);
 
-  function handleClick() {
+  function handleNavClick(href: string) {
+    try {
+      const path = new URL(href, window.location.origin).pathname;
+      markSidebarNavTop(path);
+    } catch {
+      markSidebarNavTop(href.split("?")[0] || href);
+    }
     onNavigate?.();
   }
 
@@ -78,7 +85,7 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
 
   return (
     <aside
-      className={`fixed md:static inset-y-0 left-0 z-[100] w-[220px] shrink-0 flex flex-col bg-[#fbfbfa] border-r border-[rgba(55,53,47,0.09)] transition-transform duration-200 md:translate-x-0 ${
+      className={`fixed md:static inset-y-0 left-0 z-[100] w-[220px] h-full shrink-0 flex flex-col bg-[#fbfbfa] border-r border-[rgba(55,53,47,0.09)] transition-transform duration-200 md:translate-x-0 ${
         open ? "translate-x-0" : "-translate-x-full"
       }`}
     >
@@ -105,7 +112,7 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
         </div>
         <Link
           href="/"
-          onClick={handleClick}
+          onClick={() => handleNavClick("/")}
           className="block text-xs font-medium text-[#2563eb] hover:text-[#1d4ed8] transition-colors"
         >
           ← 切换业务
@@ -125,7 +132,7 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={handleClick}
+                onClick={() => handleNavClick(item.href)}
                 className={navLinkClass(active)}
               >
                 <span className="w-5 text-center text-sm opacity-80">{item.icon}</span>
@@ -141,7 +148,7 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  onClick={handleClick}
+                  onClick={() => handleNavClick(item.href)}
                   className={navLinkClass(active)}
                 >
                   <span className="w-5 text-center text-sm opacity-80">{item.icon}</span>
@@ -153,7 +160,7 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
             {showAdminNav && (
               <Link
                 href={adminHref}
-                onClick={handleClick}
+                onClick={() => handleNavClick(adminHref)}
                 className={navLinkClass(isActivePath(pathname, adminHref))}
               >
                 <span className="w-5 text-center text-sm opacity-80">⚙️</span>
@@ -165,7 +172,7 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
               <>
                 <Link
                   href={xlhPath("/admin/import")}
-                  onClick={handleClick}
+                  onClick={() => handleNavClick(xlhPath("/admin/import"))}
                   className={navLinkClass(isActivePath(pathname, xlhPath("/admin/import")))}
                 >
                   <span className="w-5 text-center text-sm opacity-80">⬆️</span>
@@ -173,7 +180,7 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
                 </Link>
                 <Link
                   href={xlhPath("/screen")}
-                  onClick={handleClick}
+                  onClick={() => handleNavClick(xlhPath("/screen"))}
                   className={navLinkClass(isActivePath(pathname, xlhPath("/screen")))}
                 >
                   <span className="w-5 text-center text-sm opacity-80">🖥</span>
@@ -187,7 +194,7 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
         <div className="pt-2 mt-2 border-t border-[rgba(55,53,47,0.06)]">
           <Link
             href="/settings/password"
-            onClick={handleClick}
+            onClick={() => handleNavClick("/settings/password")}
             className={navLinkClass(isActivePath(pathname, "/settings/password"))}
           >
             <span className="w-5 text-center text-sm opacity-80">🔒</span>

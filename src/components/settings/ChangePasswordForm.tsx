@@ -1,29 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
-import { NotionAlert, NotionButton, NotionInput } from "@/components/ui/notion";
+import { signIn, signOut } from "next-auth/react";
+import { NotionAlert, NotionButton } from "@/components/ui/notion";
+import { NotionPasswordInput } from "@/components/ui/NotionPasswordInput";
 
 interface ChangePasswordFormProps {
   forced?: boolean;
 }
 
 export function ChangePasswordForm({ forced = false }: ChangePasswordFormProps) {
-  const router = useRouter();
+  // 锁定首登模式，避免改密成功后父级重渲染把 forced 打成 false、再次要求填「当前密码」
+  const [isForced] = useState(forced);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [doneHint, setDoneHint] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    setSuccess("");
+    setDoneHint("");
 
-    if (!forced && !currentPassword) {
+    if (!isForced && !currentPassword) {
       setError("请输入当前密码");
       return;
     }
@@ -42,7 +43,7 @@ export function ChangePasswordForm({ forced = false }: ChangePasswordFormProps) 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          currentPassword: forced ? undefined : currentPassword,
+          currentPassword: isForced ? undefined : currentPassword,
           newPassword,
         }),
       });
@@ -52,17 +53,30 @@ export function ChangePasswordForm({ forced = false }: ChangePasswordFormProps) 
         return;
       }
 
-      if (forced) {
+      // 首登强制改密：用新密码静默重登，刷新 JWT，避免中间件仍认为须改密而再挡一次
+      if (isForced || data.forced) {
+        setDoneHint("密码已更新，正在进入系统…");
+        const username = data.username as string | undefined;
+        if (username) {
+          const result = await signIn("credentials", {
+            username,
+            password: newPassword,
+            redirect: false,
+          });
+          if (!result?.error) {
+            window.location.href = "/";
+            return;
+          }
+        }
         await signOut({ redirect: false });
-        router.push("/login?session=refresh");
-        router.refresh();
+        window.location.href = "/login?passwordChanged=1";
         return;
       }
 
-      setSuccess("密码已更新，请使用新密码下次登录");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
+      // 自助改密：退出后用新密码登录更稳妥
+      setDoneHint("密码已更新，请使用新密码重新登录");
+      await signOut({ redirect: false });
+      window.location.href = "/login?passwordChanged=1";
     } catch {
       setError("网络错误，请重试");
     } finally {
@@ -72,60 +86,60 @@ export function ChangePasswordForm({ forced = false }: ChangePasswordFormProps) 
 
   return (
     <div className="max-w-md">
-      {forced && (
+      {isForced && !doneHint && (
         <div className="mb-4">
           <NotionAlert tone="warning">首次登录须设置新密码后方可继续使用</NotionAlert>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="rounded-[14px] border border-[#eef2f7] bg-white p-5 shadow-sm space-y-4">
-        {!forced && (
+      {doneHint ? (
+        <NotionAlert tone="success">{doneHint}</NotionAlert>
+      ) : (
+        <form onSubmit={handleSubmit} className="rounded-[14px] border border-[#eef2f7] bg-white p-5 shadow-sm space-y-4">
+          {!isForced && (
+            <div>
+              <label className="block text-sm font-medium text-[#111827] mb-1.5">当前密码</label>
+              <NotionPasswordInput
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="请输入当前密码"
+                className="w-full"
+                autoComplete="current-password"
+              />
+            </div>
+          )}
+
           <div>
-            <label className="block text-sm font-medium text-[#111827] mb-1.5">当前密码</label>
-            <NotionInput
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              placeholder="请输入当前密码"
+            <label className="block text-sm font-medium text-[#111827] mb-1.5">新密码</label>
+            <NotionPasswordInput
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="至少 6 位"
               className="w-full"
-              autoComplete="current-password"
+              autoComplete="new-password"
+              required
             />
           </div>
-        )}
 
-        <div>
-          <label className="block text-sm font-medium text-[#111827] mb-1.5">新密码</label>
-          <NotionInput
-            type="password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="至少 6 位"
-            className="w-full"
-            autoComplete="new-password"
-            required
-          />
-        </div>
+          <div>
+            <label className="block text-sm font-medium text-[#111827] mb-1.5">确认新密码</label>
+            <NotionPasswordInput
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="再次输入新密码"
+              className="w-full"
+              autoComplete="new-password"
+              required
+            />
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-[#111827] mb-1.5">确认新密码</label>
-          <NotionInput
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="再次输入新密码"
-            className="w-full"
-            autoComplete="new-password"
-            required
-          />
-        </div>
+          {error && <NotionAlert tone="error">{error}</NotionAlert>}
 
-        {error && <NotionAlert tone="error">{error}</NotionAlert>}
-        {success && <NotionAlert tone="success">{success}</NotionAlert>}
-
-        <NotionButton type="submit" disabled={loading} className="w-full">
-          {loading ? "保存中..." : forced ? "保存并继续" : "保存新密码"}
-        </NotionButton>
-      </form>
+          <NotionButton type="submit" disabled={loading} className="w-full">
+            {loading ? "保存中..." : isForced ? "保存并继续" : "保存新密码"}
+          </NotionButton>
+        </form>
+      )}
     </div>
   );
 }

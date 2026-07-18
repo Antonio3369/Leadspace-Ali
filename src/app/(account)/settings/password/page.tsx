@@ -17,7 +17,7 @@ export default async function SettingsPasswordPage() {
             ? "首次登录须设置新密码后方可继续使用"
             : "登录账号共用一套密码，改后小蓝环与 N7 均生效"
         }
-        showBack={!user.mustChangePassword}
+        backHref={user.mustChangePassword ? undefined : "/"}
         backLabel="← 返回"
       />
       <ChangePasswordForm forced={user.mustChangePassword} />

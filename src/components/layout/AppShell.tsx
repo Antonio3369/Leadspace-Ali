@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { UserRole } from "@/generated/prisma/client";
+import { ScrollMemory } from "@/components/layout/ScrollMemory";
 import { Sidebar } from "@/components/layout/Sidebar";
 import {
   BUSINESS_LINES,
@@ -17,6 +18,10 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
+/**
+ * 布局对齐 hk.orblead：视口锁高 + #app-scroll 独立滚动。
+ * Safari 下必须滚这个容器，而不是 window。
+ */
 export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppShellProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -24,22 +29,37 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
   const line = currentBusinessLine(pathname);
   const lineName = line ? BUSINESS_LINES[line].name : null;
 
+  const scrollMemory = (
+    <Suspense fallback={null}>
+      <ScrollMemory />
+    </Suspense>
+  );
+
   if (!withSidebar) {
     return (
-      <div className="min-h-full flex-1 flex flex-col bg-[#f4f6f9]">
-        <header className="sticky top-0 z-50 bg-white/92 backdrop-blur-md border-b border-[#eef2f7]">
+      <div className="h-full min-h-0 flex-1 flex flex-col overflow-hidden bg-[#f4f6f9]">
+        {scrollMemory}
+        <header className="shrink-0 z-50 bg-white/92 backdrop-blur-md border-b border-[#eef2f7]">
           <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 max-w-[1520px] mx-auto w-full">
             <span className="text-sm font-semibold text-[#111827] truncate">Leadspace.Alipay</span>
             {signOutDesktop}
           </div>
         </header>
-        <main className="flex-1 w-full max-w-[1520px] mx-auto px-4 sm:px-5 py-6 md:py-7">{children}</main>
+        <main
+          id="app-scroll"
+          className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch]"
+        >
+          <div className="w-full max-w-[1520px] mx-auto px-4 sm:px-5 py-6 md:py-7">
+            {children}
+          </div>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-full flex-1 flex bg-[#f4f6f9]">
+    <div className="h-full min-h-0 flex-1 flex overflow-hidden bg-[#f4f6f9]">
+      {scrollMemory}
       {sidebarOpen && (
         <button
           type="button"
@@ -51,8 +71,8 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
 
       <Sidebar user={user} open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />
 
-      <div className="flex-1 min-w-0 flex flex-col min-h-full">
-        <header className="sticky top-0 z-50 bg-white/92 backdrop-blur-md border-b border-[#eef2f7] md:hidden">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+        <header className="shrink-0 z-50 bg-white/92 backdrop-blur-md border-b border-[#eef2f7] md:hidden">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
             <button
               type="button"
@@ -76,12 +96,17 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
           </div>
         </header>
 
-        <div className="hidden md:flex items-center justify-end px-6 py-2 border-b border-[#eef2f7] bg-white/60">
+        <div className="hidden md:flex shrink-0 items-center justify-end px-6 py-2 border-b border-[#eef2f7] bg-white/60">
           {signOutDesktop}
         </div>
 
-        <main className="flex-1 w-full max-w-[1520px] mx-auto px-4 sm:px-5 py-5 md:py-7">
-          {children}
+        <main
+          id="app-scroll"
+          className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch]"
+        >
+          <div className="w-full max-w-[1520px] mx-auto px-4 sm:px-5 py-5 md:py-7">
+            {children}
+          </div>
         </main>
       </div>
     </div>

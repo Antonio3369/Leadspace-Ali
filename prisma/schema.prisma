@@ -294,6 +294,11 @@ model N7DeviceRecord {
   salesUser          User?     @relation("N7DeviceSales", fields: [salesUserId], references: [id])
   managerUserId      String?
   managerUser        User?     @relation("N7DeviceManager", fields: [managerUserId], references: [id])
+  /** 处理状态：是否已处理（Excel 重导不覆盖；与考核「待跟进」独立） */
+  followUpDone       Boolean   @default(false)
+  followUpNote       String?
+  followUpAt         DateTime?
+  followUpById       String?
   sourceMode         DataMode  @default(MANUAL_UPLOAD)
   importBatchId      String?
   importBatch        ImportLog? @relation(fields: [importBatchId], references: [id])
@@ -308,6 +313,7 @@ model N7DeviceRecord {
   @@index([isQualified])
   @@index([remainingEnded, remainingDays])
   @@index([storeId])
+  @@index([followUpDone])
 }
 
 model ApiSyncLog {

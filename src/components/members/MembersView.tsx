@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { captureListScroll } from "@/lib/mainScroll";
+import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import { ROLE_LABELS } from "@/lib/constants";
 import { getRateColorLevel } from "@/lib/business-rules";
 import { COLORS } from "@/lib/constants";
@@ -106,6 +108,8 @@ export function MembersView() {
     const t = setTimeout(load, 300);
     return () => clearTimeout(t);
   }, [load]);
+
+  useRestoreListScroll("/xlh/members", !(loading && members.length === 0));
 
   function applyPreset(preset: LedgerDatePreset) {
     const range = getPresetRange(preset);
@@ -241,7 +245,7 @@ export function MembersView() {
                 </tr>
               ) : (
                 members.map((m) => (
-                  <tr key={m.id} className={notion.row}>
+                  <tr key={m.id} className={notion.row} data-list-anchor={m.id}>
                     <td className="px-4 py-3 font-medium">{m.name}</td>
                     <td className="px-4 py-3">
                       {isManagerList ? "经理" : (ROLE_LABELS[m.role] ?? m.role)}
@@ -255,7 +259,12 @@ export function MembersView() {
                     <MetricsCells metrics={m.metrics} />
                     {showDetailLink && (
                       <td className="px-4 py-3 text-center">
-                        <NotionLinkButton href={buildDetailHref(m.id)}>详情</NotionLinkButton>
+                        <NotionLinkButton
+                          href={buildDetailHref(m.id)}
+                          onClick={() => captureListScroll("/xlh/members", m.id)}
+                        >
+                          详情
+                        </NotionLinkButton>
                       </td>
                     )}
                   </tr>

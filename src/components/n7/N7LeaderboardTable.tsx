@@ -194,6 +194,7 @@ export function N7LeaderboardTable({
           {rows.map((row) => (
             <tr
               key={row.key}
+              data-list-anchor={row.key}
               className="border-b border-[#f1f5f9] last:border-0 hover:bg-[#f8fafc]"
             >
               <td className="sticky left-0 z-10 bg-white px-3 sm:px-4 py-3">

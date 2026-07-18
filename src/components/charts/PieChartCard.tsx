@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
   Sector,
 } from "recharts";
+import { captureListScroll } from "@/lib/mainScroll";
 
 /** 简洁语义配色 */
 const SEMANTIC_COLORS: Record<string, string> = {
@@ -95,7 +96,9 @@ export function PieChartCard({ title, data, getSliceHref, footerLink }: PieChart
               onMouseLeave={() => setActiveIndex(null)}
               onClick={(_, index) => {
                 const href = enriched[index]?.href;
-                if (href) router.push(href);
+                if (!href) return;
+                captureListScroll(window.location.pathname);
+                router.push(href);
               }}
             >
               {enriched.map((entry) => (

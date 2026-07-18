@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   applyN7DateRangeToParams,
   n7DateRangeQuery,
   readN7DateRangeFromSearchParams,
 } from "@/lib/n7-date";
 import { n7Path } from "@/lib/business-lines";
+import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
+import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 import {
   NotionAlert,
   NotionInput,
@@ -45,6 +46,7 @@ export function N7StaffBoard({
   variant?: "home" | "drilldown";
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { dateFrom, dateTo } = readN7DateRangeFromSearchParams(searchParams);
   const search = searchParams.get("search") ?? "";
@@ -55,6 +57,8 @@ export function N7StaffBoard({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [searchDraft, setSearchDraft] = useState(search);
+
+  useRestoreListScroll(pathname, !loading && !!data);
 
   function pushQuery(patch: {
     dateFrom?: string;
@@ -131,9 +135,13 @@ export function N7StaffBoard({
               <>按队员看拓展、达标与待跟进；点击队员查看设备问题。</>
             ) : (
               <>
-                <Link href={`${n7Path()}?${rangeQs}`} className="text-[#2563eb] hover:text-[#1d4ed8]">
-                  ← 数据看板
-                </Link>
+                <HistoryBackLink
+                  label="← 数据看板"
+                  fallbackHref={`${n7Path()}?${rangeQs}`}
+                  listScrollKey={n7Path()}
+                  preferHistoryBack
+                  className="text-[#2563eb] hover:text-[#1d4ed8]"
+                />
                 <span className="mx-2 text-[#cbd5e1]">/</span>
                 点击队员查看商户达标与问题
               </>

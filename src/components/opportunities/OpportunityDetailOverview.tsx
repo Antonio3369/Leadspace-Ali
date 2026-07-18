@@ -81,7 +81,8 @@ export function OpportunityDetailOverview({
     (view: "team" | "personal") => {
       const next = { ...filters, view };
       router.push(
-        `/xlh/opportunities/${encodeURIComponent(opportunityId)}${opportunitiesUrlQueryString(next)}`
+        `/xlh/opportunities/${encodeURIComponent(opportunityId)}${opportunitiesUrlQueryString(next)}`,
+        { scroll: false }
       );
     },
     [filters, opportunityId, router]

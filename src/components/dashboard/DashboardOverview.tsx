@@ -114,7 +114,7 @@ export function DashboardOverview({
   );
 
   function handleViewChange(view: "team" | "personal") {
-    router.push(`/xlh?view=${view}`);
+    router.push(`/xlh?view=${view}`, { scroll: false });
   }
 
   const meta = dateRangeLabel ? (

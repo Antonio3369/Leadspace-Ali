@@ -341,10 +341,8 @@ export async function importExcelFile(
   fileName: string,
   uploadedById: string
 ): Promise<ImportResult> {
-  const config = await db.systemConfig.findUnique({ where: { id: "singleton" } });
-  if (config?.dataMode === "API_SYNC") {
-    throw new Error("当前为 API 自动拉取模式，Excel 上传入口已关闭");
-  }
+  // 现阶段数据来源以 Excel 人工上传为准（P 站 API 同步为后续阶段）。
+  // 即使 SystemConfig.dataMode 被误标为 API_SYNC，也不阻断运营上传商户明细。
 
   const { rows, errors: parseErrors } = parseExcelBuffer(buffer);
   return importParsedRows(rows, {

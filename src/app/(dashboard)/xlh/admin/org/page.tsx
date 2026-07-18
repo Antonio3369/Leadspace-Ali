@@ -445,19 +445,19 @@ export default function AdminOrgPage() {
         }}
       />
 
-      <div className={notion.tableWrap}>
+      <div className={notion.tableScroll}>
         <table className="w-full text-sm min-w-[1040px]">
           <thead className={notion.thead}>
             <tr>
-              <th className="text-left px-4 py-3">登录名</th>
-              <th className="text-left px-4 py-3">姓名</th>
-              <th className="text-left px-4 py-3">角色</th>
-              <th className="text-left px-4 py-3">业务线</th>
-              <th className="text-left px-4 py-3">开通状态</th>
-              <th className="text-left px-4 py-3">账号状态</th>
-              <th className="text-left px-4 py-3">团队</th>
-              <th className="text-left px-4 py-3">上级</th>
-              <th className="text-left px-4 py-3">操作</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">登录名</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">姓名</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">角色</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">业务线</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">开通状态</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">账号状态</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">团队</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">上级</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -477,62 +477,70 @@ export default function AdminOrgPage() {
                   u.businessLines?.length ? u.businessLines : ["xlh", "n7"]
                 );
                 return (
-              <tr key={u.id} className={notion.row}>
-                <td className="px-4 py-2.5 font-mono text-xs">{u.username}</td>
-                <td className="px-4 py-2.5">{u.name}</td>
-                <td className="px-4 py-2.5">{ROLE_LABELS[u.role] ?? u.role}</td>
-                <td className="px-4 py-2.5">
-                  <div className="flex flex-col gap-1">
-                    {(["xlh", "n7"] as BusinessLineId[]).map((line) => (
-                      <label
-                        key={line}
-                        className="inline-flex items-center gap-1.5 text-xs text-[#475569] cursor-pointer"
+                  <tr key={u.id} className={notion.row}>
+                    <td className="px-4 py-2.5 font-mono text-xs whitespace-nowrap">
+                      {u.username}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">{u.name}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {ROLE_LABELS[u.role] ?? u.role}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex flex-col gap-1 min-w-[7.5rem]">
+                        {(["xlh", "n7"] as BusinessLineId[]).map((line) => (
+                          <label
+                            key={line}
+                            className="inline-flex items-center gap-1.5 text-xs text-[#475569] cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={lines.includes(line)}
+                              onChange={(e) =>
+                                handleBusinessLineToggle(u, line, e.target.checked)
+                              }
+                              className="rounded border-[#cbd5e1]"
+                            />
+                            {BUSINESS_LINES[line].name}
+                          </label>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <span
+                        className={
+                          u.accountLifecycle === "IMPORTED"
+                            ? "text-amber-600"
+                            : u.accountLifecycle === "PENDING_ONBOARDING"
+                              ? "text-blue-600"
+                              : "text-green-600"
+                        }
                       >
-                        <input
-                          type="checkbox"
-                          checked={lines.includes(line)}
-                          onChange={(e) =>
-                            handleBusinessLineToggle(u, line, e.target.checked)
-                          }
-                          className="rounded border-[#cbd5e1]"
-                        />
-                        {BUSINESS_LINES[line].name}
-                      </label>
-                    ))}
-                  </div>
-                </td>
-                <td className="px-4 py-2.5">
-                  <span
-                    className={
-                      u.accountLifecycle === "IMPORTED"
-                        ? "text-amber-600"
-                        : u.accountLifecycle === "PENDING_ONBOARDING"
-                          ? "text-blue-600"
-                          : "text-green-600"
-                    }
-                  >
-                    {LIFECYCLE_LABELS[u.accountLifecycle] ?? u.accountLifecycle}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5">
-                  <span
-                    className={
-                      u.status === "ACTIVE"
-                        ? "text-green-600"
-                        : u.status === "DISABLED"
-                          ? "text-red-600"
-                          : "text-gray-500"
-                    }
-                  >
-                    {STATUS_LABELS[u.status] ?? u.status}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5">{u.team?.name ?? "-"}</td>
-                <td className="px-4 py-2.5">{u.manager?.name ?? "-"}</td>
-                <td className="px-4 py-2.5">
-                  {u.role === "MANAGER" ? renderManagerActions(u, tab) : "-"}
-                </td>
-              </tr>
+                        {LIFECYCLE_LABELS[u.accountLifecycle] ?? u.accountLifecycle}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <span
+                        className={
+                          u.status === "ACTIVE"
+                            ? "text-green-600"
+                            : u.status === "DISABLED"
+                              ? "text-red-600"
+                              : "text-gray-500"
+                        }
+                      >
+                        {STATUS_LABELS[u.status] ?? u.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {u.team?.name ?? "-"}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {u.manager?.name ?? "-"}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {u.role === "MANAGER" ? renderManagerActions(u, tab) : "-"}
+                    </td>
+                  </tr>
                 );
               })
             )}

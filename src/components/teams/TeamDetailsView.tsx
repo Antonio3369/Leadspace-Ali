@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { captureListScroll } from "@/lib/mainScroll";
+import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import { SegmentFilterRow } from "@/components/ui/SegmentFilterRow";
 import { getRateColorLevel } from "@/lib/business-rules";
 import { COLORS } from "@/lib/constants";
@@ -76,6 +78,14 @@ interface TeamDetailsViewProps {
   role: UserRole;
 }
 
+/** 返回详情后再回来时复用，避免先「加载中」把滚动钳到顶部 */
+let teamsListCache: {
+  key: string;
+  rows: RankedTeamDetailRow[];
+  listType: "managers" | "staff" | "none";
+  canExport: boolean;
+} | null = null;
+
 export function TeamDetailsView({ role }: TeamDetailsViewProps) {
   const router = useRouter();
   const urlSearchParams = useSearchParams();
@@ -91,21 +101,31 @@ export function TeamDetailsView({ role }: TeamDetailsViewProps) {
     [resolvedSearchParams, defaultRange]
   );
 
+  const cacheKey = useMemo(
+    () => buildTeamDetailsUrlSearchParams(filters).toString(),
+    [filters]
+  );
+
   const isDirector = role === "DIRECTOR";
   const isManager = role === "MANAGER";
   const canView = isDirector || isManager;
 
-  const [rows, setRows] = useState<RankedTeamDetailRow[]>([]);
-  const [listType, setListType] = useState<"managers" | "staff" | "none">("none");
-  const [canExport, setCanExport] = useState(false);
+  const cached =
+    teamsListCache && teamsListCache.key === cacheKey ? teamsListCache : null;
+
+  const [rows, setRows] = useState<RankedTeamDetailRow[]>(cached?.rows ?? []);
+  const [listType, setListType] = useState<"managers" | "staff" | "none">(
+    cached?.listType ?? "none"
+  );
+  const [canExport, setCanExport] = useState(cached?.canExport ?? false);
   const [searchDraft, setSearchDraft] = useState(filters.search);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [loadError, setLoadError] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const skipSearchDebounceRef = useRef(false);
   const filtersRef = useRef(filters);
-  const rowsRef = useRef<RankedTeamDetailRow[]>([]);
+  const rowsRef = useRef<RankedTeamDetailRow[]>(cached?.rows ?? []);
   filtersRef.current = filters;
 
   const pushFilters = useCallback(
@@ -116,6 +136,9 @@ export function TeamDetailsView({ role }: TeamDetailsViewProps) {
     },
     [router]
   );
+
+  const LIST_KEY = "/xlh/teams";
+  useRestoreListScroll(LIST_KEY, !(loading && rows.length === 0));
 
   useEffect(() => {
     if (urlSearchParams.toString()) return;
@@ -171,10 +194,18 @@ export function TeamDetailsView({ role }: TeamDetailsViewProps) {
     }
 
     const nextRows = data.rows ?? [];
-    setListType(data.listType ?? "none");
-    setCanExport(Boolean(data.canExport));
+    const nextListType = (data.listType ?? "none") as "managers" | "staff" | "none";
+    const nextCanExport = Boolean(data.canExport);
+    setListType(nextListType);
+    setCanExport(nextCanExport);
     setRows(nextRows);
     rowsRef.current = nextRows;
+    teamsListCache = {
+      key: buildTeamDetailsUrlSearchParams(filters).toString(),
+      rows: nextRows,
+      listType: nextListType,
+      canExport: nextCanExport,
+    };
     setLoading(false);
   }, [filters, canView]);
 
@@ -195,6 +226,10 @@ export function TeamDetailsView({ role }: TeamDetailsViewProps) {
     persistTeamDetailsFilters(filters);
     const q = buildTeamDetailsUrlSearchParams(filters).toString();
     return `/xlh/members/${id}${q ? `?${q}` : ""}`;
+  }
+
+  function handleOpenDetail(id: string) {
+    captureListScroll(LIST_KEY, id);
   }
 
   async function handleExport() {
@@ -327,7 +362,11 @@ export function TeamDetailsView({ role }: TeamDetailsViewProps) {
                 </tr>
               ) : (
                 rows.map((row) => (
-                  <tr key={row.id} className={notion.row}>
+                  <tr
+                    key={row.id}
+                    className={notion.row}
+                    data-list-anchor={row.id}
+                  >
                     <td className="px-4 py-3 text-center">
                       <RankBadge rank={row.rank} />
                     </td>
@@ -339,7 +378,12 @@ export function TeamDetailsView({ role }: TeamDetailsViewProps) {
                     )}
                     <MetricsCells metrics={row.metrics} />
                     <td className="px-4 py-3 text-center">
-                      <NotionLinkButton href={buildDetailHref(row.id)}>详情</NotionLinkButton>
+                      <NotionLinkButton
+                        href={buildDetailHref(row.id)}
+                        onClick={() => handleOpenDetail(row.id)}
+                      >
+                        详情
+                      </NotionLinkButton>
                     </td>
                   </tr>
                 ))

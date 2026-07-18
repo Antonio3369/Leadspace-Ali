@@ -70,6 +70,9 @@ export interface N7DeviceListItem {
   failReason: N7FailReason | null;
   daysGap: number;
   usersGap: number;
+  /** 处理状态（经理/管理员可在详情页代记；与考核「待跟进」名单独立） */
+  followUpDone: boolean;
+  followUpNote: string | null;
 }
 
 export interface N7DailyPoint {
@@ -211,11 +214,15 @@ function mapDevice(d: N7DeviceRecord): N7DeviceListItem {
       : resolveN7FailReason(d.effectiveDays, d.effectiveUsers),
     daysGap: daysGap(d.effectiveDays),
     usersGap: usersGap(d.effectiveUsers),
+    followUpDone: d.followUpDone,
+    followUpNote: d.followUpNote,
   };
 }
 
 function sortFollowUp(items: N7DeviceListItem[]): N7DeviceListItem[] {
   return [...items].sort((a, b) => {
+    // 未处理优先，方便经理/管理员扫漏
+    if (a.followUpDone !== b.followUpDone) return a.followUpDone ? 1 : -1;
     const ap = a.priority ? priorityRank(a.priority) : 99;
     const bp = b.priority ? priorityRank(b.priority) : 99;
     if (ap !== bp) return ap - bp;
@@ -481,7 +488,35 @@ export async function getN7DeviceDetail(deviceSn: string) {
     phase2Days: device.phase2Days,
     phase2Users: device.phase2Users,
     inFollowUp: isFollowUpCandidate(device),
+    followUpDone: device.followUpDone,
+    followUpNote: device.followUpNote,
+    followUpAt: toIso(device.followUpAt),
   };
+}
+
+export async function updateN7DeviceFollowUp(
+  deviceSn: string,
+  input: {
+    followUpDone: boolean;
+    followUpNote: string | null;
+    followUpById: string;
+  }
+) {
+  const note = input.followUpNote?.trim() || null;
+  return db.n7DeviceRecord.update({
+    where: { deviceSn },
+    data: {
+      followUpDone: input.followUpDone,
+      followUpNote: note,
+      followUpAt: input.followUpDone ? new Date() : null,
+      followUpById: input.followUpDone ? input.followUpById : null,
+    },
+    select: {
+      followUpDone: true,
+      followUpNote: true,
+      followUpAt: true,
+    },
+  });
 }
 
 /** 每日开单（按注册日） */

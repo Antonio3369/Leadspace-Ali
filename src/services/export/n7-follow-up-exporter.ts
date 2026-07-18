@@ -11,10 +11,12 @@ const EXPORT_COLUMNS = [
   { key: "operatorName", header: "队员" },
   { key: "storeName", header: "门店" },
   { key: "deviceSn", header: "设备SN" },
+  { key: "followUp", header: "处理状态" },
+  { key: "followUpNote", header: "处理备注" },
   { key: "merchantPhone", header: "商户手机" },
-  { key: "effectiveDays", header: "有效天数" },
-  { key: "effectiveUsers", header: "有效用户" },
-  { key: "gapReason", header: "缺口 / 原因" },
+  { key: "effectiveDays", header: "已用天数" },
+  { key: "effectiveUsers", header: "已有用户" },
+  { key: "gapReason", header: "缺口" },
   { key: "behaviors", header: "行为" },
 ] as const;
 
@@ -53,12 +55,9 @@ function formatGap(d: {
   isQualified: boolean;
   daysGap: number;
   usersGap: number;
-  failReason: string | null;
 }) {
   if (d.isQualified) return "已达标";
-  const parts = [`差${d.daysGap}天`, `差${d.usersGap}人`];
-  if (d.failReason) parts.push(d.failReason);
-  return parts.join(" · ");
+  return `差${d.daysGap}天·差${d.usersGap}人`;
 }
 
 function formatBehaviors(d: {
@@ -116,6 +115,8 @@ export async function exportN7FollowUpExcel(
     operatorName: d.operatorName,
     storeName: d.storeName || "未命名门店",
     deviceSn: d.deviceSn,
+    followUp: d.followUpDone ? "已处理" : "未处理",
+    followUpNote: d.followUpNote ?? "",
     merchantPhone: d.merchantPhone ?? "",
     effectiveDays: d.effectiveDays,
     effectiveUsers: d.effectiveUsers,

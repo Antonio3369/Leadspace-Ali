@@ -35,11 +35,12 @@ async function main() {
     data: {
       passwordHash,
       accountLifecycle: "ACTIVE",
+      mustChangePassword: true,
     },
   });
 
   console.log(`已开通经理账号: ${user.name}（${username}），密码: ${password}`);
-  console.log("与管理员「开通账号」一致：对方可立即登录经理端，无需额外认证步骤。");
+  console.log("与管理员「开通账号」一致：对方首次登录须修改密码后方可继续使用。");
 }
 
 main()

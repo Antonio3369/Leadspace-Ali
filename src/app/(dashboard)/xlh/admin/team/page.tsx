@@ -183,7 +183,7 @@ export default function AdminTeamPage() {
         onChange={setTab}
       />
 
-      <div className={notion.tableWrap}>
+      <div className={notion.tableScroll}>
         <table className="w-full text-sm min-w-[640px]">
           <thead className={notion.thead}>
             <tr>

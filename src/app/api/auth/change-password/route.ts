@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     const body = changePasswordSchema.parse(await request.json());
     const user = await db.user.findUnique({
       where: { id: session.user.id },
-      select: { passwordHash: true, mustChangePassword: true },
+      select: { username: true, passwordHash: true, mustChangePassword: true },
     });
 
     if (!user?.passwordHash) {
@@ -32,7 +32,12 @@ export async function POST(request: Request) {
         where: { id: session.user.id },
         data: { passwordHash, mustChangePassword: false },
       });
-      return NextResponse.json({ ok: true, forced: true });
+      // 返回 username 供前端用新密码静默重登，刷新 JWT（中间件不会再卡在改密页）
+      return NextResponse.json({
+        ok: true,
+        forced: true,
+        username: user.username,
+      });
     }
 
     if (!body.currentPassword) {

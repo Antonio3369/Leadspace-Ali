@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { authConfig } from "@/lib/auth.config";
 import { db } from "@/lib/db";
-import { canSignIn } from "@/lib/account-lifecycle";
+import { canSignIn, needsOnboarding } from "@/lib/account-lifecycle";
 import {
   resolveAccessibleBusinessLines,
   type BusinessLineId,
@@ -120,7 +120,7 @@ async function loadLiveUserState(userId: string) {
   }
 }
 
-/** 与数据库同步 session：停用或生命周期变更时强制退出 */
+/** 与数据库同步 session：仅在必须重新登录时踢出，其余漂移以 DB 为准 */
 export async function ensureLiveSession(): Promise<SessionUser> {
   const user = await getSessionUser();
   if (!user) redirect("/login");
@@ -130,14 +130,21 @@ export async function ensureLiveSession(): Promise<SessionUser> {
     redirect("/api/auth/session-expired?reason=disabled");
   }
 
+  // 管理员重置密码：会话仍认为可正常使用，但 DB 已要求首登改密 → 必须重登刷新 JWT
+  if (live.mustChangePassword && !user.mustChangePassword) {
+    redirect("/api/auth/session-expired?reason=refresh");
+  }
+
+  // 被重新置为待认证：同样需要刷新会话
   if (
-    live.status !== user.status ||
-    live.accountLifecycle !== user.accountLifecycle ||
-    live.mustChangePassword !== user.mustChangePassword
+    live.accountLifecycle !== user.accountLifecycle &&
+    needsOnboarding(live.accountLifecycle) &&
+    !needsOnboarding(user.accountLifecycle)
   ) {
     redirect("/api/auth/session-expired?reason=refresh");
   }
 
+  // 其余漂移（含刚改完密 mustChangePassword true→false）直接以 DB 为准，避免误踢导致「改两次」
   const businessLines = resolveAccessibleBusinessLines(
     live.role,
     live.businessLines

@@ -2,8 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { n7Path } from "@/lib/business-lines";
-import { NotionAlert, NotionButton, PageHeader, PageShell } from "@/components/ui/notion";
+import {
+  NotionAlert,
+  NotionButton,
+  PageHeader,
+  PageShell,
+  notion,
+} from "@/components/ui/notion";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
+import { N7FollowUpBadge } from "@/components/n7/N7FollowUpBadge";
 
 interface Detail {
   deviceSn: string;
@@ -37,6 +44,9 @@ interface Detail {
   storeDeviceCount: number;
   phase2Days: number;
   phase2Users: number;
+  followUpDone: boolean;
+  followUpNote: string | null;
+  followUpAt: string | null;
 }
 
 function fmt(iso: string | null, pending?: boolean, pendingLabel?: string) {
@@ -49,6 +59,11 @@ export function N7DeviceDetailView({ sn }: { sn: string }) {
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [copiedField, setCopiedField] = useState<"phone" | "account" | null>(null);
+  const [followUpDone, setFollowUpDone] = useState(false);
+  const [followUpNote, setFollowUpNote] = useState("");
+  const [followSaving, setFollowSaving] = useState(false);
+  const [followMessage, setFollowMessage] = useState("");
+  const [followError, setFollowError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -57,7 +72,11 @@ export function N7DeviceDetailView({ sn }: { sn: string }) {
       .then(async (res) => {
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "加载失败");
-        if (!cancelled) setData(json);
+        if (!cancelled) {
+          setData(json);
+          setFollowUpDone(Boolean(json.followUpDone));
+          setFollowUpNote(json.followUpNote ?? "");
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
@@ -73,6 +92,40 @@ export function N7DeviceDetailView({ sn }: { sn: string }) {
     setTimeout(() => setCopiedField(null), 1500);
   }
 
+  async function saveFollowUp() {
+    setFollowSaving(true);
+    setFollowError("");
+    setFollowMessage("");
+    try {
+      const res = await fetch(`/api/n7/devices/${encodeURIComponent(sn)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          followUpDone,
+          followUpNote: followUpNote.trim() || null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "保存失败");
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              followUpDone: json.followUpDone,
+              followUpNote: json.followUpNote,
+              followUpAt: json.followUpAt,
+            }
+          : prev
+      );
+      setFollowUpNote(json.followUpNote ?? "");
+      setFollowMessage("处理状态已保存");
+    } catch (err) {
+      setFollowError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setFollowSaving(false);
+    }
+  }
+
   return (
     <PageShell>
       <PageHeader
@@ -83,6 +136,7 @@ export function N7DeviceDetailView({ sn }: { sn: string }) {
             <HistoryBackLink
               label="← 返回"
               fallbackHref={n7Path()}
+              preferHistoryBack
               className="text-[#2563eb] hover:text-[#1d4ed8]"
             />
             {data && data.storeDeviceCount > 1 && (
@@ -116,6 +170,10 @@ export function N7DeviceDetailView({ sn }: { sn: string }) {
               >
                 {data.isQualified ? "已达标" : "不达标"}
               </span>
+              <N7FollowUpBadge
+                done={data.followUpDone}
+                note={data.followUpNote}
+              />
               <span className="text-sm text-[#64748b]">
                 剩余{" "}
                 {data.remainingEnded
@@ -164,6 +222,70 @@ export function N7DeviceDetailView({ sn }: { sn: string }) {
             <p>点亮：{fmt(data.litAt, data.notLit, "未点亮")}</p>
             <p>订阅：{fmt(data.subscribedAt, data.notSubscribed, "未订阅")}</p>
             <p>打卡：{fmt(data.firstCheckInAt, data.notCheckedIn, "未打卡")}</p>
+
+            <div className="pt-3 mt-1 border-t border-[#f1f5f9] space-y-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8]">
+                  处理状态
+                </p>
+                <p className="mt-1 text-xs text-[#94a3b8]">
+                  经理/管理员可代记；状态会出现在待跟进列表与队员明细，与考核「待跟进」名单相互独立。
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFollowUpDone(false)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium border transition-colors ${
+                    !followUpDone
+                      ? "border-amber-300 bg-amber-50 text-amber-900"
+                      : "border-[#e2e8f0] bg-white text-[#64748b] hover:bg-[#f8fafc]"
+                  }`}
+                >
+                  未处理
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFollowUpDone(true)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium border transition-colors ${
+                    followUpDone
+                      ? "border-sky-300 bg-sky-50 text-sky-900"
+                      : "border-[#e2e8f0] bg-white text-[#64748b] hover:bg-[#f8fafc]"
+                  }`}
+                >
+                  已处理
+                </button>
+              </div>
+              <div>
+                <label className="block text-xs text-[#64748b] mb-1.5">
+                  处理备注
+                </label>
+                <textarea
+                  value={followUpNote}
+                  onChange={(e) => setFollowUpNote(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="填写沟通结果、下次动作等（选填）"
+                  className={`${notion.input} w-full resize-y min-h-[72px]`}
+                />
+              </div>
+              {data.followUpAt && data.followUpDone && (
+                <p className="text-xs text-[#94a3b8]">
+                  上次标记：{fmt(data.followUpAt)}
+                </p>
+              )}
+              {followError && <NotionAlert tone="error">{followError}</NotionAlert>}
+              {followMessage && (
+                <NotionAlert tone="success">{followMessage}</NotionAlert>
+              )}
+              <NotionButton
+                type="button"
+                disabled={followSaving}
+                onClick={saveFollowUp}
+              >
+                {followSaving ? "保存中…" : "保存处理状态"}
+              </NotionButton>
+            </div>
           </div>
 
           <div className="rounded-[14px] border border-[#eef2f7] bg-white p-5 shadow-sm space-y-2 text-sm">

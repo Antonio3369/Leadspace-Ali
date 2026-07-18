@@ -28,9 +28,12 @@ export default function RootLayout({
       lang="zh-CN"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
-        <div className="flex-1 flex flex-col min-h-0">{children}</div>
-        <SiteIcpFooter />
+      <body className="h-full overflow-hidden">
+        {/* 对齐 hk.orblead：视口锁高，滚动交给 #app-scroll */}
+        <div className="h-full flex flex-col overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">{children}</div>
+          <SiteIcpFooter />
+        </div>
       </body>
     </html>
   );
