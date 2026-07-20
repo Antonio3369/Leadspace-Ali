@@ -68,7 +68,9 @@ export function N7ManagerBoard() {
       if (patch.search) params.set("search", patch.search);
       else params.delete("search");
     }
-    router.replace(`${n7Path()}?${params.toString()}`, { scroll: false });
+    router.replace(`${n7Path("/board")}?${params.toString()}`, {
+      scroll: false,
+    });
   }
 
   useEffect(() => {

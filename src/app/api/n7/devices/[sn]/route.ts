@@ -58,7 +58,9 @@ export async function PATCH(
     const body = followUpSchema.parse(await request.json());
     const updated = await updateN7DeviceFollowUp(sn, {
       followUpDone: body.followUpDone,
-      followUpNote: body.followUpNote ?? null,
+      ...(body.followUpNote !== undefined
+        ? { followUpNote: body.followUpNote }
+        : {}),
       followUpById: user.id,
     });
 

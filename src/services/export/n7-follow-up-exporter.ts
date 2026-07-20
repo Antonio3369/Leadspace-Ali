@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import type { SessionUser } from "@/lib/permissions";
 import { canExport } from "@/lib/permissions";
 import type { N7Priority } from "@/lib/n7-rules";
+import { n7PriorityLabel } from "@/lib/n7-rules";
 import { getN7FollowUpDevices } from "@/services/n7/analytics";
 
 const EXPORT_COLUMNS = [
@@ -109,7 +110,7 @@ export async function exportN7FollowUpExcel(
   }
 
   const rows = list.map((d) => ({
-    priority: d.priority ?? "",
+    priority: d.priority ? n7PriorityLabel(d.priority) : "",
     remainingDays: formatRemaining(d),
     managerName: d.managerName,
     operatorName: d.operatorName,

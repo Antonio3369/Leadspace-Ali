@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-07-18（本阶段暂告一段落：小蓝环 Excel 约定、首登改密、滚动返回、N7 处理状态已上线）
+**最后更新**：2026-07-20（N7 今日待办首页、优先级人话、处理状态一键标记）
 
 ---
 
@@ -13,7 +13,7 @@
 |---|---|
 | 产品名 | **Leadspace.Alipay**（副标题：数据工作台 / 数据管理） |
 | 定位 | 支付宝业务数据工作台；**顶层按业务线分区**，当前含「小蓝环」与「支付宝 N7」 |
-| 业务 | 小蓝环：推广商户拓展数据导入、指标统计、风控台账、商机分析、团队/人员管理；N7：机具考核看板与跟进（Excel 导入） |
+| 业务 | 小蓝环：推广商户拓展数据导入、指标统计、风控台账、商机分析、团队/人员管理；N7：机具考核今日待办 / 达标跟进 / 数据看板（Excel 导入） |
 | 用户 | 事业部负责人、区域经理、团队主管、一线业务员（业务员为数据账号，不可登录） |
 | 数据来源 | **现行：Excel 人工上传**（小蓝环人员名单 + 商户明细；N7 考核表）。P 站 API 自动拉取为后续阶段，**尚未上线** |
 
@@ -27,12 +27,13 @@
 | 不要收掉商户上传 UI | `SystemConfig.dataMode = API_SYNC` 仅为预留字段；**在 P 站 API 同步真正交付前，禁止据此关闭或隐藏 Excel 上传** |
 | 账号一套、密码一套 | 全站共用 `User`；开通一次即可进小蓝环与 N7；改密两边同时生效 |
 | 首登改密只改一次 | 开通时 `mustChangePassword=true` → 登录后进 `/settings/password` 设新密码 → 静默重登刷新 JWT → 进业务选择页。**不得**再踢回改密页或要求改第二次 |
-| N7 处理状态 | 设备详情可标记「已处理/未处理」+ 备注；与考核「待跟进」名单**相互独立**。列表/队员明细对经理与管理员可见。现阶段由经理/管理员代记；日后业务员端也可写入同一字段 |
+| N7 处理状态 | 与考核「待跟进」**相互独立**。详情：联系旁点选即保存；备注选填另存。列表（今日待办/达标跟进/队员明细）可一键「标已处理」。现阶段经理/管理员代记 |
+| N7 首页=今日待办 | `/n7` 主列表按紧急度（今日必跟 / 其余待跟进）；未处理仅数字卡跳转筛选；排行复盘在 `/n7/board`；完整名单在 `/n7/follow-up` |
 | 滚动与返回 | 主滚动在 `#app-scroll`（非 window）；列表进详情再返回应恢复位置；侧栏切换业务页须滚到顶部 |
 
-### 1.2 本阶段停在哪里（2026-07-18）
+### 1.2 本阶段停在哪里
 
-已上线到 https://ali.orblead.com，当前可暂停新功能开发。下次接着做时优先看 §16 可选优化与 N7 业务员端处理状态写入。
+生产 https://ali.orblead.com 已含 N7 今日待办等 2026-07-20 能力（见 §13 / §6.2b）。后续优先业务员端处理状态、结构化跟进与体验打磨。
 
 ---
 
@@ -177,7 +178,7 @@ src/lib/business-lines.ts  # 业务线常量与路径工具
 |---|---|
 | `/` | 业务选择页（小蓝环 / 支付宝 N7 两张卡片） |
 | `/xlh/*` | 小蓝环：现有看板能力（总览、团队、商机、台账、管理） |
-| `/n7/*` | 支付宝 N7：看板、达标跟进、设备详情、导入（见 §6.2b） |
+| `/n7/*` | 支付宝 N7：今日待办、达标跟进、数据看板、设备详情、导入（见 §6.2b） |
 | `/login` `/onboarding` `/change-password` `/settings/password` | 全局，不挂业务前缀 |
 
 旧书签兼容（`next.config.ts` redirects）：`/ledger`、`/teams`、`/opportunities`、`/members`、`/admin/*`、`/screen` → 对应 `/xlh/...`。
@@ -250,7 +251,7 @@ Excel 导入 → IMPORTED（无密码）
 |---|---|---|
 | `/` | 业务选择页 | `BusinessHub`：小蓝环 / 支付宝 N7 |
 | `/xlh` | 小蓝环 · 数据总览 | URL 日期筛选，默认本月；主管双区 |
-| `/n7` | 支付宝 N7 · 看板 | 经理/管理员看板；达标跟进入口 |
+| `/n7` | 支付宝 N7 · 今日待办 | 运营队列首页；复盘看板在 `/n7/board` |
 
 ### 6.2 小蓝环业务页面（需登录，`src/app/(dashboard)/xlh/`）
 
@@ -275,13 +276,16 @@ Excel 导入 → IMPORTED（无密码）
 
 ### 6.2b 支付宝 N7 页面（需登录，`src/app/(dashboard)/n7/`）
 
+侧栏：今日待办 · 达标跟进 · 数据看板/团队看板 · 每日绩效 ·（管理员）数据导入。
+
 | 路径 | 要点 |
 |---|---|
-| `/n7` | 数据看板（经理看本队；管理员看全局） |
-| `/n7/follow-up` | **考核「待跟进」**设备列表；含 **处理状态**列与筛选（未处理/已处理） |
+| `/n7` | **今日待办**（首页）：四卡（今日必跟 / 未处理 / 其余待跟进 / 区间已达标）；主列表仅两段（今日必跟、其余待跟进，各预览 10 条）；未处理卡 → 达标跟进筛未处理；已达标卡 → `/n7/board` |
+| `/n7/follow-up` | **达标跟进**：考核「待跟进」完整列表；处理状态筛选；行内「标已处理」 |
+| `/n7/board` | **数据看板 / 团队看板**：经理排行或本队队员排行（复盘，非日常作业首页） |
 | `/n7/managers/[managerKey]` | 经理下队员排行 |
-| `/n7/managers/.../staff/[staffKey]` | 队员设备明细（待跟进 / 已达标 / 全部）；含处理状态 |
-| `/n7/devices/[sn]` | 设备问题详情：进度、联系、**处理状态**（已处理/未处理 + 备注，经理/管理员可代记） |
+| `/n7/managers/.../staff/[staffKey]` | 队员设备明细；行内「标已处理」 |
+| `/n7/devices/[sn]` | 设备详情：进度 → **联系 + 处理状态**同卡；点选已处理/未处理即保存；备注选填另存 |
 | `/n7/daily` | 每日绩效 |
 | `/n7/admin/import` | DIRECTOR：N7 考核表 Excel 导入 |
 
@@ -289,10 +293,19 @@ Excel 导入 → IMPORTED（无密码）
 
 | 名称 | 含义 |
 |---|---|
-| 待跟进（考核） | 未达标、仍在考核期内的设备（P0–P3），由 Excel 指标自动算 |
+| 待跟进（考核） | 未达标、仍在考核期内的设备，由 Excel 指标自动算紧急度 |
 | 处理状态 | 人是否已联系/处理过（`followUpDone` / `followUpNote`）；Excel 重导**不覆盖** |
 
-列表列名约定：已用天数、已有用户、缺口；列表不展示 SN（详情页可见）。
+**考核紧急度（内部仍用 P0–P3；界面/导出用人话）**（`n7-rules.ts` / `n7PriorityLabel`）：
+
+| 内部 | 界面文案 | 规则摘要 |
+|---|---|---|
+| P0 | 剩余≤2天 | 考核还剩 0/1/2 天 → 今日必跟 |
+| P1 | 无动销 | 天数与用户均为 0，且剩余 ≥6 天 |
+| P2 | 行为未齐 | 未点亮 / 未订阅 / 未打卡 |
+| P3 | 一般预警 | 其它待跟进 |
+
+列表列名约定：已用天数、已有用户、缺口；列表不展示 SN（详情页可见）。示意稿：`docs/n7-today-mock.html`（仅视觉参考）。
 
 ### 6.4 认证页面
 
@@ -314,7 +327,7 @@ src/app/api/
 ├── stats/          指标 + charts
 ├── members/        人员列表 + export
 ├── teams/          团队明细 + export
-├── n7/             managers, follow-up, devices/[sn]（GET+PATCH 处理状态）, daily
+├── n7/             today, managers, follow-up(+export), devices/[sn]（GET+PATCH）, daily
 └── onboarding/
 ```
 
@@ -544,7 +557,7 @@ src/
 │   ├── (dashboard)/
 │   │   ├── page.tsx              # 业务选择页 /
 │   │   ├── xlh/                  # 小蓝环业务空间
-│   │   ├── n7/                   # N7 看板 / 跟进 / 设备 / 导入
+│   │   ├── n7/                   # 今日待办 / board / follow-up / devices / daily / import
 │   │   └── settings/password/
 │   ├── login/
 │   ├── change-password/
@@ -554,12 +567,15 @@ src/
 │   ├── ui/notion.tsx             # ★ 全站 UI 基础
 │   ├── layout/AppShell.tsx       # ★ 布局壳
 │   ├── layout/Sidebar.tsx        # ★ 侧边栏 + 切换业务
+│   ├── n7/                       # N7TodayView / Board / FollowUp / DeviceDetail / StatusCell …
 │   ├── dashboard/DashboardView.tsx
 │   ├── ledger/LedgerView.tsx
 │   ├── teams/TeamDetailsView.tsx
 │   └── opportunities/OpportunitiesPageContent.tsx
 ├── lib/
 │   ├── business-lines.ts         # ★ 业务线常量与路径
+│   ├── n7-rules.ts               # ★ N7 考核优先级与人话标签
+│   ├── n7-follow-up-client.ts    # 处理状态 PATCH 客户端
 │   ├── permissions.ts
 │   ├── auth.config.ts
 │   ├── ledger-date.ts
@@ -570,6 +586,7 @@ src/
 │   ├── business-rules.ts
 │   └── ledger-labels.ts
 └── services/
+    ├── n7/analytics.ts           # ★ N7 今日队列 / 看板 / 跟进
     ├── stats/analytics.ts
     └── import/excel-importer.ts
 ```
@@ -578,7 +595,15 @@ src/
 
 ## 13. 近期已完成
 
-### 2026-07-18（本阶段暂告一段落，已部署生产）
+### 2026-07-20（已部署生产）
+
+- [x] N7 首页改为 **今日待办**（`N7TodayView` + `/api/n7/today`）；侧栏：今日待办 · 达标跟进 · 数据看板/团队看板 · …
+- [x] 原排行看板迁至 `/n7/board`
+- [x] 今日待办：主列表仅「今日必跟 / 其余待跟进」（预览 10 条 + 显示全部）；未处理/已达标为数字卡入口，不铺第三张表
+- [x] 考核优先级界面用人话（剩余≤2天 / 无动销 / 行为未齐 / 一般预警）；URL/API 仍用 P0–P3；导出同步人话
+- [x] 处理状态 P0 体验：详情「联系 + 处理」同卡、点选即保存；列表行内「标已处理」（`N7FollowUpStatusCell`）；PATCH 省略备注时不覆盖原备注
+
+### 2026-07-18（已部署生产）
 
 - [x] **确认**小蓝环商户明细现行入口为 Excel 上传（§1.1 / §10.1）；禁止在 API 同步未上线前收掉上传 Tab；`importExcelFile` 不再因 `API_SYNC` 硬拒
 - [x] 首登改密只改一次：`(account)/settings/password`、成功后静默重登、`ensureLiveSession` 不误踢 `mustChangePassword true→false`
@@ -622,7 +647,7 @@ src/
 3. **经理首登** — 登录 → `/settings/password` 改一次密 → 自动进入业务选择（不应再被要求改密）
 4. **开通主管**（如有）— 经理登录后创建/开通团队主管
 5. **经理试用（小蓝环）** — 业务选择 → 进小蓝环，确认总览、团队明细、风控台账、商机分析与钻取
-6. **经理试用（N7）** — 看板 → 待跟进 → 设备详情标记处理状态 → 列表可见「已处理/未处理」
+6. **经理试用（N7）** — 今日待办 → 列表「标已处理」或进详情点选 → 达标跟进核对；复盘看数据看板
 7. **环境稳定** — 生产库连接稳定（开发环境 Prisma Dev 长跑易 OOM）
 
 **不需要做的事**：给业务员开通账号、发密码、引导实名认证或 onboarding。
@@ -735,7 +760,7 @@ Dockerfile
 
 | 阶段 | 内容 |
 |---|---|
-| N7 | 业务员端写入处理状态；看板/空态/移动端宽表体验；权限与文案继续打磨 |
+| N7 | 业务员端写入处理状态；结构化跟进（下次联系日/原因枚举）；空态与移动端打磨 |
 | P3 | **P 站 API 拉取**（真正上线后才可切换 `dataMode=API_SYNC` 并考虑关闭商户 Excel 上传） |
 | P4 | 公共大屏增强（自动刷新、投屏） |
 | P5 | 后台管理（模式切换、日志中心、历史回溯） |
@@ -745,7 +770,7 @@ Dockerfile
 - 无业务线权限时中间件踢回 `/` 应带说明，避免「静默回首页」
 - 单业务线经理登录后可跳过业务选择页直达
 - 经理首登后空态补充「下一步」指引（谁导入数据、先看哪页）
-- N7：列表展示处理备注摘要（现仅悬停 title）；按处理人筛选
+- N7：列表展示处理备注摘要（现仅悬停 title）；按处理人筛选；详情改回「未处理」的二次确认（可选）
 - Director 首页经理团队排行（`shouldShowManagerRanking` 相关代码已存在）
 - `/xlh/screen` 公共大屏实现或隐藏占位
 - 记住上次进入的业务线（cookie），登录后可直达
@@ -773,7 +798,9 @@ Dockerfile
 | 登录/Session | `auth.ts`, `auth.config.ts`, `check-account/route.ts`, `session-expired` |
 | 首登改密 | `ChangePasswordForm.tsx`, `(account)/settings/password`, `api/auth/change-password` |
 | 滚动/返回 | `mainScroll.ts`, `ScrollMemory.tsx`, `HistoryBackLink.tsx`, `AppShell` `#app-scroll` |
-| N7 处理状态 | `N7DeviceDetailView`, `N7FollowUpBadge`, `api/n7/devices/[sn]` PATCH, `analytics.updateN7DeviceFollowUp` |
+| N7 今日待办 | `N7TodayView`, `api/n7/today`, `analytics.getN7TodayQueues`；看板 `/n7/board` |
+| N7 优先级文案 | `n7-rules.n7PriorityLabel`, `N7PriorityBadge`, `n7-filter-styles` |
+| N7 处理状态 | `N7DeviceDetailView`, `N7FollowUpStatusCell`, `n7-follow-up-client`, `api/n7/devices/[sn]` PATCH |
 | 权限/越权 | `permissions.ts`, `manager-scope.ts`, `business-lines.ts`, `n7-scope.ts` |
 | 指标不对 | `business-rules.ts`, `analytics.ts`（小蓝环）/ `services/n7/analytics.ts`（N7） |
 | 导入失败 | `excel-parser.ts`, `excel-importer.ts`, `n7-excel-importer.ts`；入口 `/xlh/admin/import`、`/n7/admin/import` |

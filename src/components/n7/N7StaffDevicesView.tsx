@@ -25,7 +25,8 @@ import {
   n7PriorityButtonClass,
   n7TabButtonClass,
 } from "@/components/n7/n7-filter-styles";
-import { N7FollowUpBadge } from "@/components/n7/N7FollowUpBadge";
+import { N7PriorityBadge } from "@/components/n7/N7PriorityBadge";
+import { N7FollowUpStatusCell } from "@/components/n7/N7FollowUpStatusCell";
 
 type Tab = "followUp" | "qualified" | "all";
 type FollowFilter = "all" | "pending" | "done";
@@ -82,23 +83,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "all", label: "全部" },
 ];
 
-function PriorityBadge({ p }: { p: DeviceRow["priority"] }) {
-  if (!p) return <span className="text-[#94a3b8]">—</span>;
-  const color =
-    p === "P0"
-      ? "bg-red-50 text-red-700"
-      : p === "P1"
-        ? "bg-amber-50 text-amber-700"
-        : p === "P2"
-          ? "bg-orange-50 text-orange-700"
-          : "bg-violet-50 text-violet-700";
-  return (
-    <span className={`inline-flex rounded-md px-1.5 py-0.5 text-xs font-semibold ${color}`}>
-      {p}
-    </span>
-  );
-}
-
 export function N7StaffDevicesView({
   managerKey,
   staffKey,
@@ -123,7 +107,7 @@ export function N7StaffDevicesView({
   const [searchDraft, setSearchDraft] = useState(search);
 
   const parentListKey = backHref
-    ? n7Path()
+    ? backHref.split("?")[0] || n7Path("/board")
     : n7Path(`/managers/${encodeURIComponent(managerKey)}`);
 
   useRestoreListScroll(pathname, !loading && !!data);
@@ -421,7 +405,7 @@ export function N7StaffDevicesView({
                       className="border-b border-[#f1f5f9] last:border-0 hover:bg-[#f8fafc]"
                     >
                       <td className="px-3 py-2.5">
-                        <PriorityBadge p={d.priority} />
+                        <N7PriorityBadge p={d.priority} />
                       </td>
                       <td className="px-3 py-2.5 tabular-nums">
                         {d.remainingEnded
@@ -439,9 +423,27 @@ export function N7StaffDevicesView({
                         </Link>
                       </td>
                       <td className="px-3 py-2.5">
-                        <N7FollowUpBadge
+                        <N7FollowUpStatusCell
+                          deviceSn={d.deviceSn}
                           done={Boolean(d.followUpDone)}
                           note={d.followUpNote}
+                          onChanged={(next) => {
+                            setData((prev) => {
+                              if (!prev) return prev;
+                              return {
+                                ...prev,
+                                devices: prev.devices.map((row) =>
+                                  row.deviceSn === d.deviceSn
+                                    ? {
+                                        ...row,
+                                        followUpDone: next.followUpDone,
+                                        followUpNote: next.followUpNote,
+                                      }
+                                    : row
+                                ),
+                              };
+                            });
+                          }}
                         />
                       </td>
                       <td className="px-3 py-2.5 text-right tabular-nums">{d.effectiveDays}</td>

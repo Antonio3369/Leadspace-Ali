@@ -68,6 +68,22 @@ export function priorityRank(p: N7Priority): number {
   return { P0: 0, P1: 1, P2: 2, P3: 3 }[p];
 }
 
+/** 界面/导出用人话；内部与 URL 仍用 P0–P3 */
+export const N7_PRIORITY_LABELS: Record<
+  N7Priority,
+  { label: string; hint: string }
+> = {
+  P0: { label: "剩余≤2天", hint: "考核还剩 0/1/2 天，需马上催达标" },
+  P1: { label: "无动销", hint: "天数和用户都是 0，且还剩 ≥6 天" },
+  P2: { label: "行为未齐", hint: "未点亮 / 未订阅 / 未打卡" },
+  P3: { label: "一般预警", hint: "其它待跟进" },
+};
+
+export function n7PriorityLabel(p: N7Priority | null | undefined): string {
+  if (!p) return "—";
+  return N7_PRIORITY_LABELS[p].label;
+}
+
 export function ratePercent(numerator: number, denominator: number): number {
   if (denominator <= 0) return 0;
   return Math.round((numerator / denominator) * 1000) / 10;

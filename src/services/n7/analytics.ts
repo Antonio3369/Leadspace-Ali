@@ -470,6 +470,47 @@ export async function getN7FollowUpDevices(
   };
 }
 
+/** 今日待办各队列预览条数（完整列表走达标跟进） */
+const N7_TODAY_LIST_CAP = 10;
+
+/**
+ * 今日待办队列（运营首页）
+ * - 主列表按考核紧急度：今日必跟(P0) / 其余待跟进(非 P0)
+ * - 未处理仅计数字（跳转达标跟进筛选），不当第三张表
+ * - 区间已达标：复盘计数
+ */
+export async function getN7TodayQueues(
+  opts: N7RangeOpts & { managerKey?: string | null }
+) {
+  const follow = await getN7FollowUpDevices({
+    ...opts,
+    priority: "all",
+  });
+  const followUp = follow.devices;
+  const urgent = followUp.filter((d) => d.priority === "P0");
+  const pending = followUp.filter((d) => !d.followUpDone);
+  const other = followUp.filter((d) => d.priority !== "P0");
+
+  return {
+    dateFrom: follow.dateFrom,
+    dateTo: follow.dateTo,
+    manager: follow.manager,
+    counts: {
+      urgent: urgent.length,
+      pending: pending.length,
+      other: other.length,
+      qualified: follow.totals.qualifiedCount,
+      followUp: follow.counts.followUp,
+      expand: follow.totals.expandCount,
+    },
+    queues: {
+      urgent: urgent.slice(0, N7_TODAY_LIST_CAP),
+      other: other.slice(0, N7_TODAY_LIST_CAP),
+    },
+    listCap: N7_TODAY_LIST_CAP,
+  };
+}
+
 export async function getN7DeviceDetail(deviceSn: string) {
   const device = await db.n7DeviceRecord.findUnique({ where: { deviceSn } });
   if (!device) return null;
@@ -498,16 +539,18 @@ export async function updateN7DeviceFollowUp(
   deviceSn: string,
   input: {
     followUpDone: boolean;
-    followUpNote: string | null;
+    /** 省略则保留原备注（列表一键标记用） */
+    followUpNote?: string | null;
     followUpById: string;
   }
 ) {
-  const note = input.followUpNote?.trim() || null;
   return db.n7DeviceRecord.update({
     where: { deviceSn },
     data: {
       followUpDone: input.followUpDone,
-      followUpNote: note,
+      ...(input.followUpNote !== undefined
+        ? { followUpNote: input.followUpNote?.trim() || null }
+        : {}),
       followUpAt: input.followUpDone ? new Date() : null,
       followUpById: input.followUpDone ? input.followUpById : null,
     },

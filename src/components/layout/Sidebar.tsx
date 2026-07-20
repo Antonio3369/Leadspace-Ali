@@ -29,25 +29,29 @@ const XLH_NAV_ITEMS = [
 ];
 
 const N7_DIRECTOR_NAV_ITEMS = [
-  { href: n7Path(), label: "数据看板", icon: "📊" },
+  { href: n7Path(), label: "今日待办", icon: "📋" },
+  { href: n7Path("/follow-up"), label: "达标跟进", icon: "🔔" },
+  { href: n7Path("/board"), label: "数据看板", icon: "📊" },
   { href: n7Path("/daily"), label: "每日绩效", icon: "📈" },
-  { href: n7Path("/follow-up"), label: "待跟进", icon: "🔔" },
   { href: n7Path("/admin/import"), label: "数据导入", icon: "⬆️" },
 ];
 
 const N7_MANAGER_NAV_ITEMS = [
-  { href: n7Path(), label: "团队看板", icon: "📊" },
+  { href: n7Path(), label: "今日待办", icon: "📋" },
+  { href: n7Path("/follow-up"), label: "达标跟进", icon: "🔔" },
+  { href: n7Path("/board"), label: "团队看板", icon: "📊" },
   { href: n7Path("/daily"), label: "每日绩效", icon: "📈" },
-  { href: n7Path("/follow-up"), label: "待跟进", icon: "🔔" },
 ];
 
 function isActivePath(pathname: string, href: string) {
   if (href === XLH_BASE) return pathname === href;
   if (href === N7_BASE) {
-    // 看板下钻到经理/队员/设备时，仍高亮「数据看板/团队看板」
-    if (pathname === N7_BASE) return true;
+    return pathname === N7_BASE;
+  }
+  if (href === n7Path("/board")) {
+    if (pathname === n7Path("/board")) return true;
+    // 看板下钻到经理/队员时仍高亮「数据看板/团队看板」
     if (pathname.startsWith(`${N7_BASE}/managers/`)) return true;
-    if (pathname.startsWith(`${N7_BASE}/devices/`)) return true;
     return false;
   }
   return pathname === href || pathname.startsWith(`${href}/`);

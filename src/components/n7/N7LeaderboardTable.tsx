@@ -100,7 +100,7 @@ export function N7SummaryStrip({
     },
     { label: "待跟进", value: totals.followUpCount, href: followUpHref },
     {
-      label: "P0",
+      label: "剩余≤2天",
       value: totals.p0Count,
       href: p0Href,
       accent: true,
@@ -185,7 +185,7 @@ export function N7LeaderboardTable({
             <th className="px-3 sm:px-4 py-3 font-semibold text-right">达标</th>
             <th className="px-3 sm:px-4 py-3 font-semibold text-right">达标率</th>
             <th className="px-3 sm:px-4 py-3 font-semibold text-right">待跟进</th>
-            <th className="px-3 sm:px-4 py-3 font-semibold text-right">P0</th>
+            <th className="px-3 sm:px-4 py-3 font-semibold text-right">剩余≤2天</th>
             <th className="px-3 sm:px-4 py-3 font-semibold text-right">未订阅</th>
             <th className="px-3 sm:px-4 py-3 font-semibold text-right">未打卡</th>
           </tr>

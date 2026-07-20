@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>N7 今日待办 · 示意稿</title>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --card: #fff;
+      --line: #eef2f7;
+      --text: #111827;
+      --muted: #64748b;
+      --faint: #94a3b8;
+      --blue: #2563eb;
+      --amber: #b45309;
+      --amber-bg: #fffbeb;
+      --sky: #0369a1;
+      --sky-bg: #f0f9ff;
+      --red: #b91c1c;
+      --red-bg: #fef2f2;
+      --green: #047857;
+      --green-bg: #ecfdf5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .shell {
+      display: flex;
+      min-height: 100vh;
+    }
+    .side {
+      width: 220px;
+      background: #fff;
+      border-right: 1px solid var(--line);
+      padding: 20px 14px;
+      display: none;
+    }
+    @media (min-width: 900px) {
+      .side { display: block; }
+    }
+    .brand {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--faint);
+      margin-bottom: 4px;
+    }
+    .side h1 {
+      font-size: 1.05rem;
+      margin: 0 0 20px;
+    }
+    .nav a {
+      display: block;
+      padding: 10px 12px;
+      border-radius: 10px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      margin-bottom: 4px;
+    }
+    .nav a.active {
+      background: #eff6ff;
+      color: var(--blue);
+      font-weight: 600;
+    }
+    .main {
+      flex: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 20px 16px 48px;
+    }
+    .banner {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1d4ed8;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      margin-bottom: 18px;
+    }
+    .kicker {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+    .title {
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin: 4px 0 6px;
+    }
+    .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 18px; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+    @media (min-width: 720px) {
+      .cards { grid-template-columns: repeat(4, 1fr); }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 14px 12px;
+      cursor: pointer;
+      text-align: left;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      transition: border-color 0.15s, transform 0.15s;
+    }
+    .card:hover { border-color: #bfdbfe; transform: translateY(-1px); }
+    .card .label { font-size: 0.78rem; color: var(--muted); }
+    .card .num {
+      font-size: 1.7rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin: 4px 0 2px;
+    }
+    .card .hint { font-size: 0.72rem; color: var(--faint); }
+    .card.warn .num { color: var(--red); }
+    .card.amber .num { color: var(--amber); }
+    .card.sky .num { color: var(--sky); }
+    .card.ok .num { color: var(--green); }
+    .section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      margin-bottom: 16px;
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .section-head h2 {
+      margin: 0;
+      font-size: 1rem;
+    }
+    .section-head span {
+      font-size: 0.78rem;
+      color: var(--faint);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    th {
+      text-align: left;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--faint);
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: 0; }
+    tr:hover td { background: #f8fafc; }
+    a.store {
+      color: var(--blue);
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 6px;
+      padding: 2px 7px;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+    .p0 { background: var(--red-bg); color: var(--red); }
+    .p1 { background: #fff7ed; color: #c2410c; }
+    .pending { background: var(--amber-bg); color: var(--amber); }
+    .done { background: var(--sky-bg); color: var(--sky); }
+    .muted { color: var(--muted); }
+    .right { text-align: right; font-variant-numeric: tabular-nums; }
+    .empty {
+      padding: 28px 16px;
+      text-align: center;
+      color: var(--faint);
+      font-size: 0.9rem;
+    }
+    .footnote {
+      margin-top: 8px;
+      font-size: 0.78rem;
+      color: var(--faint);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <div class="brand">Leadspace.Alipay</div>
+      <h1>支付宝 N7</h1>
+      <nav class="nav">
+        <a class="active" href="#top">今日待办</a>
+        <a href="#">达标跟进</a>
+        <a href="#">数据看板</a>
+        <a href="#">每日绩效</a>
+        <a href="#">数据导入</a>
+      </nav>
+    </aside>
+
+    <main class="main" id="top">
+      <div class="banner">
+        示意稿（非线上页面）· 经理视角：进 N7 先清队列，排行榜放到「数据看板」
+      </div>
+
+      <div class="kicker">支付宝 N7</div>
+      <div class="title">今日待办</div>
+      <p class="meta">罗经理 · 本月考核周期 · 点上方卡片可跳到对应队列</p>
+
+      <div class="cards">
+        <button class="card warn" type="button" data-target="q-urgent">
+          <div class="label">今日必跟</div>
+          <div class="num">8</div>
+          <div class="hint">P0 或剩余 ≤2 天</div>
+        </button>
+        <button class="card amber" type="button" data-target="q-pending">
+          <div class="label">未处理</div>
+          <div class="num">23</div>
+          <div class="hint">待跟进且未标已处理</div>
+        </button>
+        <button class="card sky" type="button" data-target="q-rest">
+          <div class="label">其余待跟进</div>
+          <div class="num">41</div>
+          <div class="hint">有优先级但非今日必跟</div>
+        </button>
+        <button class="card ok" type="button" data-target="q-done">
+          <div class="label">本月已达标</div>
+          <div class="num">156</div>
+          <div class="hint">进度感，非今日主战场</div>
+        </button>
+      </div>
+
+      <section class="section" id="q-urgent">
+        <div class="section-head">
+          <h2>今日必跟</h2>
+          <span>优先打电话 / 上门的 8 台</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>优先级</th>
+                <th>剩余</th>
+                <th>队员</th>
+                <th>门店</th>
+                <th>处理状态</th>
+                <th class="right">已用天数</th>
+                <th class="right">已有用户</th>
+                <th>缺口</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge p0">P0</span></td>
+                <td>1</td>
+                <td>张伟</td>
+                <td><a class="store" href="#">星河便利店</a></td>
+                <td><span class="badge pending">未处理</span></td>
+                <td class="right">2</td>
+                <td class="right">1</td>
+                <td class="muted">差1天·差2人</td>
+              </tr>
+              <tr>
+                <td><span class="badge p0">P0</span></td>
+                <td>0</td>
+                <td>李敏</td>
+                <td><a class="store" href="#">巷口奶茶</a></td>
+                <td><span class="badge pending">未处理</span></td>
+                <td class="right">3</td>
+                <td class="right">0</td>
+                <td class="muted">差0天·差3人</td>
+              </tr>
+              <tr>
+                <td><span class="badge p0">P0</span></td>
+                <td>2</td>
+                <td>张伟</td>
+                <td><a class="store" href="#">老王五金</a></td>
+                <td><span class="badge done">已处理</span></td>
+                <td class="right">1</td>
+                <td class="right">2</td>
+                <td class="muted">差2天·差1人</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="q-pending">
+        <div class="section-head">
+          <h2>未处理</h2>
+          <span>还在待跟进名单里，人还没标「已处理」</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>优先级</th>
+                <th>剩余</th>
+                <th>队员</th>
+                <th>门店</th>
+                <th>处理状态</th>
+                <th>缺口</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge p1">P1</span></td>
+                <td>5</td>
+                <td>王芳</td>
+                <td><a class="store" href="#">晨光文具</a></td>
+                <td><span class="badge pending">未处理</span></td>
+                <td class="muted">差1天·差1人</td>
+              </tr>
+              <tr>
+                <td><span class="badge p1">P1</span></td>
+                <td>6</td>
+                <td>李敏</td>
+                <td><a class="store" href="#">社区超市</a></td>
+                <td><span class="badge pending">未处理</span></td>
+                <td class="muted">差2天·差0人</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="q-rest">
+        <div class="section-head">
+          <h2>其余待跟进</h2>
+          <span>有空再扫；未处理优先排在前面</span>
+        </div>
+        <div class="empty">示意：此处还有一批 P2/P3…</div>
+      </section>
+
+      <section class="section" id="q-done">
+        <div class="section-head">
+          <h2>本月已达标</h2>
+          <span>给进度感；不作为今日主战场</span>
+        </div>
+        <div class="empty">示意：156 台已达标设备摘要 / 链到看板</div>
+      </section>
+
+      <p class="footnote">
+        和现在的差别：进 N7 不再先看到「经理/队员排行表」，而是先看到这几摊活。
+        排行榜仍保留，放到侧栏「数据看板」。点门店名 → 现有设备详情 → 标处理状态。
+      </p>
+    </main>
+  </div>
+
+  <script>
+    document.querySelectorAll(".card").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-target");
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+  </script>
+</body>
+</html>

@@ -78,7 +78,7 @@ export function N7StaffBoard({
       else params.delete("search");
     }
     const path = isHome
-      ? n7Path()
+      ? n7Path("/board")
       : n7Path(`/managers/${encodeURIComponent(managerKey)}`);
     router.replace(`${path}?${params}`, { scroll: false });
   }
@@ -137,8 +137,8 @@ export function N7StaffBoard({
               <>
                 <HistoryBackLink
                   label="← 数据看板"
-                  fallbackHref={`${n7Path()}?${rangeQs}`}
-                  listScrollKey={n7Path()}
+                  fallbackHref={`${n7Path("/board")}?${rangeQs}`}
+                  listScrollKey={n7Path("/board")}
                   preferHistoryBack
                   className="text-[#2563eb] hover:text-[#1d4ed8]"
                 />

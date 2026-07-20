@@ -10,7 +10,7 @@ export const BUSINESS_LINES = {
   n7: {
     id: "n7",
     name: "支付宝 N7",
-    description: "机具考核 · 数据看板与达标跟进",
+    description: "机具考核 · 今日待办与达标跟进",
     href: "/n7",
   },
 } as const;

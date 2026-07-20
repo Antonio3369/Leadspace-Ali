@@ -1,15 +1,21 @@
-import type { N7Priority } from "@/lib/n7-rules";
+import {
+  N7_PRIORITY_LABELS,
+  n7PriorityLabel,
+  type N7Priority,
+} from "@/lib/n7-rules";
 
+export { n7PriorityLabel };
+
+/** 界面/导出用人话；URL/API 仍用 P0–P3 */
 export const N7_PRIORITY_FILTERS: {
   id: N7Priority;
   label: string;
   hint: string;
-}[] = [
-  { id: "P0", label: "剩余≤2天", hint: "剩余 0/1/2 天，需立即催达标" },
-  { id: "P1", label: "无动销", hint: "零动销且剩余 ≥6 天" },
-  { id: "P2", label: "未订阅/打卡", hint: "未点亮 / 未订阅 / 未打卡" },
-  { id: "P3", label: "预警", hint: "其他待跟进" },
-];
+}[] = (["P0", "P1", "P2", "P3"] as const).map((id) => ({
+  id,
+  label: N7_PRIORITY_LABELS[id].label,
+  hint: N7_PRIORITY_LABELS[id].hint,
+}));
 
 export function n7PriorityButtonClass(priority: N7Priority, active: boolean) {
   if (active) {

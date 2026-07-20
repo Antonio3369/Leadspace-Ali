@@ -36,7 +36,7 @@ export default async function N7StaffDevicesPage({
       <N7StaffDevicesView
         managerKey={managerKey}
         staffKey={staffKey}
-        backHref={user.role === "MANAGER" ? "/n7" : undefined}
+        backHref={user.role === "MANAGER" ? "/n7/board" : undefined}
       />
     </Suspense>
   );
