@@ -42,12 +42,11 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:3001:3000"
-    volumes:
-      - leadspace_import_jobs:/tmp/leadspace-import-jobs
     environment:
       NODE_ENV: production
       # 先于系统 OOM 触发 V8 回收，降低整机假死概率
       NODE_OPTIONS: --max-old-space-size=768
+      # 容器内 /tmp 可写；任务结束后删文件，无需持久卷
       IMPORT_JOB_DIR: /tmp/leadspace-import-jobs
       DATABASE_URL: postgresql://${POSTGRES_USER:-leadspace}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-leadspace}?schema=public&connection_limit=10&pool_timeout=30
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
@@ -69,4 +68,3 @@ services:
 
 volumes:
   leadspace_pg_data:
-  leadspace_import_jobs:
