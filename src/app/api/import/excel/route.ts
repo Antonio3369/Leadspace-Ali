@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
 import { PermissionError, canImportExcel } from "@/lib/permissions";
 import { assertCanViewXlh } from "@/services/xlh/xlh-scope";
-import { importExcelFile } from "@/services/import/excel-importer";
+import { enqueueHeavyImport } from "@/services/import/heavy-import-job";
+
+export const maxDuration = 120;
 
 export async function POST(request: Request) {
   try {
@@ -25,9 +27,21 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const result = await importExcelFile(buffer, file.name, user.id);
+    const queued = await enqueueHeavyImport({
+      kind: "xlh-excel",
+      fileName: file.name,
+      buffer,
+      uploadedById: user.id,
+    });
 
-    return NextResponse.json(result);
+    if ("error" in queued) {
+      return NextResponse.json({ error: queued.error }, { status: queued.status });
+    }
+
+    return NextResponse.json(
+      { async: true, jobId: queued.jobId, message: "已开始后台导入" },
+      { status: 202 }
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "导入失败";
     if (err instanceof PermissionError) {
@@ -35,12 +49,6 @@ export async function POST(request: Request) {
     }
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
-    }
-    if (/connection|Connection|closed the connection/i.test(message)) {
-      return NextResponse.json(
-        { error: "数据库连接中断，请稍后重试（沙箱环境可重启 npx prisma dev -d）" },
-        { status: 500 }
-      );
     }
     return NextResponse.json({ error: message }, { status: 500 });
   }

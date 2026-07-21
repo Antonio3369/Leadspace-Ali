@@ -122,6 +122,7 @@ model User {
   n7DevicesAsManager N7DeviceRecord[] @relation("N7DeviceManager")
   teamHistory      UserTeamHistory[]
   importLogs       ImportLog[]
+  heavyImportJobs  HeavyImportJob[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -255,6 +256,27 @@ model ImportLog {
 
   @@index([uploadedById])
   @@index([createdAt])
+}
+
+/** 大表导入异步任务（上传后立即返回 jobId，后台处理，前端轮询） */
+model HeavyImportJob {
+  id           String       @id @default(cuid())
+  /** personnel | n7 | xlh-excel */
+  kind         String
+  fileName     String
+  status       ImportStatus @default(PENDING)
+  progress     Int          @default(0)
+  message      String?
+  resultJson   Json?
+  errorMessage String?
+  uploadedById String
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  completedAt  DateTime?
+
+  @@index([uploadedById, createdAt])
+  @@index([status, createdAt])
 }
 
 // ─── N7 机具考核（按设备 SN）────────────────────────────────────────────────

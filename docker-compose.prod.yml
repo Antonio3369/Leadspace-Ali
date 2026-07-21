@@ -3,6 +3,19 @@ services:
     image: postgres:16-alpine
     container_name: leadspace-postgres
     restart: unless-stopped
+    # 3.6G 同机多服务：限制库内存，避免导入/查询把整机拖死
+    mem_limit: 768m
+    memswap_limit: 768m
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=40
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-leadspace}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -21,14 +34,22 @@ services:
       dockerfile: Dockerfile
     container_name: leadspace-alipay-app
     restart: unless-stopped
+    # 超限只杀本容器并自动重启，不拖死 SSH / 同机其它站
+    mem_limit: 1024m
+    memswap_limit: 1024m
     depends_on:
       postgres:
         condition: service_healthy
     ports:
       - "127.0.0.1:3001:3000"
+    volumes:
+      - leadspace_import_jobs:/tmp/leadspace-import-jobs
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-leadspace}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-leadspace}?schema=public
+      # 先于系统 OOM 触发 V8 回收，降低整机假死概率
+      NODE_OPTIONS: --max-old-space-size=768
+      IMPORT_JOB_DIR: /tmp/leadspace-import-jobs
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leadspace}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-leadspace}?schema=public&connection_limit=10&pool_timeout=30
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
       AUTH_URL: ${AUTH_URL:-https://ali.orblead.com}
       AUTH_TRUST_HOST: "true"
@@ -48,3 +69,4 @@ services:
 
 volumes:
   leadspace_pg_data:
+  leadspace_import_jobs:

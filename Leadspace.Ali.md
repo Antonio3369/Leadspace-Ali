@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-07-20（N7 今日待办首页、优先级人话、处理状态一键标记）
+**最后更新**：2026-07-21（生产稳定性：容器内存隔离、导入互斥、后台导入任务、Swap）
 
 ---
 
@@ -595,6 +595,13 @@ src/
 
 ## 13. 近期已完成
 
+### 2026-07-21（稳定性加固，待本批部署）
+
+- [x] 主机 2G Swap（防整机假死缓冲）
+- [x] 生产 compose：app/postgres 内存上限 + NODE_OPTIONS
+- [x] 导入互斥锁；人员/N7/小蓝环导入改为后台任务 + 前端轮询
+- [x] 文档 §15.6 稳定性与升配建议
+
 ### 2026-07-20（已部署生产）
 
 - [x] N7 首页改为 **今日待办**（`N7TodayView` + `/api/n7/today`）；侧栏：今日待办 · 达标跟进 · 数据看板/团队看板 · …
@@ -730,6 +737,26 @@ ssh sales-cloud 'cd /opt/leadspace-alipay && sudo docker compose -f docker-compo
 # 首次 SSL（DNS 生效后）
 ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/setup-ssl.sh'
 ```
+
+### 15.6 生产稳定性（防整机假死）
+
+同机约 3.6G 内存，跑 ali / unicom / hk 等多服务。大表导入曾导致内存顶满、整机无响应。
+
+| 措施 | 说明 |
+|---|---|
+| Swap 2G | 主机已挂载 `/swapfile`，开机自动启用 |
+| 容器内存上限 | `docker-compose.prod.yml`：app 1G、postgres 768M；超限只重启该容器 |
+| Node 堆上限 | `NODE_OPTIONS=--max-old-space-size=768` |
+| 导入互斥 | 同时只允许一个重导入；看数/登录不限 |
+| 后台导入 | 上传后返回 `jobId`，后台处理，前端轮询 `/api/import/jobs/[id]` |
+
+**升配建议（F，需在腾讯云控制台操作）**
+
+- 短期：轻量应用升到 **4 核 8G**（或至少 8G 内存），同机多站更稳  
+- 更稳：ali 单独一台机，与 hk/unicom 拆开  
+- 升配后可酌情放宽 compose 内存上限
+
+相关文件：`deploy/nginx` 已配 `proxy_*_timeout 600s`、`client_max_body_size 100m`。
 
 相关文件：
 

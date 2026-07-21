@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
 import { canImportExcel } from "@/lib/permissions";
-import { importN7ExcelFile } from "@/services/import/n7-excel-importer";
+import { enqueueHeavyImport } from "@/services/import/heavy-import-job";
 
-/** 大表导入可能超过 1～2 分钟 */
-export const maxDuration = 600;
+export const maxDuration = 120;
 
 export async function POST(request: Request) {
   try {
@@ -37,9 +36,21 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const result = await importN7ExcelFile(buffer, file.name, user.id);
+    const queued = await enqueueHeavyImport({
+      kind: "n7",
+      fileName: file.name,
+      buffer,
+      uploadedById: user.id,
+    });
 
-    return NextResponse.json(result);
+    if ("error" in queued) {
+      return NextResponse.json({ error: queued.error }, { status: queued.status });
+    }
+
+    return NextResponse.json(
+      { async: true, jobId: queued.jobId, message: "已开始后台导入" },
+      { status: 202 }
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "导入失败";
     if (message === "UNAUTHORIZED") {
@@ -52,15 +63,6 @@ export async function POST(request: Request) {
             "上传文件过大或传输中断。请去掉「原始表格」只保留加工表，或拆成更小文件后再试。",
         },
         { status: 413 }
-      );
-    }
-    if (/connection|Connection|closed the connection/i.test(message)) {
-      return NextResponse.json(
-        {
-          error:
-            "数据库连接中断，请稍后重试（沙箱环境可重启 npx prisma dev -d）",
-        },
-        { status: 500 }
       );
     }
     return NextResponse.json({ error: message }, { status: 500 });

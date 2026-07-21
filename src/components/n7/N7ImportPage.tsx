@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { uploadImportWithJobPoll } from "@/lib/import-upload-client";
 import {
   NotionAlert,
   NotionButton,
@@ -37,9 +38,6 @@ interface PersonnelImportResult {
 
 type ImportResult = N7ImportResult | PersonnelImportResult;
 
-const UPLOAD_PROGRESS_MAX = 30;
-const PROCESSING_PROGRESS_MAX = 99;
-
 const IMPORT_CONFIG: Record<
   ImportKind,
   {
@@ -52,14 +50,14 @@ const IMPORT_CONFIG: Record<
   personnel: {
     title: "人员名单",
     description:
-      "导入「支付宝N7作业人员名单.xlsx」。识别「N7作业名单」表（作业员姓名 + 所属经理）；若有「付呗作业员名单」会按姓名补齐 uid。业务员为纯数据账号。建议先导人员，再导 N7 考核表。",
+      "导入「支付宝N7作业人员名单.xlsx」。识别「N7作业名单」表（作业员姓名 + 所属经理）；若有「付呗作业员名单」会按姓名补齐 uid。业务员为纯数据账号。建议先导人员，再导 N7 考核表。大表在后台导入，上传完成后可等待进度，不影响他人看数。",
     endpoint: "/api/import/personnel",
     buttonLabel: "导入人员名单",
   },
   n7: {
     title: "N7 考核表",
     description:
-      "只上传运营加工表（如「7.15」），须含：设备SN、作业人员、所属经理、是否达标、考核开始/结束/剩余天数、有效天数与用户数等。不要上传「原始表格」。导入为全量同步：同 SN 覆盖更新，新 SN 新增，名单中消失的设备会自动删除。",
+      "只上传运营加工表（如「7.15」），须含：设备SN、作业人员、所属经理、是否达标、考核开始/结束/剩余天数、有效天数与用户数等。不要上传「原始表格」。导入为全量同步：同 SN 覆盖更新，新 SN 新增，名单中消失的设备会自动删除。大表在后台导入。",
     endpoint: "/api/import/n7",
     buttonLabel: "导入 N7 考核表",
   },
@@ -67,103 +65,6 @@ const IMPORT_CONFIG: Record<
 
 function isPersonnelResult(result: ImportResult): result is PersonnelImportResult {
   return "managersCreated" in result;
-}
-
-function uploadWithProgress(
-  endpoint: string,
-  file: File,
-  onProgress: (value: number, label: string) => void
-): Promise<ImportResult> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const formData = new FormData();
-    formData.append("file", file);
-
-    let processingTimer: ReturnType<typeof setInterval> | null = null;
-    let processingStarted = false;
-
-    function clearProcessingTimer() {
-      if (processingTimer) {
-        clearInterval(processingTimer);
-        processingTimer = null;
-      }
-    }
-
-    function startProcessingProgress() {
-      if (processingStarted) return;
-      processingStarted = true;
-      let current = UPLOAD_PROGRESS_MAX;
-      const startedAt = Date.now();
-      onProgress(current, "正在解析并写入数据库…");
-      processingTimer = setInterval(() => {
-        if (current < PROCESSING_PROGRESS_MAX) {
-          const step = current < 55 ? 2.5 : current < 80 ? 1.2 : current < 92 ? 0.4 : 0.15;
-          current = Math.min(PROCESSING_PROGRESS_MAX, current + step);
-        }
-        const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
-        let label = "正在解析并写入数据库…";
-        if (elapsedSec >= 90) {
-          label = `即将完成…已用时 ${elapsedSec}s，请勿关闭页面`;
-        } else if (elapsedSec >= 20) {
-          label = `正在写入数据库…已用时 ${elapsedSec}s`;
-        }
-        onProgress(Math.round(current), label);
-      }, 350);
-    }
-
-    xhr.upload.onprogress = (event) => {
-      if (processingStarted) return;
-      if (!event.lengthComputable) {
-        onProgress(8, "正在上传文件…");
-        return;
-      }
-      const ratio = event.total > 0 ? event.loaded / event.total : 0;
-      onProgress(
-        Math.max(1, Math.round(ratio * UPLOAD_PROGRESS_MAX)),
-        `正在上传文件… ${Math.round(ratio * 100)}%`
-      );
-    };
-
-    xhr.upload.onload = () => {
-      startProcessingProgress();
-    };
-
-    xhr.onreadystatechange = () => {
-      if (xhr.readyState !== XMLHttpRequest.DONE) return;
-      clearProcessingTimer();
-
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          onProgress(100, "导入完成");
-          resolve(JSON.parse(xhr.responseText) as ImportResult);
-        } catch {
-          reject(new Error("响应解析失败"));
-        }
-        return;
-      }
-
-      try {
-        const data = JSON.parse(xhr.responseText) as { error?: string };
-        reject(new Error(data.error ?? "上传失败"));
-      } catch {
-        reject(new Error(xhr.status === 0 ? "网络错误，请重试" : "上传失败"));
-      }
-    };
-
-    xhr.onerror = () => {
-      clearProcessingTimer();
-      reject(new Error("网络错误，请重试"));
-    };
-
-    xhr.timeout = 5 * 60 * 1000;
-    xhr.ontimeout = () => {
-      clearProcessingTimer();
-      reject(new Error("导入超时（超过 5 分钟）。请确认数据库沙箱正常后重试。"));
-    };
-
-    xhr.open("POST", endpoint);
-    xhr.send(formData);
-  });
 }
 
 export function N7ImportPage() {
@@ -200,12 +101,16 @@ export function N7ImportPage() {
     uploadAbortRef.current = false;
 
     try {
-      const data = await uploadWithProgress(config.endpoint, file, (value, label) => {
-        if (!uploadAbortRef.current) {
-          setProgress(value);
-          setProgressLabel(label);
+      const data = await uploadImportWithJobPoll<ImportResult>(
+        config.endpoint,
+        file,
+        (value, label) => {
+          if (!uploadAbortRef.current) {
+            setProgress(value);
+            setProgressLabel(label);
+          }
         }
-      });
+      );
       if (uploadAbortRef.current) return;
       setResult(data);
       setFile(null);

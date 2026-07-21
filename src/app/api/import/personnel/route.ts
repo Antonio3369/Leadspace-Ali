@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
 import { canImportExcel } from "@/lib/permissions";
-import { importPersonnelFromBuffer } from "@/services/import/personnel-importer";
+import { enqueueHeavyImport } from "@/services/import/heavy-import-job";
+
+export const maxDuration = 120;
 
 export async function POST(request: Request) {
   try {
@@ -23,13 +25,21 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const result = await importPersonnelFromBuffer(buffer);
-
-    return NextResponse.json({
-      type: "personnel",
-      status: "SUCCESS",
-      ...result,
+    const queued = await enqueueHeavyImport({
+      kind: "personnel",
+      fileName: file.name,
+      buffer,
+      uploadedById: user.id,
     });
+
+    if ("error" in queued) {
+      return NextResponse.json({ error: queued.error }, { status: queued.status });
+    }
+
+    return NextResponse.json(
+      { async: true, jobId: queued.jobId, message: "已开始后台导入" },
+      { status: 202 }
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "导入失败";
     if (message === "UNAUTHORIZED") {

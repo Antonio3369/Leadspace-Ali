@@ -108,7 +108,7 @@ function toWriteRow(
 }
 
 async function bulkInsert(rows: N7WriteRow[]) {
-  const CHUNK = 500;
+  const CHUNK = 300;
   for (let i = 0; i < rows.length; i += CHUNK) {
     const slice = rows.slice(i, i + CHUNK);
     await db.n7DeviceRecord.createMany({
@@ -148,6 +148,7 @@ async function bulkInsert(rows: N7WriteRow[]) {
       })),
       skipDuplicates: true,
     });
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 }
 

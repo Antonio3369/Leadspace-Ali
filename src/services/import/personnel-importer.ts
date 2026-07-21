@@ -170,10 +170,12 @@ function sheetToRows(wb: XLSX.WorkBook, sheetName: string): Record<string, strin
   });
 }
 
-/** 从「付呗作业员名单」等附表按姓名补齐 uid/PID */
+/** 从「付呗作业员名单」等附表按姓名补齐 uid/PID（跳过已识别的主名单表，少占内存） */
 function buildPidByNameLookup(wb: XLSX.WorkBook): Map<string, string> {
   const map = new Map<string, string>();
+  const skip = new Set(["N7作业名单", "作业名单", "人员名单"]);
   for (const sheetName of wb.SheetNames) {
+    if (skip.has(sheetName)) continue;
     const rows = sheetToRows(wb, sheetName);
     if (rows.length === 0) continue;
     for (const row of rows) {
@@ -204,7 +206,7 @@ function pickPersonnelRows(wb: XLSX.WorkBook): Record<string, string>[] {
 }
 
 export async function importPersonnelFromBuffer(buffer: Buffer): Promise<PersonnelImportResult> {
-  const wb = XLSX.read(buffer, { type: "buffer" });
+  const wb = XLSX.read(buffer, { type: "buffer", cellDates: false, raw: false });
   if (wb.SheetNames.length === 0) {
     throw new Error("人员名单 Excel 无工作表");
   }
@@ -215,6 +217,12 @@ export async function importPersonnelFromBuffer(buffer: Buffer): Promise<Personn
   }
 
   const pidByName = buildPidByNameLookup(wb);
+  // 尽早丢掉 workbook，降低后续逐行写库时的峰值内存
+  for (const name of wb.SheetNames) {
+    delete wb.Sheets[name];
+  }
+  wb.SheetNames.length = 0;
+
   return importPersonnelRows(rows, pidByName);
 }
 
@@ -307,8 +315,15 @@ async function importPersonnelRows(
   let salesCreated = 0;
   let identitiesUpserted = 0;
   const salesIdx = { value: 0 };
+  let rowIndex = 0;
 
   for (const row of rows) {
+    rowIndex += 1;
+    // 让出事件循环，导入期间仍可响应健康检查与其它读请求
+    if (rowIndex % 25 === 0) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+
     const accountName = getPersonnelAccountName(row);
     if (!accountName) continue;
 
