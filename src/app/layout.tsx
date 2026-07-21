@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { BackToTop } from "@/components/layout/BackToTop";
 import { SiteIcpFooter } from "@/components/layout/SiteIcpFooter";
 import "./globals.css";
 
@@ -18,6 +19,13 @@ export const metadata: Metadata = {
   description: "支付宝 P 站推广业务数据统计、展示与管理系统",
 };
 
+/** 手机端按设备宽度渲染，避免桌面宽度缩放后打开 */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -34,6 +42,7 @@ export default function RootLayout({
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">{children}</div>
           <SiteIcpFooter />
         </div>
+        <BackToTop />
       </body>
     </html>
   );

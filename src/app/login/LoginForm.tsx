@@ -81,8 +81,11 @@ export default function LoginForm() {
   }
 
   return (
-    <div className="h-full min-h-0 flex-1 overflow-y-auto flex items-center justify-center bg-[#f4f6f9] px-4 py-10">
-      <div className="w-full max-w-[400px]">
+    <div
+      id="app-scroll"
+      className="h-full min-h-0 flex-1 overflow-y-auto overflow-x-hidden flex items-center justify-center bg-[#f4f6f9] px-4 py-10 [-webkit-overflow-scrolling:touch]"
+    >
+      <div className="w-full max-w-[400px] min-w-0">
         <div className="mb-6 space-y-1 text-center">
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[#eff6ff] text-[#2563eb] text-lg font-bold mb-2">
             L

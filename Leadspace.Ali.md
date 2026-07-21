@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-07-21（生产稳定性：容器内存隔离、导入互斥、后台导入任务、Swap）
+**最后更新**：2026-07-22（移动端：回顶按钮、viewport 适配；§13 已部署）
 
 ---
 
@@ -142,6 +142,7 @@ src/components/ui/notion.tsx
 ```
 src/components/layout/
 ├── AppShell.tsx      # 业务选择页轻量顶栏 / 业务内：侧边栏 + 主内容区
+├── BackToTop.tsx     # 手机端浮动「返回顶部」（监听 #app-scroll）
 ├── Sidebar.tsx       # 左侧导航（含「切换业务」）
 └── SignOutButton.tsx
 src/components/business/
@@ -151,6 +152,7 @@ src/lib/business-lines.ts  # 业务线常量与路径工具
 
 - `/`：业务选择页，**无侧栏**
 - `/xlh/*`、`/n7/*`：业务内完整侧栏；顶部显示当前业务名 + **← 切换业务**
+- **手机端**：根布局 `export const viewport`（`device-width` + `viewport-fit=cover`）；全局 `BackToTop` 下滑约 280px 后出现；宽表仍容器内横滑，页面不整体撑宽
 
 **小蓝环 Sidebar 导航项**（按顺序）：
 
@@ -595,6 +597,12 @@ src/
 
 ## 13. 近期已完成
 
+### 2026-07-22（已部署生产）
+
+- [x] 手机端 **返回顶部**：`BackToTop.tsx`，全局挂载；监听 `#app-scroll`，下滑后右下角浮动按钮平滑回顶（含 safe-area）
+- [x] 手机端 **首屏适配**：根布局显式 `viewport`（`device-width`、`initialScale=1`、`viewport-fit=cover`）；`globals.css` 防横向溢出与 iOS 字体缩放
+- [x] 登录 / 首登 / 账号页 / AppShell 内容区补 `min-w-0`、`overflow-x-hidden`，避免打开时像桌面宽度缩进手机
+
 ### 2026-07-21（已部署生产）
 
 - [x] 主机 2G Swap（防整机假死缓冲）
@@ -787,7 +795,7 @@ Dockerfile
 
 | 阶段 | 内容 |
 |---|---|
-| N7 | 业务员端写入处理状态；结构化跟进（下次联系日/原因枚举）；空态与移动端打磨 |
+| N7 | 业务员端写入处理状态；结构化跟进（下次联系日/原因枚举）；空态与移动端细节打磨（回顶/viewport 已做） |
 | P3 | **P 站 API 拉取**（真正上线后才可切换 `dataMode=API_SYNC` 并考虑关闭商户 Excel 上传） |
 | P4 | 公共大屏增强（自动刷新、投屏） |
 | P5 | 后台管理（模式切换、日志中心、历史回溯） |

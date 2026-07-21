@@ -14,9 +14,9 @@ export default async function AccountLayout({
   return (
     <div
       id="app-scroll"
-      className="h-full min-h-0 flex-1 overflow-y-auto bg-[#f4f6f9] [-webkit-overflow-scrolling:touch]"
+      className="h-full min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f4f6f9] [-webkit-overflow-scrolling:touch]"
     >
-      <div className="w-full max-w-[1520px] mx-auto px-4 sm:px-5 py-5 md:py-7">{children}</div>
+      <div className="w-full max-w-[1520px] mx-auto px-4 sm:px-5 py-5 md:py-7 min-w-0">{children}</div>
     </div>
   );
 }

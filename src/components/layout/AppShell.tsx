@@ -49,7 +49,7 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
           id="app-scroll"
           className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch]"
         >
-          <div className="w-full max-w-[1520px] mx-auto px-4 sm:px-5 py-6 md:py-7">
+          <div className="w-full max-w-[1520px] mx-auto px-4 sm:px-5 py-6 md:py-7 min-w-0">
             {children}
           </div>
         </main>
@@ -104,7 +104,7 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
           id="app-scroll"
           className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch]"
         >
-          <div className="w-full max-w-[1520px] mx-auto px-4 sm:px-5 py-5 md:py-7">
+          <div className="w-full max-w-[1520px] mx-auto px-4 sm:px-5 py-5 md:py-7 min-w-0">
             {children}
           </div>
         </main>

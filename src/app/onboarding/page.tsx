@@ -16,8 +16,11 @@ export default async function OnboardingPage() {
   }
 
   return (
-    <div className="h-full min-h-0 flex-1 overflow-y-auto bg-[#F5F7FA] flex flex-col">
-      <header className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+    <div
+      id="app-scroll"
+      className="h-full min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#F5F7FA] flex flex-col [-webkit-overflow-scrolling:touch]"
+    >
+      <header className="bg-white border-b border-gray-100 px-4 sm:px-6 py-4 flex items-center justify-between">
         <span className="font-semibold text-[#165DFF]">Leadspace 数据管理</span>
         <form
           action={async () => {
@@ -31,8 +34,8 @@ export default async function OnboardingPage() {
         </form>
       </header>
 
-      <main className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-lg bg-white rounded-xl shadow-sm border border-gray-100 p-8 space-y-5">
+      <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
+        <div className="w-full max-w-lg min-w-0 bg-white rounded-xl shadow-sm border border-gray-100 p-6 sm:p-8 space-y-5">
           <div>
             <p className="text-xs text-[#165DFF] font-medium mb-1">首次登录</p>
             <h1 className="text-xl font-semibold text-gray-900">{onboardingTitle(user.role)}</h1>
