@@ -25,6 +25,12 @@ export default async function N7StaffDevicesPage({
     managerKey = user.id;
   }
 
+  if (user.role === "SALES") {
+    if (staffKey !== user.id && staffKey !== `name:${user.name}`) {
+      redirect("/n7");
+    }
+  }
+
   return (
     <Suspense
       fallback={
@@ -36,7 +42,13 @@ export default async function N7StaffDevicesPage({
       <N7StaffDevicesView
         managerKey={managerKey}
         staffKey={staffKey}
-        backHref={user.role === "MANAGER" ? "/n7/board" : undefined}
+        backHref={
+          user.role === "MANAGER"
+            ? "/n7/board"
+            : user.role === "SALES"
+              ? "/n7"
+              : undefined
+        }
       />
     </Suspense>
   );

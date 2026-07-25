@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { PermissionError } from "@/lib/permissions";
+import { chineseNameToPinyinUsername, syncSalesPinyinUsernames } from "@/lib/pinyin-username";
+import {
+  createTeamSalesLoginAccount,
+  resetTeamSalesPassword,
+} from "@/services/org/team-sales";
 import { buildManagerManagedUserWhere } from "@/services/stats/manager-scope";
-import { chineseNameToPinyinUsername } from "@/lib/pinyin-username";
 
 export async function GET() {
   try {
@@ -22,13 +28,27 @@ export async function GET() {
       orderBy: [{ accountLifecycle: "asc" }, { name: "asc" }],
     });
 
-    const roster = members.map((member) => ({
+    // 人员管理页打开时顺手修掉旧中文登录名
+    await syncSalesPinyinUsernames(members.map((m) => m.id));
+
+    const refreshed = await db.user.findMany({
+      where: { id: { in: members.map((m) => m.id) } },
+      include: {
+        platformIdentities: {
+          select: { jobAccountName: true, personalPid: true },
+        },
+      },
+      orderBy: [{ accountLifecycle: "asc" }, { name: "asc" }],
+    });
+
+    const roster = refreshed.map((member) => ({
       id: member.id,
       username: member.username,
       name: member.name,
       role: member.role,
       status: member.status,
       accountLifecycle: member.accountLifecycle,
+      hasLogin: Boolean(member.passwordHash),
       suggestedUsername: chineseNameToPinyinUsername(member.name),
       identityCount: member.platformIdentities.length,
       identities: member.platformIdentities,
@@ -39,5 +59,43 @@ export async function GET() {
     const message = err instanceof Error ? err.message : "服务器错误";
     if (message === "UNAUTHORIZED") return NextResponse.json({ error: "未登录" }, { status: 401 });
     return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+const postSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("create"),
+    name: z.string().min(1, "请填写队员姓名").max(20),
+  }),
+  z.object({
+    action: z.literal("reset"),
+    userId: z.string().min(1),
+  }),
+]);
+
+export async function POST(request: Request) {
+  try {
+    const user = await requireSessionUser();
+    const body = postSchema.parse(await request.json());
+
+    if (body.action === "create") {
+      const created = await createTeamSalesLoginAccount(user, body.name);
+      return NextResponse.json({ user: created, nameHint: created.nameHint });
+    }
+
+    const reset = await resetTeamSalesPassword(user, body.userId);
+    return NextResponse.json({
+      user: { name: reset.name, username: reset.username, password: reset.password },
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return NextResponse.json({ error: err.issues[0]?.message }, { status: 400 });
+    }
+    if (err instanceof PermissionError) {
+      return NextResponse.json({ error: err.message }, { status: 403 });
+    }
+    const message = err instanceof Error ? err.message : "操作失败";
+    if (message === "UNAUTHORIZED") return NextResponse.json({ error: "未登录" }, { status: 401 });
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }

@@ -5,6 +5,7 @@ import { getN7TodayQueues } from "@/services/n7/analytics";
 import {
   assertCanViewN7,
   resolveN7ManagerKey,
+  resolveN7StaffKey,
 } from "@/services/n7/n7-scope";
 
 export async function GET(request: Request) {
@@ -19,12 +20,14 @@ export async function GET(request: Request) {
       user,
       requestedManagerKey ? decodeURIComponent(requestedManagerKey) : null
     );
+    const staffKey = resolveN7StaffKey(user);
 
     const data = await getN7TodayQueues({
       dateFrom: searchParams.get("dateFrom"),
       dateTo: searchParams.get("dateTo"),
       yearMonth: searchParams.get("month"),
       managerKey,
+      staffKey,
     });
 
     return NextResponse.json(data);

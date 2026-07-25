@@ -6,6 +6,7 @@ import type { N7Priority } from "@/lib/n7-rules";
 import {
   assertCanViewN7,
   resolveN7ManagerKey,
+  resolveN7StaffKey,
 } from "@/services/n7/n7-scope";
 
 const PRIORITIES = new Set<N7Priority>(["P0", "P1", "P2", "P3"]);
@@ -29,13 +30,19 @@ export async function GET(request: Request) {
       user,
       requestedManagerKey ? decodeURIComponent(requestedManagerKey) : null
     );
+    const staffKey = resolveN7StaffKey(user);
+
+    const status =
+      searchParams.get("status") === "expired" ? ("expired" as const) : null;
 
     const data = await getN7FollowUpDevices({
       dateFrom: searchParams.get("dateFrom"),
       dateTo: searchParams.get("dateTo"),
       yearMonth: searchParams.get("month"),
-      priority,
+      priority: status ? "all" : priority,
+      status,
       managerKey,
+      staffKey,
     });
 
     return NextResponse.json(data);

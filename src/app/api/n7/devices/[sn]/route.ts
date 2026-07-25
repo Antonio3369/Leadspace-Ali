@@ -3,14 +3,22 @@ import { z } from "zod";
 import { requireSessionUser } from "@/lib/auth";
 import { PermissionError } from "@/lib/permissions";
 import {
+  isFollowUpConnectStatus,
+  normalizeFollowUpFlags,
+} from "@/lib/n7-follow-up";
+import {
   getN7DeviceDetail,
   updateN7DeviceFollowUp,
 } from "@/services/n7/analytics";
 import { assertCanViewN7Device } from "@/services/n7/n7-scope";
+import { markN7NotificationsReadByDevice } from "@/services/n7/notifications";
 
 const followUpSchema = z.object({
   followUpDone: z.boolean(),
   followUpNote: z.string().max(2000).nullable().optional(),
+  followUpConnectStatus: z.string().nullable().optional(),
+  followUpFlags: z.array(z.string()).optional(),
+  followUpPhotoUrls: z.array(z.string().min(1).max(500)).max(9).optional(),
 });
 
 export async function GET(
@@ -28,6 +36,12 @@ export async function GET(
     if (!data) {
       return NextResponse.json({ error: "设备不存在" }, { status: 404 });
     }
+
+    // 经理打开详情即视为审阅，清该 SN 未读提醒
+    if (user.role === "MANAGER") {
+      await markN7NotificationsReadByDevice(user.id, sn);
+    }
+
     return NextResponse.json(data);
   } catch (err) {
     const message = err instanceof Error ? err.message : "查询失败";
@@ -56,12 +70,42 @@ export async function PATCH(
     await assertCanViewN7Device(user, sn);
 
     const body = followUpSchema.parse(await request.json());
+
+    if (body.followUpDone) {
+      if (!isFollowUpConnectStatus(body.followUpConnectStatus)) {
+        return NextResponse.json(
+          { error: "请选择已接通或未接通" },
+          { status: 400 }
+        );
+      }
+      const photos = body.followUpPhotoUrls ?? [];
+      if (photos.length < 1) {
+        return NextResponse.json(
+          { error: "请至少上传 1 张现场图" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const flags = normalizeFollowUpFlags(body.followUpFlags);
+
     const updated = await updateN7DeviceFollowUp(sn, {
       followUpDone: body.followUpDone,
       ...(body.followUpNote !== undefined
         ? { followUpNote: body.followUpNote }
         : {}),
       followUpById: user.id,
+      ...(body.followUpDone
+        ? {
+            followUpConnectStatus: body.followUpConnectStatus!,
+            followUpFlags: flags,
+            followUpPhotoUrls: body.followUpPhotoUrls ?? [],
+          }
+        : {
+            followUpConnectStatus: null,
+            followUpFlags: [],
+            followUpPhotoUrls: [],
+          }),
     });
 
     return NextResponse.json({
@@ -69,6 +113,10 @@ export async function PATCH(
       followUpDone: updated.followUpDone,
       followUpNote: updated.followUpNote,
       followUpAt: updated.followUpAt?.toISOString() ?? null,
+      followUpConnectStatus: updated.followUpConnectStatus,
+      followUpFlags: updated.followUpFlags,
+      followUpPhotoUrls: updated.followUpPhotoUrls,
+      managerNotified: updated.managerNotified,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -81,13 +129,15 @@ export async function PATCH(
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
-    if (message === "设备不存在" || message.includes("Record to update not found")) {
+    if (
+      message === "设备不存在" ||
+      message.includes("Record to update not found")
+    ) {
       return NextResponse.json({ error: "设备不存在" }, { status: 404 });
     }
     if (err instanceof PermissionError) {
       return NextResponse.json({ error: message }, { status: 403 });
     }
-    // Prisma 长错误（含 turbopack 路径）压缩成可读提示
     if (/Unknown argument|does not exist|followUp/i.test(message)) {
       console.error("[n7 follow-up]", message);
       return NextResponse.json(

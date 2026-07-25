@@ -4,6 +4,7 @@ import { parseN7DateRange } from "@/lib/n7-date";
 import {
   daysGap,
   isFollowUpCandidate,
+  isN7TimeHopeless,
   priorityRank,
   ratePercent,
   resolveN7FailReason,
@@ -35,6 +36,8 @@ export interface N7LeaderboardRow {
   qualifyRate: number;
   followUpCount: number;
   p0Count: number;
+  /** 考核已结束且仍未达标（与待跟进互斥） */
+  expiredUnqualifiedCount: number;
   notSubscribedCount: number;
   notCheckedInCount: number;
   notLitCount: number;
@@ -70,9 +73,14 @@ export interface N7DeviceListItem {
   failReason: N7FailReason | null;
   daysGap: number;
   usersGap: number;
+  /** 时间上已无法靠剩余考核期追上有效天达标线；仍展示，排序靠后 */
+  hopeless: boolean;
   /** 处理状态（经理/管理员可在详情页代记；与考核「待跟进」名单独立） */
   followUpDone: boolean;
   followUpNote: string | null;
+  followUpConnectStatus: string | null;
+  followUpFlags: string[];
+  followUpPhotoUrls: string[];
 }
 
 export interface N7DailyPoint {
@@ -124,6 +132,26 @@ async function buildManagerDeviceWhere(
   };
 }
 
+/** 队员范围：优先 salesUserId；未绑定 id 时用姓名兜底 */
+async function buildStaffDeviceWhere(
+  staffKey: string
+): Promise<Prisma.N7DeviceRecordWhereInput> {
+  if (staffKey.startsWith("name:")) {
+    return { operatorName: staffKey.slice(5) };
+  }
+  const user = await db.user.findUnique({
+    where: { id: staffKey },
+    select: { name: true },
+  });
+  if (!user) return { salesUserId: staffKey };
+  return {
+    OR: [
+      { salesUserId: staffKey },
+      { AND: [{ salesUserId: null }, { operatorName: user.name }] },
+    ],
+  };
+}
+
 function summarizeDevices(devices: N7DeviceRecord[]): Omit<
   N7LeaderboardRow,
   "key" | "name" | "userId"
@@ -131,12 +159,14 @@ function summarizeDevices(devices: N7DeviceRecord[]): Omit<
   let qualifiedCount = 0;
   let followUpCount = 0;
   let p0Count = 0;
+  let expiredUnqualifiedCount = 0;
   let notSubscribedCount = 0;
   let notCheckedInCount = 0;
   let notLitCount = 0;
 
   for (const d of devices) {
     if (d.isQualified) qualifiedCount += 1;
+    else if (d.remainingEnded) expiredUnqualifiedCount += 1;
 
     const priority = resolveN7Priority(d);
     if (priority) {
@@ -156,6 +186,7 @@ function summarizeDevices(devices: N7DeviceRecord[]): Omit<
     qualifyRate: ratePercent(qualifiedCount, expandCount),
     followUpCount,
     p0Count,
+    expiredUnqualifiedCount,
     notSubscribedCount,
     notCheckedInCount,
     notLitCount,
@@ -182,6 +213,8 @@ function toIso(d: Date | null | undefined): string | null {
 
 function mapDevice(d: N7DeviceRecord): N7DeviceListItem {
   const priority = resolveN7Priority(d);
+  const dayGap = daysGap(d.effectiveDays);
+  const userGap = usersGap(d.effectiveUsers);
   return {
     id: d.id,
     deviceSn: d.deviceSn,
@@ -212,10 +245,14 @@ function mapDevice(d: N7DeviceRecord): N7DeviceListItem {
     failReason: d.isQualified
       ? null
       : resolveN7FailReason(d.effectiveDays, d.effectiveUsers),
-    daysGap: daysGap(d.effectiveDays),
-    usersGap: usersGap(d.effectiveUsers),
+    daysGap: dayGap,
+    usersGap: userGap,
+    hopeless: isN7TimeHopeless(d),
     followUpDone: d.followUpDone,
     followUpNote: d.followUpNote,
+    followUpConnectStatus: d.followUpConnectStatus,
+    followUpFlags: d.followUpFlags ?? [],
+    followUpPhotoUrls: d.followUpPhotoUrls ?? [],
   };
 }
 
@@ -223,6 +260,8 @@ function sortFollowUp(items: N7DeviceListItem[]): N7DeviceListItem[] {
   return [...items].sort((a, b) => {
     // 未处理优先，方便经理/管理员扫漏
     if (a.followUpDone !== b.followUpDone) return a.followUpDone ? 1 : -1;
+    // 仍可追的在前，时间无望的在后（保留可见）
+    if (a.hopeless !== b.hopeless) return a.hopeless ? 1 : -1;
     const ap = a.priority ? priorityRank(a.priority) : 99;
     const bp = b.priority ? priorityRank(b.priority) : 99;
     if (ap !== bp) return ap - bp;
@@ -357,7 +396,7 @@ export async function getN7StaffDevices(
   opts: N7RangeOpts & {
     staffKey: string;
     managerKey?: string | null;
-    tab?: "followUp" | "qualified" | "all";
+    tab?: "followUp" | "qualified" | "all" | "expired";
   }
 ) {
   const { from, to, dateFrom, dateTo } = resolveRange(opts);
@@ -388,6 +427,8 @@ export async function getN7StaffDevices(
     list = sortFollowUp(mapped.filter((d) => d.priority != null));
   } else if (tab === "qualified") {
     list = mapped.filter((d) => d.isQualified);
+  } else if (tab === "expired") {
+    list = mapped.filter((d) => !d.isQualified && d.remainingEnded);
   }
 
   const sample = devices[0];
@@ -412,11 +453,14 @@ export async function getN7StaffDevices(
   };
 }
 
-/** 待跟进 / P0 设备明细（可按经理范围过滤） */
+/** 待跟进 / 过期未达标设备明细（可按经理 / 队员范围过滤） */
 export async function getN7FollowUpDevices(
   opts: N7RangeOpts & {
     priority?: N7Priority | "all" | null;
+    /** expired：考核结束仍未达标（与待跟进名单互斥） */
+    status?: "expired" | null;
     managerKey?: string | null;
+    staffKey?: string | null;
   }
 ) {
   const { from, to, dateFrom, dateTo } = resolveRange(opts);
@@ -424,6 +468,9 @@ export async function getN7FollowUpDevices(
 
   if (opts.managerKey) {
     parts.push(await buildManagerDeviceWhere(opts.managerKey));
+  }
+  if (opts.staffKey) {
+    parts.push(await buildStaffDeviceWhere(opts.staffKey));
   }
 
   const devices = await db.n7DeviceRecord.findMany({
@@ -433,10 +480,20 @@ export async function getN7FollowUpDevices(
 
   const mapped = devices.map(mapDevice);
   const followUp = sortFollowUp(mapped.filter((d) => d.priority != null));
+  const expired = mapped
+    .filter((d) => !d.isQualified && d.remainingEnded)
+    .sort(
+      (a, b) =>
+        a.effectiveDays + a.effectiveUsers - (b.effectiveDays + b.effectiveUsers)
+    );
+
+  const isExpired = opts.status === "expired";
   const priority = opts.priority && opts.priority !== "all" ? opts.priority : null;
-  const list = priority
-    ? followUp.filter((d) => d.priority === priority)
-    : followUp;
+  const list = isExpired
+    ? expired
+    : priority
+      ? followUp.filter((d) => d.priority === priority)
+      : followUp;
 
   let managerName: string | null = null;
   if (opts.managerKey) {
@@ -451,43 +508,47 @@ export async function getN7FollowUpDevices(
     }
   }
 
+  const totals = summarizeDevices(devices);
+
   return {
     dateFrom,
     dateTo,
-    filter: priority ?? "all",
+    filter: isExpired ? ("expired" as const) : (priority ?? "all"),
+    status: isExpired ? ("expired" as const) : ("followUp" as const),
     manager: opts.managerKey
       ? { key: opts.managerKey, name: managerName ?? opts.managerKey }
       : null,
-    totals: summarizeDevices(devices),
+    totals,
     counts: {
       followUp: followUp.length,
       P0: followUp.filter((d) => d.priority === "P0").length,
       P1: followUp.filter((d) => d.priority === "P1").length,
       P2: followUp.filter((d) => d.priority === "P2").length,
       P3: followUp.filter((d) => d.priority === "P3").length,
+      expired: totals.expiredUnqualifiedCount,
     },
     devices: list,
   };
 }
 
 /** 今日待办各队列预览条数（完整列表走达标跟进） */
-const N7_TODAY_LIST_CAP = 10;
+const N7_TODAY_LIST_CAP = 80;
 
 /**
  * 今日待办队列（运营首页）
- * - 主列表按考核紧急度：今日必跟(P0) / 其余待跟进(非 P0)
- * - 未处理仅计数字（跳转达标跟进筛选），不当第三张表
- * - 区间已达标：复盘计数
+ * - 主列表：系统催办（P0 且未关单）
+ * - 快捷卡：未处理 / 过期未达标 / 区间已达标（不与底栏「达标跟进」重复）
  */
 export async function getN7TodayQueues(
-  opts: N7RangeOpts & { managerKey?: string | null }
+  opts: N7RangeOpts & { managerKey?: string | null; staffKey?: string | null }
 ) {
   const follow = await getN7FollowUpDevices({
     ...opts,
     priority: "all",
   });
   const followUp = follow.devices;
-  const urgent = followUp.filter((d) => d.priority === "P0");
+  /** 系统催办池：P0 且未关单 */
+  const urgent = followUp.filter((d) => d.priority === "P0" && !d.followUpDone);
   const pending = followUp.filter((d) => !d.followUpDone);
   const other = followUp.filter((d) => d.priority !== "P0");
 
@@ -502,6 +563,7 @@ export async function getN7TodayQueues(
       qualified: follow.totals.qualifiedCount,
       followUp: follow.counts.followUp,
       expand: follow.totals.expandCount,
+      expired: follow.totals.expiredUnqualifiedCount,
     },
     queues: {
       urgent: urgent.slice(0, N7_TODAY_LIST_CAP),
@@ -532,6 +594,9 @@ export async function getN7DeviceDetail(deviceSn: string) {
     followUpDone: device.followUpDone,
     followUpNote: device.followUpNote,
     followUpAt: toIso(device.followUpAt),
+    followUpConnectStatus: device.followUpConnectStatus,
+    followUpFlags: device.followUpFlags ?? [],
+    followUpPhotoUrls: device.followUpPhotoUrls ?? [],
   };
 }
 
@@ -542,9 +607,12 @@ export async function updateN7DeviceFollowUp(
     /** 省略则保留原备注（列表一键标记用） */
     followUpNote?: string | null;
     followUpById: string;
+    followUpConnectStatus?: string | null;
+    followUpFlags?: string[];
+    followUpPhotoUrls?: string[];
   }
 ) {
-  return db.n7DeviceRecord.update({
+  const updated = await db.n7DeviceRecord.update({
     where: { deviceSn },
     data: {
       followUpDone: input.followUpDone,
@@ -553,19 +621,71 @@ export async function updateN7DeviceFollowUp(
         : {}),
       followUpAt: input.followUpDone ? new Date() : null,
       followUpById: input.followUpDone ? input.followUpById : null,
+      ...(input.followUpDone
+        ? {
+            followUpConnectStatus: input.followUpConnectStatus ?? null,
+            followUpFlags: input.followUpFlags ?? [],
+            followUpPhotoUrls: input.followUpPhotoUrls ?? [],
+          }
+        : {
+            followUpConnectStatus: null,
+            followUpFlags: [],
+            followUpPhotoUrls: [],
+          }),
     },
     select: {
+      deviceSn: true,
+      storeName: true,
+      operatorName: true,
+      managerUserId: true,
+      managerName: true,
+      salesUserId: true,
       followUpDone: true,
       followUpNote: true,
       followUpAt: true,
+      followUpById: true,
+      followUpConnectStatus: true,
+      followUpFlags: true,
+      followUpPhotoUrls: true,
     },
   });
+
+  if (updated.followUpDone && updated.followUpAt) {
+    const {
+      resolveDeviceManagerUserId,
+      notifyManagerFollowUpDone,
+    } = await import("@/services/n7/notifications");
+    const managerUserId = await resolveDeviceManagerUserId(updated);
+    let managerNotified = false;
+    if (managerUserId && managerUserId !== input.followUpById) {
+      const actor = await db.user.findUnique({
+        where: { id: input.followUpById },
+        select: { name: true },
+      });
+      await notifyManagerFollowUpDone({
+        managerUserId,
+        deviceSn: updated.deviceSn,
+        storeName: updated.storeName,
+        operatorName: updated.operatorName,
+        connectStatus: updated.followUpConnectStatus,
+        flags: updated.followUpFlags,
+        photoUrls: updated.followUpPhotoUrls,
+        followUpByName: actor?.name ?? updated.operatorName,
+        followUpAt: updated.followUpAt,
+      });
+      managerNotified = true;
+    }
+    return { ...updated, managerNotified };
+  }
+
+  return { ...updated, managerNotified: false };
 }
 
 /** 每日开单（按注册日） */
 export async function getN7DailyPerformance(
   opts: N7RangeOpts & {
     managerKey?: string | null;
+    staffKey?: string | null;
   }
 ) {
   const { from, to, dateFrom, dateTo } = resolveRange(opts);
@@ -575,6 +695,7 @@ export async function getN7DailyPerformance(
       ...(opts.managerKey
         ? [await buildManagerDeviceWhere(opts.managerKey)]
         : []),
+      ...(opts.staffKey ? [await buildStaffDeviceWhere(opts.staffKey)] : []),
     ],
   };
 

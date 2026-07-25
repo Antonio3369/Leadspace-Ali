@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
-import { canAccessBusinessLine } from "@/lib/business-lines";
+import { db } from "@/lib/db";
+import { canAccessBusinessLine, n7Path } from "@/lib/business-lines";
 import {
   canAccessN7Workspace,
   canViewN7,
@@ -34,6 +35,33 @@ export default async function N7BoardPage() {
           className="inline-flex text-sm font-medium text-[#2563eb] hover:text-[#1d4ed8]"
         />
       </PageShell>
+    );
+  }
+
+  if (user.role === "SALES") {
+    const live = await db.user.findUnique({
+      where: { id: user.id },
+      select: { managerId: true },
+    });
+    let managerKey = live?.managerId ?? null;
+    // 未绑 managerId 时，勿用业务员自己的姓名冒充经理 key（会把设备 AND 筛空）
+    if (!managerKey) {
+      const sample = await db.n7DeviceRecord.findFirst({
+        where: { OR: [{ salesUserId: user.id }, { operatorName: user.name }] },
+        select: { managerUserId: true, managerName: true },
+        orderBy: { registeredAt: "desc" },
+      });
+      managerKey =
+        sample?.managerUserId ??
+        (sample?.managerName ? `name:${sample.managerName}` : null);
+    }
+    if (!managerKey) {
+      redirect(n7Path());
+    }
+    redirect(
+      n7Path(
+        `/managers/${encodeURIComponent(managerKey)}/staff/${encodeURIComponent(user.id)}`
+      )
     );
   }
 

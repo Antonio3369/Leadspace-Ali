@@ -64,6 +64,25 @@ export function usersGap(effectiveUsers: number): number {
   return Math.max(0, N7_QUALIFY_USERS - effectiveUsers);
 }
 
+/**
+ * 时间上已无望：还差有效天数 > 考核剩余天数+1（含今天还能冲 1 天）。
+ * 例：剩 0 天且还差 3 天 → 无望；仍展示，但应排到可追名单之后。
+ */
+export function isN7TimeHopeless(input: {
+  isQualified: boolean;
+  remainingDays: number | null;
+  remainingEnded: boolean;
+  effectiveDays: number;
+}): boolean {
+  if (input.isQualified) return false;
+  if (input.remainingEnded) return false;
+  if (input.remainingDays == null || input.remainingDays < 0) return false;
+  const need = daysGap(input.effectiveDays);
+  if (need <= 0) return false;
+  const maxEarnableDays = input.remainingDays + 1;
+  return need > maxEarnableDays;
+}
+
 export function priorityRank(p: N7Priority): number {
   return { P0: 0, P1: 1, P2: 2, P3: 3 }[p];
 }
@@ -76,8 +95,8 @@ export const N7_PRIORITY_LABELS: Record<
   P0: { label: "剩余≤2天", hint: "考核还剩 0/1/2 天，需马上催达标" },
   P1: { label: "无动销", hint: "天数和用户都是 0，且还剩 ≥6 天" },
   P2: { label: "行为未齐", hint: "未点亮 / 未订阅 / 未打卡" },
-  P3: { label: "一般预警", hint: "其它待跟进" },
-};
+  P3: { label: "预警", hint: "其它待跟进" },
+} as const;
 
 export function n7PriorityLabel(p: N7Priority | null | undefined): string {
   if (!p) return "—";

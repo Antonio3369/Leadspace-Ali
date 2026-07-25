@@ -35,10 +35,6 @@ export async function PATCH(
       return NextResponse.json({ error: "离职账号请通过人事流程处理" }, { status: 400 });
     }
 
-    if (body.status === "DISABLED" && !target.passwordHash) {
-      return NextResponse.json({ error: "未开通账号无需停用" }, { status: 400 });
-    }
-
     const updated = await db.user.update({
       where: { id },
       data: { status: body.status },

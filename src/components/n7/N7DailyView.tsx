@@ -220,9 +220,7 @@ export function N7DailyView({
                   : ""}
               </p>
             </div>
-          ) : (
-            <p className="text-sm text-[#94a3b8]">点击某日柱形可看明细</p>
-          )}
+          ) : null}
         </div>
       )}
     </PageShell>

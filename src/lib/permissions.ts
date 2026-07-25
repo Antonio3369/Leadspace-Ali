@@ -35,9 +35,9 @@ export function canLogin(status: UserStatus): boolean {
   return status === "ACTIVE";
 }
 
-/** 仅经理/负责人等管理角色可登录；业务员为纯数据账号 */
-export function canRoleSignIn(role: UserRole): boolean {
-  return role !== "SALES";
+/** 管理角色与队员均可登录；停用由 canLogin(status) 拦截 */
+export function canRoleSignIn(_role: UserRole): boolean {
+  return true;
 }
 
 /** 仅事业部负责人可访问公共大屏 */

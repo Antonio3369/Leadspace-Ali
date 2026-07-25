@@ -1,66 +1,50 @@
 "use client";
 
-import { useState, type MouseEvent } from "react";
-import { patchN7DeviceFollowUp } from "@/lib/n7-follow-up-client";
+import Link from "next/link";
+import { n7Path } from "@/lib/business-lines";
 import { N7FollowUpBadge } from "@/components/n7/N7FollowUpBadge";
+import type { N7FollowUpPatchResult } from "@/lib/n7-follow-up-client";
 
-export type N7FollowUpPatchResult = {
-  followUpDone: boolean;
-  followUpNote: string | null;
-  followUpAt: string | null;
-};
+export type { N7FollowUpPatchResult };
 
-/** 列表行内：未处理时可一键标已处理；已处理显示角标（改回详情） */
+/** 列表行内：未处理时引导进详情 V1 关单；无望单用语为「已知悉」 */
 export function N7FollowUpStatusCell({
   deviceSn,
   done,
   note,
-  onChanged,
+  acknowledgeOnly = false,
 }: {
   deviceSn: string;
   done: boolean;
   note?: string | null;
+  /** 时间无望：按钮/角标用「已知悉」 */
+  acknowledgeOnly?: boolean;
   onChanged?: (next: N7FollowUpPatchResult) => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function markDone(e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (busy || done) return;
-    setBusy(true);
-    setError("");
-    try {
-      const json = await patchN7DeviceFollowUp(deviceSn, {
-        followUpDone: true,
-      });
-      onChanged?.(json);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "标记失败");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
-    <div className="flex flex-col gap-0.5 min-w-[4.5rem]">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <N7FollowUpBadge done={done} note={note} />
+    <div className="flex flex-col gap-0.5 items-end min-w-[4.5rem]">
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
+        {!(acknowledgeOnly && !done) ? (
+          <N7FollowUpBadge
+            done={done}
+            note={note}
+            acknowledgeOnly={acknowledgeOnly}
+          />
+        ) : null}
         {!done && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={markDone}
-            className="text-[0.7rem] font-medium text-[#2563eb] hover:text-[#1d4ed8] disabled:opacity-50 whitespace-nowrap"
+          <Link
+            href={n7Path(`/devices/${encodeURIComponent(deviceSn)}`)}
+            onClick={(e) => e.stopPropagation()}
+            className={
+              acknowledgeOnly
+                ? "rounded-md bg-[#fef2f2] px-2.5 py-1 text-sm font-semibold text-[#c41e3a] hover:bg-[#fee2e2] hover:text-[#9f1239] whitespace-nowrap"
+                : "rounded-md bg-[#eff6ff] px-2.5 py-1 text-sm font-semibold text-[#2563eb] hover:bg-[#dbeafe] hover:text-[#1d4ed8] whitespace-nowrap"
+            }
           >
-            {busy ? "…" : "标已处理"}
-          </button>
+            {acknowledgeOnly ? "已知悉" : "去关单"}
+          </Link>
         )}
       </div>
-      {error ? (
-        <span className="text-[0.65rem] text-red-600 leading-tight">{error}</span>
-      ) : null}
     </div>
   );
 }

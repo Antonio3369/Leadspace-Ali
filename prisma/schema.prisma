@@ -120,6 +120,7 @@ model User {
   merchants        MerchantRecord[]
   n7DevicesAsSales   N7DeviceRecord[] @relation("N7DeviceSales")
   n7DevicesAsManager N7DeviceRecord[] @relation("N7DeviceManager")
+  n7Notifications    N7Notification[]
   teamHistory      UserTeamHistory[]
   importLogs       ImportLog[]
   heavyImportJobs  HeavyImportJob[]
@@ -321,6 +322,12 @@ model N7DeviceRecord {
   followUpNote       String?
   followUpAt         DateTime?
   followUpById       String?
+  /** V1 关单：connected | not_connected */
+  followUpConnectStatus String?
+  /** V1 关单可叠加：unwilling | promised_use */
+  followUpFlags      String[]  @default([])
+  /** V1 关单现场图相对路径（≥1） */
+  followUpPhotoUrls  String[]  @default([])
   sourceMode         DataMode  @default(MANUAL_UPLOAD)
   importBatchId      String?
   importBatch        ImportLog? @relation(fields: [importBatchId], references: [id])
@@ -381,4 +388,24 @@ model SystemAlert {
   createdAt DateTime @default(now())
 
   @@index([read, createdAt])
+}
+
+/** N7 提醒通知（如队员关单 → 所属经理） */
+model N7Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /** sales_follow_up_done */
+  type      String
+  deviceSn  String
+  title     String
+  body      String
+  meta      Json?
+  read      Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, read, createdAt])
+  @@index([deviceSn])
+  @@index([createdAt])
 }

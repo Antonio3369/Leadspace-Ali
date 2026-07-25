@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   applyN7DateRangeToParams,
@@ -22,12 +21,12 @@ import {
 import { N7DateRangePicker } from "@/components/n7/N7DateRangePicker";
 import {
   N7_PRIORITY_FILTERS,
+  N7FilterChipText,
   n7FilterChipBaseClass,
   n7PriorityButtonClass,
   n7TabButtonClass,
 } from "@/components/n7/n7-filter-styles";
-import { N7PriorityBadge } from "@/components/n7/N7PriorityBadge";
-import { N7FollowUpStatusCell } from "@/components/n7/N7FollowUpStatusCell";
+import { N7DeviceCardList } from "@/components/n7/N7DeviceCardList";
 
 type Filter = "all" | N7Priority;
 type FollowFilter = "all" | "pending" | "done";
@@ -45,6 +44,7 @@ interface DeviceRow {
   failReason: string | null;
   daysGap: number;
   usersGap: number;
+  hopeless?: boolean;
   notLit: boolean;
   notSubscribed: boolean;
   notCheckedIn: boolean;
@@ -72,14 +72,6 @@ interface ApiResponse {
   devices: DeviceRow[];
 }
 
-const FILTERS: { id: Filter; label: string }[] = [
-  { id: "all", label: "待跟进" },
-];
-
-function managerKeyOf(d: DeviceRow) {
-  return d.managerUserId ?? `name:${d.managerName}`;
-}
-
 function staffKeyOf(d: DeviceRow) {
   return d.salesUserId ?? `name:${d.operatorName}`;
 }
@@ -95,6 +87,8 @@ export function N7FollowUpView({
   const searchParams = useSearchParams();
   const { dateFrom, dateTo } = readN7DateRangeFromSearchParams(searchParams);
   const rangeQs = n7DateRangeQuery(dateFrom, dateTo);
+  const listStatus = searchParams.get("status");
+  const isExpiredList = listStatus === "expired";
   const filter = (searchParams.get("priority") as Filter) || "all";
   const managerKey = forcedManagerKey ?? searchParams.get("managerKey");
   const staffKey = searchParams.get("staffKey") ?? "";
@@ -117,6 +111,7 @@ export function N7FollowUpView({
       staffKey: string | null;
       behavior: string | null;
       follow: FollowFilter;
+      status: "expired" | null;
     }>
   ) {
     const params = new URLSearchParams(searchParams.toString());
@@ -130,6 +125,16 @@ export function N7FollowUpView({
     if (patch.priority != null) {
       if (patch.priority === "all") params.delete("priority");
       else params.set("priority", patch.priority);
+      // 切紧急度时退出过期名单
+      params.delete("status");
+    }
+    if (patch.status !== undefined) {
+      if (patch.status === "expired") {
+        params.set("status", "expired");
+        params.delete("priority");
+      } else {
+        params.delete("status");
+      }
     }
     if (patch.staffKey !== undefined) {
       if (patch.staffKey) params.set("staffKey", patch.staffKey);
@@ -153,7 +158,11 @@ export function N7FollowUpView({
     setLoading(true);
     setError("");
     const params = new URLSearchParams(rangeQs);
-    if (filter !== "all") params.set("priority", filter);
+    if (isExpiredList) {
+      params.set("status", "expired");
+    } else if (filter !== "all") {
+      params.set("priority", filter);
+    }
     if (managerKey) params.set("managerKey", managerKey);
     fetch(`/api/n7/follow-up?${params}`)
       .then(async (res) => {
@@ -170,7 +179,7 @@ export function N7FollowUpView({
     return () => {
       cancelled = true;
     };
-  }, [rangeQs, filter, managerKey]);
+  }, [rangeQs, filter, managerKey, isExpiredList]);
 
   /** 当前结果里、名下仍有待跟进商户的队员 */
   const staffOptions = useMemo(() => {
@@ -234,13 +243,30 @@ export function N7FollowUpView({
     ? n7Path(`/managers/${encodeURIComponent(managerKey)}`)
     : n7Path("/board");
   const backHref = isManagerHome
-    ? `${n7Path()}?${rangeQs}`
+    ? `${n7Path("/board")}?${rangeQs}`
     : managerKey
       ? `${n7Path(`/managers/${encodeURIComponent(managerKey)}`)}?${rangeQs}`
       : `${n7Path("/board")}?${rangeQs}`;
+  const backLabel = isExpiredList
+    ? isManagerHome
+      ? "← 团队看板"
+      : data?.manager
+        ? "← 队员排行"
+        : "← 数据看板"
+    : isManagerHome
+      ? "← 今日待办"
+      : `← ${data?.manager ? "队员排行" : "数据看板"}`;
+  const backListKey = isExpiredList
+    ? isManagerHome
+      ? n7Path("/board")
+      : parentListKey
+    : isManagerHome
+      ? n7Path()
+      : parentListKey;
 
-  const title =
-    filter === "all"
+  const title = isExpiredList
+    ? "过期未达标"
+    : filter === "all"
       ? "待跟进"
       : (N7_PRIORITY_FILTERS.find((item) => item.id === filter)?.label ??
         "待跟进明细");
@@ -285,6 +311,7 @@ export function N7FollowUpView({
     <PageShell>
       <PageHeader
         title={title}
+        titleClassName={isExpiredList ? "!text-[#c41e3a]" : undefined}
         kicker={
           isManagerHome
             ? "本团队"
@@ -295,35 +322,30 @@ export function N7FollowUpView({
               : "支付宝 N7"
         }
         meta={
-          <p className="text-sm text-[#64748b]">
-            {isDrillDown || isManagerHome ? (
-              <>
-                <HistoryBackLink
-                  label={
-                    isManagerHome
-                      ? "← 今日待办"
-                      : `← ${data?.manager ? "队员排行" : "数据看板"}`
-                  }
-                  fallbackHref={backHref}
-                  listScrollKey={isManagerHome ? n7Path() : parentListKey}
-                  preferHistoryBack
-                  className="text-[#2563eb] hover:text-[#1d4ed8]"
-                />
-                <span className="mx-2 text-[#cbd5e1]">/</span>
-              </>
-            ) : null}
-            点击门店可查看设备详情
-            {!loading && data ? ` · 当前 ${filtered.length} 条` : ""}
-          </p>
+          isDrillDown || isManagerHome || isExpiredList ? (
+            <p className="text-sm text-[#64748b]">
+              <HistoryBackLink
+                label={backLabel}
+                fallbackHref={backHref}
+                listScrollKey={backListKey}
+                preferHistoryBack
+                className="text-[#2563eb] hover:text-[#1d4ed8]"
+              />
+            </p>
+          ) : undefined
         }
         trailing={
+          isExpiredList ? undefined : (
           <NotionButton
             onClick={handleExport}
-            disabled={exporting || loading || filtered.length === 0}
+            disabled={
+              exporting || loading || filtered.length === 0
+            }
             className="w-full sm:w-auto shrink-0 self-stretch sm:self-start"
           >
             {exporting ? "导出中..." : "导出表格"}
           </NotionButton>
+          )
         }
         actions={
           <N7DateRangePicker
@@ -339,7 +361,9 @@ export function N7FollowUpView({
                 className="w-full sm:w-56"
                 aria-label="筛选队员"
               >
-                <option value="">全部队员（有待跟进）</option>
+                <option value="">
+                  {isExpiredList ? "全部队员" : "全部队员（有待跟进）"}
+                </option>
                 {staffOptions.map((s) => (
                   <option key={s.key} value={s.key}>
                     {s.name}（{s.count}）
@@ -354,55 +378,66 @@ export function N7FollowUpView({
       {exportError && <NotionAlert tone="error">{exportError}</NotionAlert>}
 
       {error && <NotionAlert tone="error">{error}</NotionAlert>}
-      {loading && <p className="text-sm text-[#94a3b8]">正在加载待跟进设备…</p>}
+      {loading && (
+        <p className="text-sm text-[#94a3b8]">
+          {isExpiredList ? "正在加载过期未达标…" : "正在加载待跟进设备…"}
+        </p>
+      )}
       {!loading && data && (
         <div className="space-y-4">
           <div className="space-y-2">
-            <div className="flex flex-wrap gap-2">
-              {FILTERS.map((item) => {
-                const active = filter === item.id && !behaviorFilter;
-                const count = data.counts.followUp;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() =>
-                      pushQuery({ priority: item.id, behavior: null })
-                    }
-                    className={`${n7FilterChipBaseClass()} ${n7TabButtonClass(active)}`}
-                  >
-                    {item.label} {count}
-                  </button>
-                );
-              })}
+            {!isExpiredList ? (
+            <div className="space-y-1.5">
+              <span className="text-xs text-[#94a3b8]">按紧急度</span>
+              <div className="grid grid-cols-2 gap-2">
+                {N7_PRIORITY_FILTERS.map((item) => {
+                  const active = filter === item.id && !behaviorFilter;
+                  const count = data.counts[item.id];
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      title={item.hint}
+                      onClick={() =>
+                        pushQuery({
+                          priority: active ? "all" : item.id,
+                          behavior: null,
+                        })
+                      }
+                      className={`${n7FilterChipBaseClass()} w-full justify-center ${n7PriorityButtonClass(item.id, active)}`}
+                    >
+                      <N7FilterChipText
+                        label={item.label}
+                        count={count}
+                        active={active}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-[#94a3b8] mr-0.5 w-full sm:w-auto">按紧急度</span>
-              {N7_PRIORITY_FILTERS.map((item) => {
-                const active = filter === item.id && !behaviorFilter;
-                const count = data.counts[item.id];
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    title={item.hint}
-                    onClick={() =>
-                      pushQuery({ priority: item.id, behavior: null })
-                    }
-                    className={`${n7FilterChipBaseClass()} ${n7PriorityButtonClass(item.id, active)}`}
-                  >
-                    {item.label} {count}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-[#94a3b8] mr-0.5 w-full sm:w-auto">处理状态</span>
+              <span className="text-xs text-[#94a3b8] mr-0.5 w-full sm:w-auto">
+                {isExpiredList ? "知悉状态" : "处理状态"}
+              </span>
               {(
                 [
-                  { id: "all" as const, label: "全部", count: data.counts.followUp },
-                  { id: "pending" as const, label: "未处理", count: followCounts.pending },
-                  { id: "done" as const, label: "已处理", count: followCounts.done },
+                  {
+                    id: "all" as const,
+                    label: "全部",
+                    count: data.devices.length,
+                  },
+                  {
+                    id: "pending" as const,
+                    label: isExpiredList ? "未标记" : "未处理",
+                    count: followCounts.pending,
+                  },
+                  {
+                    id: "done" as const,
+                    label: isExpiredList ? "已知悉" : "已处理",
+                    count: followCounts.done,
+                  },
                 ] as const
               ).map((item) => (
                 <button
@@ -411,7 +446,11 @@ export function N7FollowUpView({
                   onClick={() => pushQuery({ follow: item.id })}
                   className={`${n7FilterChipBaseClass()} ${n7TabButtonClass(followFilter === item.id)}`}
                 >
-                  {item.label} {item.count}
+                  <N7FilterChipText
+                    label={item.label}
+                    count={item.count}
+                    active={followFilter === item.id}
+                  />
                 </button>
               ))}
             </div>
@@ -434,144 +473,33 @@ export function N7FollowUpView({
             )}
           </div>
 
-          <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-[#eef2f7] text-left text-[0.72rem] uppercase tracking-wide text-[#94a3b8]">
-                  <th className="px-3 py-3 font-semibold">优先级</th>
-                  <th className="px-3 py-3 font-semibold">剩余天数</th>
-                  {!managerKey && (
-                    <th className="px-3 py-3 font-semibold">经理</th>
-                  )}
-                  <th className="px-3 py-3 font-semibold">队员</th>
-                  <th className="px-3 py-3 font-semibold">门店</th>
-                  <th className="px-3 py-3 font-semibold">处理状态</th>
-                  <th className="px-3 py-3 font-semibold text-right">已用天数</th>
-                  <th className="px-3 py-3 font-semibold text-right">已有用户</th>
-                  <th className="px-3 py-3 font-semibold">缺口</th>
-                  <th className="px-3 py-3 font-semibold">行为</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={managerKey ? 9 : 10}
-                      className="px-4 py-8 text-center text-[#94a3b8]"
-                    >
-                      暂无待跟进设备
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((d) => (
-                    <tr
-                      key={d.id}
-                      data-list-anchor={d.deviceSn}
-                      className="border-b border-[#f1f5f9] last:border-0 hover:bg-[#f8fafc]"
-                    >
-                      <td className="px-3 py-2.5">
-                        <N7PriorityBadge p={d.priority} />
-                      </td>
-                      <td className="px-3 py-2.5 tabular-nums">
-                        {d.remainingEnded
-                          ? "已结束"
-                          : d.remainingDays == null
-                            ? "—"
-                            : d.remainingDays}
-                      </td>
-                      {!managerKey && (
-                        <td className="px-3 py-2.5">
-                          <Link
-                            href={`${n7Path(
-                              `/managers/${encodeURIComponent(managerKeyOf(d))}`
-                            )}?${rangeQs}`}
-                            className="text-[#2563eb] hover:text-[#1d4ed8]"
-                          >
-                            {d.managerName}
-                          </Link>
-                        </td>
-                      )}
-                      <td className="px-3 py-2.5">
-                        <Link
-                          href={`${n7Path(
-                            `/managers/${encodeURIComponent(managerKeyOf(d))}/staff/${encodeURIComponent(staffKeyOf(d))}`
-                          )}?${rangeQs}&tab=followUp`}
-                          className="text-[#2563eb] hover:text-[#1d4ed8]"
-                        >
-                          {d.operatorName}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <Link
-                          href={n7Path(`/devices/${encodeURIComponent(d.deviceSn)}`)}
-                          className="font-medium text-[#2563eb] hover:text-[#1d4ed8]"
-                        >
-                          {d.storeName || "未命名门店"}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <N7FollowUpStatusCell
-                          deviceSn={d.deviceSn}
-                          done={Boolean(d.followUpDone)}
-                          note={d.followUpNote}
-                          onChanged={(next) => {
-                            setData((prev) => {
-                              if (!prev) return prev;
-                              return {
-                                ...prev,
-                                devices: prev.devices.map((row) =>
-                                  row.deviceSn === d.deviceSn
-                                    ? {
-                                        ...row,
-                                        followUpDone: next.followUpDone,
-                                        followUpNote: next.followUpNote,
-                                      }
-                                    : row
-                                ),
-                              };
-                            });
-                          }}
-                        />
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">
-                        {d.effectiveDays}
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">
-                        {d.effectiveUsers}
-                      </td>
-                      <td className="px-3 py-2.5 text-[#64748b]">
-                        {d.isQualified
-                          ? "已达标"
-                          : `差${d.daysGap}天·差${d.usersGap}人`}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex flex-wrap gap-1">
-                          {d.notLit && (
-                            <span className="rounded bg-red-50 px-1.5 py-0.5 text-[0.7rem] text-red-700">
-                              未点亮
-                            </span>
-                          )}
-                          {d.notSubscribed && (
-                            <span className="rounded bg-red-50 px-1.5 py-0.5 text-[0.7rem] text-red-700">
-                              未订阅
-                            </span>
-                          )}
-                          {d.notCheckedIn && (
-                            <span className="rounded bg-red-50 px-1.5 py-0.5 text-[0.7rem] text-red-700">
-                              未打卡
-                            </span>
-                          )}
-                          {!d.notLit && !d.notSubscribed && !d.notCheckedIn && (
-                            <span className="text-[#cbd5e1]">—</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <N7DeviceCardList
+            devices={filtered}
+            showManager={!managerKey}
+            rangeQs={rangeQs}
+            variant={isExpiredList ? "expired" : "followUp"}
+            emptyText={
+              isExpiredList ? "暂无过期未达标设备" : "暂无待跟进设备"
+            }
+            showBehavior
+            onFollowUpChanged={(deviceSn, next) => {
+              setData((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  devices: prev.devices.map((row) =>
+                    row.deviceSn === deviceSn
+                      ? {
+                          ...row,
+                          followUpDone: next.followUpDone,
+                          followUpNote: next.followUpNote,
+                        }
+                      : row
+                  ),
+                };
+              });
+            }}
+          />
         </div>
       )}
     </PageShell>

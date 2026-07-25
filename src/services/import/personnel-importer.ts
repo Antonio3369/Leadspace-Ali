@@ -4,7 +4,13 @@ import bcrypt from "bcryptjs";
 import type { AccountLifecycle, User } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { IMPORTED_USER_DEFAULTS } from "@/lib/account-lifecycle";
-import { chineseNameToPinyinUsername } from "@/lib/pinyin-username";
+import {
+  allocatePinyinUsername,
+  chineseNameToPinyinUsername,
+  syncSalesPinyinUsernames,
+  usernameNeedsPinyinFix,
+} from "@/lib/pinyin-username";
+import { TEAM_SALES_DEFAULT_PASSWORD } from "@/services/org/team-sales";
 import {
   getPersonnelAccountName,
   getPersonnelAliases,
@@ -24,6 +30,24 @@ export interface PersonnelImportResult {
 function slugUsername(prefix: string, name: string, index: number): string {
   const base = name.replace(/[^\w\u4e00-\u9fff]/g, "").slice(0, 20) || `user${index}`;
   return `${prefix}_${base}_${index}`;
+}
+
+/** 经理导入：已开通不覆盖密码与生命周期 */
+function preserveEnabledAccount(
+  existing: Pick<User, "accountLifecycle" | "passwordHash"> | null
+) {
+  if (
+    existing &&
+    existing.passwordHash &&
+    (existing.accountLifecycle === "PENDING_ONBOARDING" ||
+      existing.accountLifecycle === "ACTIVE")
+  ) {
+    return {
+      passwordHash: existing.passwordHash,
+      accountLifecycle: existing.accountLifecycle as AccountLifecycle,
+    };
+  }
+  return IMPORTED_USER_DEFAULTS;
 }
 
 async function allocateManagerUsername(name: string, excludeUserId?: string): Promise<string> {
@@ -62,21 +86,44 @@ export async function syncAllManagerPinyinUsernames() {
   }
 }
 
-/** Excel 导入更新时：已开通账号不覆盖密码与生命周期 */
-function preserveEnabledAccount(
-  existing: Pick<User, "accountLifecycle" | "passwordHash"> | null
+/** Excel 导入：已开通不覆盖密码；未开通则自动开通登录（默认密码 + 首登改密）；旧中文登录名改为拼音 */
+async function resolveSalesAccountFields(
+  accountName: string,
+  existing: Pick<
+    User,
+    "id" | "name" | "username" | "accountLifecycle" | "passwordHash"
+  > | null
 ) {
+  const fixUsername =
+    existing && usernameNeedsPinyinFix(existing.username)
+      ? await allocatePinyinUsername(existing.name || accountName, existing.id)
+      : undefined;
+
   if (
-    existing &&
-    existing.passwordHash &&
-    (existing.accountLifecycle === "PENDING_ONBOARDING" || existing.accountLifecycle === "ACTIVE")
+    existing?.passwordHash &&
+    (existing.accountLifecycle === "PENDING_ONBOARDING" ||
+      existing.accountLifecycle === "ACTIVE")
   ) {
     return {
       passwordHash: existing.passwordHash,
       accountLifecycle: existing.accountLifecycle as AccountLifecycle,
+      mustChangePassword: undefined as boolean | undefined,
+      businessLines: undefined as string[] | undefined,
+      username: fixUsername,
     };
   }
-  return IMPORTED_USER_DEFAULTS;
+
+  const passwordHash = await bcrypt.hash(TEAM_SALES_DEFAULT_PASSWORD, 10);
+  const username =
+    fixUsername ??
+    (await allocatePinyinUsername(existing?.name ?? accountName, existing?.id));
+  return {
+    passwordHash,
+    accountLifecycle: "ACTIVE" as const,
+    mustChangePassword: true,
+    businessLines: ["n7"],
+    username,
+  };
 }
 
 async function upsertSalesPlatformIdentity(
@@ -118,7 +165,7 @@ async function findOrCreateSalesUser(
   accountName: string,
   mgrName: string,
   managerMap: Map<string, string>,
-  salesIdx: { value: number },
+  _salesIdx: { value: number },
   aliases: string[]
 ): Promise<{ userId: string; created: boolean }> {
   const managerId = mgrName ? managerMap.get(mgrName) : undefined;
@@ -132,8 +179,15 @@ async function findOrCreateSalesUser(
       role: "SALES",
       managerId: managerId ?? null,
     },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      accountLifecycle: true,
+      passwordHash: true,
+    },
   });
-  const accountFields = preserveEnabledAccount(existing);
+  const accountFields = await resolveSalesAccountFields(accountName, existing);
 
   if (existing) {
     await db.user.update({
@@ -143,7 +197,15 @@ async function findOrCreateSalesUser(
         aliases,
         managerId,
         teamId: teamId ?? undefined,
-        ...accountFields,
+        passwordHash: accountFields.passwordHash,
+        accountLifecycle: accountFields.accountLifecycle,
+        ...(accountFields.mustChangePassword != null
+          ? { mustChangePassword: accountFields.mustChangePassword }
+          : {}),
+        ...(accountFields.businessLines
+          ? { businessLines: accountFields.businessLines }
+          : {}),
+        ...(accountFields.username ? { username: accountFields.username } : {}),
       },
     });
     return { userId: existing.id, created: false };
@@ -151,14 +213,17 @@ async function findOrCreateSalesUser(
 
   const user = await db.user.create({
     data: {
-      username: slugUsername("sales", accountName, salesIdx.value++),
+      username: accountFields.username!,
       name: accountName,
       aliases,
       role: "SALES",
       status: "ACTIVE",
       managerId,
       teamId: teamId ?? undefined,
-      ...IMPORTED_USER_DEFAULTS,
+      passwordHash: accountFields.passwordHash,
+      accountLifecycle: accountFields.accountLifecycle,
+      mustChangePassword: accountFields.mustChangePassword ?? true,
+      businessLines: accountFields.businessLines ?? ["n7"],
     },
   });
   return { userId: user.id, created: true };
@@ -368,6 +433,8 @@ async function importPersonnelRows(
       identitiesUpserted++;
     }
   }
+
+  await syncSalesPinyinUsernames();
 
   return { managersCreated, salesCreated, teamsCreated, identitiesUpserted };
 }

@@ -33,6 +33,7 @@ interface ApiResponse {
     qualifyRate: number;
     followUpCount: number;
     p0Count: number;
+    expiredUnqualifiedCount: number;
   };
   rows: N7BoardRow[];
 }
@@ -130,23 +131,17 @@ export function N7StaffBoard({
         }
         kicker={isHome ? "" : "经理下钻"}
         meta={
-          <p className="text-sm text-[#64748b]">
-            {isHome ? (
-              <>按队员看拓展、达标与待跟进；点击队员查看设备问题。</>
-            ) : (
-              <>
-                <HistoryBackLink
-                  label="← 数据看板"
-                  fallbackHref={`${n7Path("/board")}?${rangeQs}`}
-                  listScrollKey={n7Path("/board")}
-                  preferHistoryBack
-                  className="text-[#2563eb] hover:text-[#1d4ed8]"
-                />
-                <span className="mx-2 text-[#cbd5e1]">/</span>
-                点击队员查看商户达标与问题
-              </>
-            )}
-          </p>
+          isHome ? undefined : (
+            <p className="text-sm text-[#64748b]">
+              <HistoryBackLink
+                label="← 数据看板"
+                fallbackHref={`${n7Path("/board")}?${rangeQs}`}
+                listScrollKey={n7Path("/board")}
+                preferHistoryBack
+                className="text-[#2563eb] hover:text-[#1d4ed8]"
+              />
+            </p>
+          )
         }
         actions={
           <N7DateRangePicker
@@ -173,6 +168,7 @@ export function N7StaffBoard({
             totals={data.totals}
             followUpHref={`${n7Path("/follow-up")}?${rangeQs}&managerKey=${encodeURIComponent(managerKey)}`}
             p0Href={`${n7Path("/follow-up")}?${rangeQs}&managerKey=${encodeURIComponent(managerKey)}&priority=P0`}
+            expiredHref={`${n7Path("/follow-up")}?${rangeQs}&managerKey=${encodeURIComponent(managerKey)}&status=expired`}
           />
           <N7LeaderboardTable
             rows={data.rows}
@@ -183,14 +179,13 @@ export function N7StaffBoard({
               )}?${rangeQs}`
             }
             hrefForMetric={(row, metric) => {
-              const base = `${n7Path(
+              const staffBase = `${n7Path(
                 `/managers/${encodeURIComponent(managerKey)}/staff/${encodeURIComponent(row.key)}`
-              )}?${rangeQs}&tab=followUp`;
-              if (metric === "followUp") return base;
-              if (metric === "p0") return `${base}&priority=P0`;
-              if (metric === "notSubscribed") return `${base}&behavior=notSubscribed`;
-              if (metric === "notCheckedIn") return `${base}&behavior=notCheckedIn`;
-              return base;
+              )}?${rangeQs}`;
+              if (metric === "followUp") return `${staffBase}&tab=followUp`;
+              if (metric === "p0") return `${staffBase}&tab=followUp&priority=P0`;
+              if (metric === "expired") return `${staffBase}&tab=expired`;
+              return `${staffBase}&tab=followUp`;
             }}
             emptyText={
               isHome

@@ -41,6 +41,16 @@ const N7_MANAGER_NAV_ITEMS = [
   { href: n7Path("/follow-up"), label: "达标跟进", icon: "🔔" },
   { href: n7Path("/board"), label: "团队看板", icon: "📊" },
   { href: n7Path("/daily"), label: "每日绩效", icon: "📈" },
+  { href: n7Path("/notifications"), label: "队员已处理", icon: "✉️" },
+  { href: n7Path("/me"), label: "我的", icon: "👤" },
+];
+
+const N7_SALES_NAV_ITEMS = [
+  { href: n7Path(), label: "今日待办", icon: "📋" },
+  { href: n7Path("/follow-up"), label: "达标跟进", icon: "🔔" },
+  { href: n7Path("/board"), label: "我的设备", icon: "📊" },
+  { href: n7Path("/daily"), label: "每日绩效", icon: "📈" },
+  { href: n7Path("/me"), label: "我的", icon: "👤" },
 ];
 
 function isActivePath(pathname: string, href: string) {
@@ -111,7 +121,11 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
         <div>
           <p className="text-sm font-medium text-[#111827] truncate">{user.name}</p>
           <p className="text-xs text-[#94a3b8]">
-            {user.role === "MANAGER" ? "经理" : ROLE_LABELS[user.role]}
+            {user.role === "MANAGER"
+              ? "经理"
+              : user.role === "SALES"
+                ? "队员"
+                : ROLE_LABELS[user.role]}
           </p>
         </div>
         <Link
@@ -129,7 +143,9 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
             ? N7_DIRECTOR_NAV_ITEMS
             : user.role === "MANAGER"
               ? N7_MANAGER_NAV_ITEMS
-              : [{ href: n7Path(), label: "业务首页", icon: "📊" }]
+              : user.role === "SALES"
+                ? N7_SALES_NAV_ITEMS
+                : [{ href: n7Path(), label: "业务首页", icon: "📊" }]
           ).map((item) => {
             const active = isActivePath(pathname, item.href);
             return (
@@ -195,16 +211,19 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
           </>
         )}
 
-        <div className="pt-2 mt-2 border-t border-[rgba(55,53,47,0.06)]">
-          <Link
-            href="/settings/password"
-            onClick={() => handleNavClick("/settings/password")}
-            className={navLinkClass(isActivePath(pathname, "/settings/password"))}
-          >
-            <span className="w-5 text-center text-sm opacity-80">🔒</span>
-            修改密码
-          </Link>
-        </div>
+        {/* N7 经理/队员改密进「我的」；其余角色侧栏保留 */}
+        {!(inN7 && (user.role === "MANAGER" || user.role === "SALES")) && (
+          <div className="pt-2 mt-2 border-t border-[rgba(55,53,47,0.06)]">
+            <Link
+              href="/settings/password"
+              onClick={() => handleNavClick("/settings/password")}
+              className={navLinkClass(isActivePath(pathname, "/settings/password"))}
+            >
+              <span className="w-5 text-center text-sm opacity-80">🔒</span>
+              修改密码
+            </Link>
+          </div>
+        )}
       </nav>
     </aside>
   );

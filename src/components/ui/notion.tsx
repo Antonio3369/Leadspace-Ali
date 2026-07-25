@@ -54,6 +54,7 @@ export function PageHeader({
   showBack = false,
   actions,
   trailing,
+  titleClassName = "",
 }: {
   title: string;
   kicker?: string;
@@ -65,6 +66,7 @@ export function PageHeader({
   showBack?: boolean;
   actions?: ReactNode;
   trailing?: ReactNode;
+  titleClassName?: string;
 }) {
   const canBack = showBack || Boolean(backHref);
   return (
@@ -79,7 +81,7 @@ export function PageHeader({
             />
           )}
           {kicker && <p className={notion.kicker}>{kicker}</p>}
-          <h1 className={notion.title}>{title}</h1>
+          <h1 className={`${notion.title} ${titleClassName}`.trim()}>{title}</h1>
           {meta && <div className={notion.subtitle}>{meta}</div>}
         </div>
         {(actions || trailing) && (

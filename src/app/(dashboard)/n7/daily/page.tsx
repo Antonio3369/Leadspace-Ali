@@ -20,7 +20,7 @@ export default async function N7DailyPage() {
     >
       <N7DailyView
         managerKey={user.role === "MANAGER" ? user.id : null}
-        viewerRole={user.role === "MANAGER" ? "MANAGER" : "DIRECTOR"}
+        viewerRole={user.role === "DIRECTOR" ? "DIRECTOR" : "MANAGER"}
       />
     </Suspense>
   );

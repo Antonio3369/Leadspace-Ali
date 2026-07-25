@@ -31,6 +31,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
 
+# N7 关单现场图持久目录（compose 挂载卷）
+RUN mkdir -p /app/data/n7-follow-up && chown -R nextjs:nodejs /app/data
+
 USER nextjs
 EXPOSE 3000
 CMD ["node", "server.js"]

@@ -32,6 +32,7 @@ interface ApiResponse {
     qualifyRate: number;
     followUpCount: number;
     p0Count: number;
+    expiredUnqualifiedCount: number;
   };
   rows: N7BoardRow[];
 }
@@ -145,6 +146,7 @@ export function N7ManagerBoard() {
             totals={data.totals}
             followUpHref={`${n7Path("/follow-up")}?${rangeQs}`}
             p0Href={`${n7Path("/follow-up")}?${rangeQs}&priority=P0`}
+            expiredHref={`${n7Path("/follow-up")}?${rangeQs}&status=expired`}
           />
           <N7LeaderboardTable
             rows={data.rows}
@@ -161,11 +163,8 @@ export function N7ManagerBoard() {
               if (metric === "p0") {
                 return `${n7Path("/follow-up")}?${rangeQs}&managerKey=${encodeURIComponent(row.key)}&priority=P0`;
               }
-              if (metric === "notSubscribed") {
-                return `${n7Path("/follow-up")}?${rangeQs}&managerKey=${encodeURIComponent(row.key)}&behavior=notSubscribed`;
-              }
-              if (metric === "notCheckedIn") {
-                return `${n7Path("/follow-up")}?${rangeQs}&managerKey=${encodeURIComponent(row.key)}&behavior=notCheckedIn`;
+              if (metric === "expired") {
+                return `${n7Path("/follow-up")}?${rangeQs}&managerKey=${encodeURIComponent(row.key)}&status=expired`;
               }
               return base;
             }}

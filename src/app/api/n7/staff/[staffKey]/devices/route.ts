@@ -17,6 +17,13 @@ export async function GET(
 
     const { staffKey: raw } = await context.params;
     const staffKey = decodeURIComponent(raw);
+    if (
+      user.role === "SALES" &&
+      staffKey !== user.id &&
+      staffKey !== `name:${user.name}`
+    ) {
+      throw new PermissionError("无权查看其他队员数据");
+    }
     const { searchParams } = new URL(request.url);
     const tab = searchParams.get("tab");
     const requestedManagerKey = searchParams.get("managerKey");
@@ -33,7 +40,10 @@ export async function GET(
       dateTo: searchParams.get("dateTo"),
       yearMonth: searchParams.get("month"),
       tab:
-        tab === "qualified" || tab === "all" || tab === "followUp"
+        tab === "qualified" ||
+        tab === "all" ||
+        tab === "followUp" ||
+        tab === "expired"
           ? tab
           : "followUp",
     });

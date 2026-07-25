@@ -6,12 +6,12 @@ import {
 
 export { n7PriorityLabel };
 
-/** 界面/导出用人话；URL/API 仍用 P0–P3 */
+/** 界面/导出用人话；URL/API 仍用 P0–P3。展示顺序：剩余≤2天 → 无动销 → 预警 → 行为未齐 */
 export const N7_PRIORITY_FILTERS: {
   id: N7Priority;
   label: string;
   hint: string;
-}[] = (["P0", "P1", "P2", "P3"] as const).map((id) => ({
+}[] = (["P0", "P1", "P3", "P2"] as const).map((id) => ({
   id,
   label: N7_PRIORITY_LABELS[id].label,
   hint: N7_PRIORITY_LABELS[id].hint,
@@ -50,5 +50,31 @@ export function n7TabButtonClass(active: boolean) {
 
 /** 手机端也够点的筛选芯片 */
 export function n7FilterChipBaseClass() {
-  return "rounded-lg border px-3 py-2 min-h-10 text-sm font-medium transition-colors";
+  return "inline-flex items-center rounded-lg border px-3 py-2 min-h-10 text-sm font-medium transition-colors";
+}
+
+/** 文案与数字分色：选中时数字更亮，未选中时数字更深 */
+export function N7FilterChipText({
+  label,
+  count,
+  active = false,
+}: {
+  label: string;
+  count: number | string;
+  active?: boolean;
+}) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      <span className={active ? "text-white/80 font-medium" : "opacity-90"}>
+        {label}
+      </span>
+      <span
+        className={`tabular-nums font-bold ${
+          active ? "text-white" : "text-[#0f172a]"
+        }`}
+      >
+        {count}
+      </span>
+    </span>
+  );
 }

@@ -24,12 +24,9 @@ export default async function N7HomePage() {
         <PageHeader
           title="支付宝 N7"
           kicker="业务工作台"
-          meta={<p>当前角色暂未开放 N7 看板。</p>}
+          meta={<p>当前账号未开通 N7，请联系管理员。</p>}
         />
         <div className="rounded-[14px] border border-[#eef2f7] bg-white p-8 text-center space-y-4 shadow-sm">
-          <p className="text-[#64748b] text-sm leading-relaxed max-w-md mx-auto">
-            队员端将在后续开放。请使用管理员或经理账号进入。
-          </p>
           <HistoryBackLink
             label="← 返回"
             fallbackHref="/"
