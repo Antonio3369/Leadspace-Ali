@@ -2,6 +2,7 @@ import type { User } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import {
   findManagerInIndexes,
+  findN7SalesInIndexes,
   findUserInIndexes,
   findUserInMap,
   type UserLookupIndexes,
@@ -9,7 +10,12 @@ import {
 } from "@/services/org/lookup-indexes";
 
 export type { UserLookupIndexes, UserLookupMap };
-export { findUserInIndexes, findUserInMap, findManagerInIndexes };
+export {
+  findUserInIndexes,
+  findUserInMap,
+  findManagerInIndexes,
+  findN7SalesInIndexes,
+};
 
 function normalizeName(name: string): string {
   return name.trim().toLowerCase();
@@ -17,6 +23,17 @@ function normalizeName(name: string): string {
 
 function normalizePid(pid: string): string {
   return pid.trim();
+}
+
+function salesNameManagerKey(name: string, managerId: string): string {
+  return `${normalizeName(name)}|${managerId}`;
+}
+
+function preferSalesAccount(a: User, b: User): User {
+  const aOld = a.username.startsWith("sales_");
+  const bOld = b.username.startsWith("sales_");
+  if (aOld !== bOld) return aOld ? b : a;
+  return b;
 }
 
 /** 构建姓名 + 个人 PID 双索引（商户导入匹配用） */
@@ -30,6 +47,7 @@ export async function buildUserLookupIndexes(): Promise<UserLookupIndexes> {
 
   const byName: UserLookupMap = new Map();
   const byManagerName: UserLookupMap = new Map();
+  const bySalesNameManager: UserLookupMap = new Map();
   const byPersonalPid = new Map<string, User>();
 
   for (const user of users) {
@@ -47,6 +65,14 @@ export async function buildUserLookupIndexes(): Promise<UserLookupIndexes> {
         }
       }
     }
+    if (user.role === "SALES" && user.managerId) {
+      const key = salesNameManagerKey(user.name, user.managerId);
+      const existing = bySalesNameManager.get(key);
+      bySalesNameManager.set(
+        key,
+        existing ? preferSalesAccount(existing, user) : user
+      );
+    }
   }
 
   for (const identity of identities) {
@@ -57,7 +83,7 @@ export async function buildUserLookupIndexes(): Promise<UserLookupIndexes> {
     }
   }
 
-  return { byName, byManagerName, byPersonalPid };
+  return { byName, byManagerName, bySalesNameManager, byPersonalPid };
 }
 
 /** @deprecated 使用 buildUserLookupIndexes */

@@ -145,8 +145,8 @@ export default function LoginForm() {
 
         <p className="text-xs text-[#94a3b8] mt-5 text-center leading-relaxed">
           {process.env.NODE_ENV === "production"
-            ? "仅经理与事业部负责人可登录；业务员为数据账号"
-            : "开发环境：admin / 123456；业务员账号不支持登录"}
+            ? "经理、负责人与已开通的 N7 队员均可登录"
+            : "开发环境：admin / 123456；N7 队员开通后可用登录名 + 初始密码登录"}
         </p>
       </div>
     </div>

@@ -8,7 +8,6 @@ import {
   adminAccessErrorResponse,
   assertAdminCanManageTarget,
 } from "@/lib/admin-user-access";
-import { allocatePinyinUsername } from "@/lib/pinyin-username";
 
 const enableSchema = z.object({
   password: z.string().min(6),
@@ -27,7 +26,7 @@ export async function POST(
 
     if (target.role === "SALES") {
       return NextResponse.json(
-        { error: "业务员为纯数据账号，不支持开通登录" },
+        { error: "业务员请由经理在 N7「人员管理」中开通登录" },
         { status: 400 }
       );
     }

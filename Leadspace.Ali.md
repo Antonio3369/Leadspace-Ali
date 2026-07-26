@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-07-24（N7 经理/队员手机底栏 · 队员开号与导入自动开通登录）
+**最后更新**：2026-07-26（N7 队员登录挂靠修复 · 人员管理彻底删除 · 本队同名空号去重）
 
 ---
 
@@ -33,12 +33,15 @@
 | N7 首页=今日待办 | `/n7` 只列系统催办（P0）；未处理/区间已达标/过期未达标为入口卡；完整名单在 `/n7/follow-up`，复盘在 `/n7/board` |
 | 滚动与返回 | 主滚动在 `#app-scroll`（非 window）；列表进详情再返回应恢复位置；侧栏切换业务页须滚到顶部 |
 | N7 经理/队员手机底栏 | 待办 · 跟进 · 看板 · 绩效 · 我的；设备详情藏底栏；队员数据仅本人 |
-| N7 队员开号 | 经理 `/n7/me/team` 按姓名开号（拼音 + `123456` + 首登改密，仅 N7）；人员 Excel **导入即自动开通登录** |
+| N7 队员开号 | 经理 `/n7/me/team` 按姓名开号（拼音 + `123456` + 首登改密，仅 N7）；人员 Excel **导入即自动开通登录**；历史导入可 `npm run backfill:sales-login` 补开通 |
+| N7 人员管理 | 在职：开通登录/重置密码、停用；**已停用**才可「彻底删除」（二次确认）；设备保留并解挂靠 |
+| N7 本队同名双号 | 仅**同一经理 + 姓名完全一致**；一侧有数据、其余为 0 → 停用空号（不删除）；**双侧都有数据则跳过**；近音不同字不合并；打开人员管理或 `npm run dedupe:team-sales` |
+| N7 设备挂靠 | 匹配键=**作业员姓名 + 所属经理**（对齐联通 §8.1）；导入用 `findN7SalesInIndexes`；部署引导会按姓名+经理重挂（`relinkN7SalesDevices`） |
 | N7 开经理账号 | 管理员在 `/n7/admin/import` →「开经理账号」只填姓名开号（拼音 + `123456` + 首登改密，仅 N7） |
 
 ### 1.2 本阶段停在哪里
 
-生产 https://ali.orblead.com。本地已实现 N7 底栏、队员开号、系统催办与 V1 关单回告经理。
+生产 https://ali.orblead.com。已上线：N7 底栏、队员开号与登录、系统催办与 V1 关单回告、设备按姓名+经理挂靠、人员管理停用/彻底删除、本队同名空号去重。
 
 ---
 
@@ -205,34 +208,28 @@ src/lib/business-lines.ts  # 业务线常量与路径工具
 | 事业部负责人 | DIRECTOR | 全量 | 上传 Excel、公共大屏、组织管理 |
 | 区域经理 | MANAGER | 所辖团队 | 团队管理（业务员花名册）、组织管理侧开通主管 |
 | 团队主管 | SUPERVISOR | 小组 + 个人 | **强制双区**（团队/个人 Tab） |
-| 一线业务员 | SALES | 个人 | **不可登录**（纯数据账号） |
+| 一线业务员 | SALES | 个人 | **可登录（N7）**；默认业务线可仅 `n7`；小蓝环侧仍主要作数据归属 |
 
 ### 5.2 谁可以登录
 
-**可登录角色**：DIRECTOR、MANAGER、SUPERVISOR（`canRoleSignIn` 拒绝 `SALES`）。
+**可登录角色**：DIRECTOR、MANAGER、SUPERVISOR、**SALES**（`canRoleSignIn` 全角色允许；停用仍由 `canLogin(status)` 拦截）。
 
 ```
-Excel 导入 → IMPORTED（无密码）
-    ↓ 管理员在组织管理开通
-经理 → ACTIVE（可立即登录；首登须改密）
-    ↓ 经理可创建/开通主管
-主管 → PENDING_ONBOARDING → 实名认证 /onboarding → ACTIVE
+Excel 导入 → 自动开通登录（ACTIVE + 默认密码 123456 + 首登改密；已开通不覆盖密码）
+    ↓ 或经理本队开号 / 重置密码
+队员 → 登录 → 强制改密 → N7 工作台（仅本人数据）
 ```
 
-**业务员（SALES）不走上述流程**：
+**N7 队员能力边界**：
 
-```
-人员名单 Excel 导入 → IMPORTED（永久保持，无密码）
-    ↓ 商户 Excel 按姓名匹配 salesUserId
-经理/主管在系统中查看该业务员的业绩数据
-```
+- 支持登录；数据范围强制 `staffKey = 本人`
+- 管理员组织页仍不直接「开通业务员」；由经理「人员管理」或人员 Excel 导入开通
+- `/n7/me/team`：开号、重置密码、停用；已停用可彻底删除；打开时补开通 + 本队同名空号去重
 
-业务员相关能力边界：
+**设备 / 人员匹配（N7）**：
 
-- 不支持登录（`/api/auth/check-account` 直接拒绝）
-- 不支持开通（`/api/admin/users/.../enable` 拒绝）
-- 不支持在后台手动创建（须走人员名单 Excel）
-- `/admin/team` 仅查看花名册、作业账号/PID、停用/启用**数据状态**
+- 匹配键 = **作业员姓名 + 所属经理**（勿仅按姓名全局匹配）
+- 导入：`findN7SalesInIndexes`；部署/脚本：`relinkN7SalesDevices` / `npm run dedupe:team-sales`
 
 额外规则（针对可登录角色）：
 
@@ -322,7 +319,7 @@ Excel 导入 → IMPORTED（无密码）
 
 | 路径 | 说明 |
 |---|---|
-| `/login` | Notion 风格登录（Leadspace.Alipay / 数据管理）；业务员账号会被拒绝；登录成功默认进 `/` 业务选择 |
+| `/login` | Notion 风格登录（Leadspace.Alipay / 数据管理）；经理/负责人/已开通 N7 队员可登录；登录成功默认进 `/` 业务选择 |
 | `/onboarding` | 实名认证（主管等 `PENDING_ONBOARDING`；经理开通后多为 `ACTIVE` 可跳过。**业务员不使用此页**） |
 | `/settings/password` | 改密（含首登强制）；路由组 `(account)`，见 §5.2 |
 | `/change-password` | 兼容旧链，重定向到 `/settings/password` |
@@ -623,6 +620,14 @@ src/
 - [x] 导入互斥锁；人员/N7/小蓝环导入改为后台任务 + 前端轮询
 - [x] 文档 §15.6 稳定性与升配建议
 
+### 2026-07-26（已部署生产）
+
+- [x] N7 队员可登录；历史导入补开通（`backfill:sales-login`）；登录页文案同步
+- [x] 设备挂靠按 **姓名+所属经理**（导入 + `relinkN7SalesDevices`）；队员查询按姓名+经理兜底
+- [x] 人员管理：可登录标记；**已停用**才可彻底删除（二次确认）；在职仅重置/停用
+- [x] 本队同名双号：仅一侧有数据时停用空号；双侧有数据跳过；近音不合并（`dedupe:team-sales`）
+- [x] 文档同步 §1.1 / §5.2
+
 ### 2026-07-20（已部署生产）
 
 - [x] N7 首页改为 **今日待办**（`N7TodayView` + `/api/n7/today`）；侧栏：今日待办 · 达标跟进 · 数据看板/团队看板 · …
@@ -850,6 +855,8 @@ Dockerfile
 | N7 今日待办 | `N7TodayView`, `api/n7/today`, `analytics.getN7TodayQueues`；看板 `/n7/board` |
 | N7 优先级文案 | `n7-rules.n7PriorityLabel`, `N7PriorityBadge`, `n7-filter-styles` |
 | N7 V1 关单 / 系统催办 | `N7FollowUpCloseForm`, `N7FollowUpStatusCell`, `n7-follow-up*`, `api/n7/devices/[sn]`, `api/n7/follow-up/photos`, `api/n7/notifications`, `N7NotificationsView` |
+| N7 队员开号 / 去重 | `ManagerTeamPanel`, `api/admin/team`, `team-sales.ts`, `dedupe-team-sales.ts`, `backfill-sales-login.ts` |
+| N7 设备挂靠 | `findN7SalesInIndexes`, `n7-excel-importer.ts`, `relink-sales-devices.ts` |
 | 权限/越权 | `permissions.ts`, `manager-scope.ts`, `business-lines.ts`, `n7-scope.ts` |
 | 指标不对 | `business-rules.ts`, `analytics.ts`（小蓝环）/ `services/n7/analytics.ts`（N7） |
 | 导入失败 | `excel-parser.ts`, `excel-importer.ts`, `n7-excel-importer.ts`；入口 `/xlh/admin/import`、`/n7/admin/import` |

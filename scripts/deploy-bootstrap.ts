@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { ensureAdminDirector } from "../src/services/import/personnel-importer";
+import { relinkN7SalesDevices } from "../src/services/n7/relink-sales-devices";
 import {
   buildUserLookupIndexes,
   findManagerInIndexes,
@@ -14,6 +15,7 @@ const db = new PrismaClient({ adapter });
  * 部署后轻量引导：
  * 1. 管理员 Antonio → admin（不改密码）
  * 2. 回填 N7 设备的 managerUserId，减少重名串数
+ * 3. 按「姓名+经理」重挂队员设备（对齐沙箱）
  */
 export async function backfillN7ManagerUserIds() {
   const indexes = await buildUserLookupIndexes();
@@ -50,6 +52,12 @@ async function main() {
   const result = await backfillN7ManagerUserIds();
   console.log(
     `    扫描 ${result.scanned}，回填 ${result.updated}，未匹配 ${result.unmatched}`
+  );
+
+  console.log("==> 按姓名+经理重挂 N7 队员设备...");
+  const relink = await relinkN7SalesDevices();
+  console.log(
+    `    重挂 ${relink.totalRelinked} 台，停用孤儿旧号 ${relink.disabledOrphans}`
   );
 }
 

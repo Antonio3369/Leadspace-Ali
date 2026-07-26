@@ -17,6 +17,8 @@
     "import:fresh": "tsx scripts/reset-import-data.ts --confirm --personnel --reimport",
     "import:analyze": "tsx scripts/analyze-import-match.ts",
     "backfill:merchant-owners": "tsx scripts/backfill-merchant-owners.ts",
+    "backfill:sales-login": "tsx scripts/backfill-sales-login.ts",
+    "dedupe:team-sales": "tsx scripts/dedupe-team-sales.ts",
     "deploy:bootstrap": "tsx scripts/deploy-bootstrap.ts"
   },
   "dependencies": {

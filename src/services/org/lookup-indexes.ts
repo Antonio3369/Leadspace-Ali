@@ -11,6 +11,11 @@ export interface UserLookupIndexes {
   byName: UserLookupMap;
   /** 仅 MANAGER，供 N7「所属经理」匹配，避免同名业务员抢绑 */
   byManagerName: UserLookupMap;
+  /**
+   * N7 队员：姓名 + 所属经理 ID（对齐沙箱「姓名+经理」匹配键）
+   * key = `${normalizeName}|${managerId}`
+   */
+  bySalesNameManager: UserLookupMap;
   byPersonalPid: Map<string, User>;
 }
 
@@ -20,6 +25,10 @@ function normalizeName(name: string): string {
 
 function normalizePid(pid: string): string {
   return pid.trim();
+}
+
+function salesNameManagerKey(name: string, managerId: string): string {
+  return `${normalizeName(name)}|${managerId}`;
 }
 
 export function findUserInIndexes(
@@ -33,6 +42,22 @@ export function findUserInIndexes(
     if (byPid) return byPid;
   }
   return indexes.byName.get(normalizeName(salesUserName)) ?? null;
+}
+
+/**
+ * N7 设备挂靠：作业员姓名 + 所属经理（勿仅按姓名全局匹配，避免他队同名/错挂）
+ */
+export function findN7SalesInIndexes(
+  indexes: UserLookupIndexes,
+  operatorName: string,
+  manager: User | null | undefined
+): User | null {
+  if (!manager) return null;
+  return (
+    indexes.bySalesNameManager.get(
+      salesNameManagerKey(operatorName, manager.id)
+    ) ?? null
+  );
 }
 
 /** N7 所属经理：只匹配经理角色账号 */
@@ -71,7 +96,12 @@ export function buildPersonnelLookupFromRows(
     byName.set(normalizeName(accountName), user);
   }
 
-  return { byName, byManagerName: new Map(), byPersonalPid };
+  return {
+    byName,
+    byManagerName: new Map(),
+    bySalesNameManager: new Map(),
+    byPersonalPid,
+  };
 }
 
 export function findUserInMap(

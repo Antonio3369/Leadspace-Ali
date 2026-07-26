@@ -132,7 +132,7 @@ async function buildManagerDeviceWhere(
   };
 }
 
-/** 队员范围：优先 salesUserId；未绑定 id 时用姓名兜底 */
+/** 队员范围：优先 salesUserId；并按「姓名+所属经理」兜底（对齐沙箱，避免错挂导致空数据） */
 async function buildStaffDeviceWhere(
   staffKey: string
 ): Promise<Prisma.N7DeviceRecordWhereInput> {
@@ -141,15 +141,35 @@ async function buildStaffDeviceWhere(
   }
   const user = await db.user.findUnique({
     where: { id: staffKey },
-    select: { name: true },
+    select: { name: true, managerId: true },
   });
   if (!user) return { salesUserId: staffKey };
-  return {
-    OR: [
-      { salesUserId: staffKey },
-      { AND: [{ salesUserId: null }, { operatorName: user.name }] },
-    ],
-  };
+
+  const parts: Prisma.N7DeviceRecordWhereInput[] = [{ salesUserId: staffKey }];
+
+  if (user.managerId) {
+    const manager = await db.user.findUnique({
+      where: { id: user.managerId },
+      select: { name: true },
+    });
+    parts.push({
+      AND: [
+        { operatorName: user.name },
+        {
+          OR: [
+            { managerUserId: user.managerId },
+            ...(manager?.name ? [{ managerName: manager.name }] : []),
+          ],
+        },
+      ],
+    });
+  } else {
+    parts.push({
+      AND: [{ salesUserId: null }, { operatorName: user.name }],
+    });
+  }
+
+  return { OR: parts };
 }
 
 function summarizeDevices(devices: N7DeviceRecord[]): Omit<
@@ -400,11 +420,7 @@ export async function getN7StaffDevices(
   }
 ) {
   const { from, to, dateFrom, dateTo } = resolveRange(opts);
-  const staffWhere: Prisma.N7DeviceRecordWhereInput = opts.staffKey.startsWith(
-    "name:"
-  )
-    ? { operatorName: opts.staffKey.slice(5) }
-    : { salesUserId: opts.staffKey };
+  const staffWhere = await buildStaffDeviceWhere(opts.staffKey);
 
   const parts: Prisma.N7DeviceRecordWhereInput[] = [
     registeredWhere(from, to),

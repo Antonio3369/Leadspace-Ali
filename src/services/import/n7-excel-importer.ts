@@ -12,7 +12,7 @@ import {
 import {
   buildUserLookupIndexes,
   findManagerInIndexes,
-  findUserInIndexes,
+  findN7SalesInIndexes,
   type UserLookupIndexes,
 } from "@/services/org/user-matcher";
 
@@ -70,8 +70,8 @@ function toWriteRow(
   importBatchId: string,
   existingId?: string
 ): N7WriteRow {
-  const salesUser = findUserInIndexes(indexes, row.operatorName);
   const managerUser = findManagerInIndexes(indexes, row.managerName);
+  const salesUser = findN7SalesInIndexes(indexes, row.operatorName, managerUser);
   return {
     id: existingId ?? createId(),
     deviceSn: row.deviceSn,

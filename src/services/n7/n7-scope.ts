@@ -83,13 +83,30 @@ export async function assertCanViewN7Device(user: SessionUser, deviceSn: string)
   }
 
   if (user.role === "SALES") {
-    const owns =
-      device.salesUserId === user.id ||
-      (device.salesUserId == null && device.operatorName === user.name);
-    if (!owns) {
+    if (device.salesUserId === user.id) return;
+    if (device.operatorName !== user.name) {
       throw new PermissionError("无权查看该设备");
     }
-    return;
+    const live = await db.user.findUnique({
+      where: { id: user.id },
+      select: { managerId: true },
+    });
+    const managerId = live?.managerId;
+    if (managerId) {
+      const manager = await db.user.findUnique({
+        where: { id: managerId },
+        select: { name: true },
+      });
+      const underManager =
+        device.managerUserId === managerId ||
+        (manager?.name != null && device.managerName === manager.name);
+      if (!underManager) {
+        throw new PermissionError("无权查看该设备");
+      }
+      return;
+    }
+    if (device.salesUserId == null) return;
+    throw new PermissionError("无权查看该设备");
   }
 
   const owns =
