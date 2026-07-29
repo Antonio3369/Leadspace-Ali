@@ -66,7 +66,7 @@ export async function notifyManagerFollowUpDone(opts: {
     followUpAt: opts.followUpAt.toISOString(),
   };
 
-  return db.n7Notification.create({
+  const row = await db.n7Notification.create({
     data: {
       userId: opts.managerUserId,
       type: N7_NOTIFICATION_TYPE_FOLLOW_UP_DONE,
@@ -77,6 +77,24 @@ export async function notifyManagerFollowUpDone(opts: {
       read: false,
     },
   });
+
+  // MVP-A：旁路企微外推；失败只打日志，不挡关单 / 站内通知
+  try {
+    const { notifyOutboundFollowUpDone } = await import(
+      "@/services/n7/outbound-notifier"
+    );
+    await notifyOutboundFollowUpDone({
+      deviceSn: opts.deviceSn,
+      storeName: opts.storeName,
+      operatorName: opts.operatorName,
+      followUpByName: opts.followUpByName,
+      summary,
+    });
+  } catch (err) {
+    console.error("[n7-outbound] follow-up-done push failed", err);
+  }
+
+  return row;
 }
 
 export async function countUnreadN7Notifications(userId: string) {

@@ -56,6 +56,9 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
       AUTH_URL: ${AUTH_URL:-https://ali.orblead.com}
       AUTH_TRUST_HOST: "true"
+      # N7 关单外推企微群；未设置则跳过
+      N7_OUTBOUND_WEBHOOK_URL: ${N7_OUTBOUND_WEBHOOK_URL:-}
+      N7_PUBLIC_BASE_URL: ${N7_PUBLIC_BASE_URL:-${AUTH_URL:-https://ali.orblead.com}}
 
   db-init:
     build:

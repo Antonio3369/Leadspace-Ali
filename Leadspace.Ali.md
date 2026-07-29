@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-07-26（N7 队员登录挂靠修复 · 人员管理彻底删除 · 本队同名空号去重）
+**最后更新**：2026-07-29（N7 关单企微外推 MVP-A：代码已合入仓库，**待本地测通再上生产**）
 
 ---
 
@@ -30,6 +30,7 @@
 | N7 处理状态 / V1 关单 | 与考核「待跟进」**相互独立**。关单须选接通结果（已接通/未接通）、可叠加不愿配合/已答应使用达标、≥1 张现场图；列表「去关单」进详情。Excel 重导不覆盖 |
 | N7 系统催办 | `/n7` 主列表 = P0（剩余≤2天）未处理，系统自动进入，**非经理点催办**；关单后离开催办池 |
 | N7 关单回告经理 | 队员/代记关单成功后，所属经理收**提醒通知**（`N7Notification`）；入口：今日待办「队员已处理」、`/n7/notifications`、待办底栏角标；点开详情即已读 |
+| N7 关单外推（MVP-A） | 关单站内通知成功后，旁路推**企微**群 Webhook（`N7_OUTBOUND_WEBHOOK_URL`）；文案含结果摘要 + `/n7/devices/{sn}`；**失败只打日志，不挡关单**。代码已在 main；**生产未配 Webhook / 未验收前勿当已上线** |
 | N7 首页=今日待办 | `/n7` 只列系统催办（P0）；未处理/区间已达标/过期未达标为入口卡；完整名单在 `/n7/follow-up`，复盘在 `/n7/board` |
 | 滚动与返回 | 主滚动在 `#app-scroll`（非 window）；列表进详情再返回应恢复位置；侧栏切换业务页须滚到顶部 |
 | N7 经理/队员手机底栏 | 待办 · 跟进 · 看板 · 绩效 · 我的；设备详情藏底栏；队员数据仅本人 |
@@ -41,7 +42,8 @@
 
 ### 1.2 本阶段停在哪里
 
-生产 https://ali.orblead.com。已上线：N7 底栏、队员开号与登录、系统催办与 V1 关单回告、设备按姓名+经理挂靠、人员管理停用/彻底删除、本队同名空号去重。
+生产 https://ali.orblead.com。已上线：N7 底栏、队员开号与登录、系统催办与 V1 关单回告、设备按姓名+经理挂靠、人员管理停用/彻底删除、本队同名空号去重。  
+**进行中**：关单企微外推 MVP-A（代码在 GitHub，见 §16.1；先测再上生产）。
 
 ---
 
@@ -620,6 +622,13 @@ src/
 - [x] 导入互斥锁；人员/N7/小蓝环导入改为后台任务 + 前端轮询
 - [x] 文档 §15.6 稳定性与升配建议
 
+### 2026-07-29（代码已推 GitHub · **生产待测**）
+
+- [x] N7 关单外推 MVP-A 代码：`outbound-notifier.ts` + 钩在 `notifyManagerFollowUpDone`；`N7_OUTBOUND_WEBHOOK_URL` / compose / env 示例
+- [x] 产品确认：**企微**群机器人；**只做 A**（B 定时催 P0 未做）
+- [ ] 本地/预发：配 Webhook → 单独推一条 → 关单验站内+群消息 → 坏 URL 关单仍成功
+- [ ] 生产：写入 `.env` 的 Webhook 后部署并验收（§15.3：先测再上）
+
 ### 2026-07-26（已部署生产）
 
 - [x] N7 队员可登录；历史导入补开通（`backfill:sales-login`）；登录页文案同步
@@ -829,6 +838,67 @@ Dockerfile
 - `/xlh/screen` 公共大屏实现或隐藏占位
 - 记住上次进入的业务线（cookie），登录后可直达
 
+### 灵感备忘（2026-07-27 · 北海道 Vibe Coding 对照）
+
+- **关单/跟进录入减负**：语音或乱序备注 → 自动填接通结果/叠加项/摘要，减轻详情页点选；**先记下，未排期**
+- **外推提醒 + 深链（N7 优先）**：§16.1；P 站自动化本轮不做；联通外推暂缓；录入减负只备忘不排期
+
+### 16.1 N7 外推提醒 + 深链 · 进度（香港续做）
+
+**状态（2026-07-29）**
+
+| 项 | 结论 |
+|---|---|
+| 范围 | 只做 N7；联通外推暂缓；P 站自动化不做 |
+| 通道 | **企微**群机器人 Webhook（先群、再考虑个人；短信备选） |
+| 阶段 | **只做 MVP-A**；MVP-B（定时催 P0）第二步 |
+| 代码 | 已实现并推 GitHub `main` |
+| 上线 | **先测再部署生产**；未配 `N7_OUTBOUND_WEBHOOK_URL` 时外推静默跳过 |
+
+**深链**
+
+| 场景 | URL |
+|---|---|
+| 设备详情 / 关单结果 | `https://ali.orblead.com/n7/devices/{sn}` |
+| 今日待办 | `https://ali.orblead.com/n7` |
+| 经理「队员已处理」 | `https://ali.orblead.com/n7/notifications` |
+
+**MVP-A 行为**
+
+1. V1 关单成功 → 现有站内 `N7Notification` **不变**
+2. 旁路再推企微一条：markdown 文案（处理人/门店/结果）+ 设备详情链接
+3. Webhook 未配或推送失败 → **只打日志**，不挡关单与站内通知
+
+**代码落点**
+
+| 文件 | 作用 |
+|---|---|
+| `src/services/n7/outbound-notifier.ts` | 组装 markdown、POST 企微 Webhook |
+| `src/services/n7/notifications.ts` | `notifyManagerFollowUpDone` 写库后 `try/catch` 调外推 |
+| `deploy/env.production.example` | `N7_OUTBOUND_WEBHOOK_URL`、`N7_PUBLIC_BASE_URL` |
+| `docker-compose.prod.yml` | 把上述 env 传入 app 容器 |
+
+**香港续测清单**
+
+1. 企微群 → 群机器人 → 复制 Webhook  
+2. 本地 `.env`（或生产待测机）：
+   ```bash
+   N7_OUTBOUND_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
+   N7_PUBLIC_BASE_URL=https://ali.orblead.com
+   ```
+3. 可选：用脚本/临时调用 `notifyOutboundFollowUpDone` 先打一条到群  
+4. 本地关一单：站内「队员已处理」有记录 + 群里有消息 + 链接可开  
+5. 故意配错 URL：关单仍成功，日志有 `[n7-outbound]`  
+6. 验收通过后再 `./deploy/push-and-deploy.sh`，并在服务器 `.env` 写入真实 Webhook  
+
+**MVP-B（未做）**：定时扫 P0 未处理 → 催队员（可抄经理）→ 链到 `/n7` 或设备详情。
+
+**验收（MVP-A）**
+
+- [ ] 关单成功 → 站内提醒仍在 + 企微群收到含店名摘要 + 可点详情链接  
+- [ ] Webhook 未配或失败 → 关单与站内通知不受影响  
+- [ ] 未登录点深链 → 登录后落到该设备详情  
+
 ---
 
 ## 17. 开发约定
@@ -855,6 +925,7 @@ Dockerfile
 | N7 今日待办 | `N7TodayView`, `api/n7/today`, `analytics.getN7TodayQueues`；看板 `/n7/board` |
 | N7 优先级文案 | `n7-rules.n7PriorityLabel`, `N7PriorityBadge`, `n7-filter-styles` |
 | N7 V1 关单 / 系统催办 | `N7FollowUpCloseForm`, `N7FollowUpStatusCell`, `n7-follow-up*`, `api/n7/devices/[sn]`, `api/n7/follow-up/photos`, `api/n7/notifications`, `N7NotificationsView` |
+| N7 关单外推 | `outbound-notifier.ts`（企微 Webhook）；钩在 `notifyManagerFollowUpDone` 后 |
 | N7 队员开号 / 去重 | `ManagerTeamPanel`, `api/admin/team`, `team-sales.ts`, `dedupe-team-sales.ts`, `backfill-sales-login.ts` |
 | N7 设备挂靠 | `findN7SalesInIndexes`, `n7-excel-importer.ts`, `relink-sales-devices.ts` |
 | 权限/越权 | `permissions.ts`, `manager-scope.ts`, `business-lines.ts`, `n7-scope.ts` |
