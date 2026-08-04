@@ -43,6 +43,7 @@ export async function GET(request: Request) {
       status,
       managerKey,
       staffKey,
+      q: searchParams.get("q"),
     });
 
     return NextResponse.json(data);

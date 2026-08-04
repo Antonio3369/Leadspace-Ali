@@ -28,6 +28,7 @@ export async function GET(request: Request) {
       yearMonth: searchParams.get("month"),
       managerKey,
       staffKey,
+      q: searchParams.get("q"),
     });
 
     return NextResponse.json(data);

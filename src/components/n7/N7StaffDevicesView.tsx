@@ -181,6 +181,7 @@ export function N7StaffDevicesView({
     const params = new URLSearchParams(rangeQs);
     params.set("tab", tab);
     params.set("managerKey", managerKey);
+    if (search.trim()) params.set("q", search.trim());
     fetch(`/api/n7/staff/${encodeURIComponent(staffKey)}/devices?${params}`)
       .then(async (res) => {
         const json = await res.json();
@@ -196,7 +197,7 @@ export function N7StaffDevicesView({
     return () => {
       cancelled = true;
     };
-  }, [staffKey, managerKey, rangeQs, tab]);
+  }, [staffKey, managerKey, rangeQs, tab, search]);
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -230,15 +231,8 @@ export function N7StaffDevicesView({
     ) {
       list = list.filter((d) => d.followUpDone);
     }
-    if (!search.trim()) return list;
-    const q = search.trim().toLowerCase();
-    return list.filter(
-      (d) =>
-        d.deviceSn.toLowerCase().includes(q) ||
-        (d.storeName ?? "").toLowerCase().includes(q) ||
-        (d.merchantPhone ?? "").includes(q)
-    );
-  }, [data, search, priorityFilter, behaviorFilter, followFilter, tab]);
+    return list;
+  }, [data, priorityFilter, behaviorFilter, followFilter, tab]);
 
   const followCounts = useMemo(() => {
     if (!data) return { pending: 0, done: 0, all: 0 };

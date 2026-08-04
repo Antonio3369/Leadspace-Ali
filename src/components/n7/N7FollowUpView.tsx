@@ -14,10 +14,13 @@ import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 import {
   NotionAlert,
   NotionButton,
+  NotionCallout,
+  NotionInput,
   NotionSelect,
   PageHeader,
   PageShell,
 } from "@/components/ui/notion";
+import { n7SearchResultHint } from "@/lib/n7-search";
 import { N7DateRangePicker } from "@/components/n7/N7DateRangePicker";
 import {
   N7_PRIORITY_FILTERS,
@@ -94,12 +97,14 @@ export function N7FollowUpView({
   const staffKey = searchParams.get("staffKey") ?? "";
   const behaviorFilter = searchParams.get("behavior");
   const followFilter = (searchParams.get("follow") as FollowFilter) || "all";
+  const search = searchParams.get("q") ?? "";
 
   const [data, setData] = useState<ApiResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [searchDraft, setSearchDraft] = useState(search);
 
   useRestoreListScroll(pathname, !loading && !!data);
 
@@ -112,6 +117,7 @@ export function N7FollowUpView({
       behavior: string | null;
       follow: FollowFilter;
       status: "expired" | null;
+      q: string;
     }>
   ) {
     const params = new URLSearchParams(searchParams.toString());
@@ -148,10 +154,24 @@ export function N7FollowUpView({
       if (patch.follow === "all") params.delete("follow");
       else params.set("follow", patch.follow);
     }
-    // 清掉旧的自由搜索参数
-    params.delete("q");
+    if (patch.q != null) {
+      if (patch.q) params.set("q", patch.q);
+      else params.delete("q");
+    }
     router.replace(`${n7Path("/follow-up")}?${params}`, { scroll: false });
   }
+
+  useEffect(() => {
+    setSearchDraft(search);
+  }, [search]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (searchDraft !== search) pushQuery({ q: searchDraft });
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchDraft]);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,6 +184,7 @@ export function N7FollowUpView({
       params.set("priority", filter);
     }
     if (managerKey) params.set("managerKey", managerKey);
+    if (search.trim()) params.set("q", search.trim());
     fetch(`/api/n7/follow-up?${params}`)
       .then(async (res) => {
         const json = await res.json();
@@ -179,7 +200,7 @@ export function N7FollowUpView({
     return () => {
       cancelled = true;
     };
-  }, [rangeQs, filter, managerKey, isExpiredList]);
+  }, [rangeQs, filter, managerKey, isExpiredList, search]);
 
   /** 当前结果里、名下仍有待跟进商户的队员 */
   const staffOptions = useMemo(() => {
@@ -230,7 +251,7 @@ export function N7FollowUpView({
 
   // 当前选中的队员若不在名单中（例如切换了优先级），自动清空
   useEffect(() => {
-    if (!staffKey || loading || !data) return;
+    if (!staffKey || loading || !data || search.trim()) return;
     if (!staffOptions.some((s) => s.key === staffKey)) {
       pushQuery({ staffKey: null });
     }
@@ -322,15 +343,25 @@ export function N7FollowUpView({
               : "支付宝 N7"
         }
         meta={
-          isDrillDown || isManagerHome || isExpiredList ? (
+          isDrillDown || isManagerHome || isExpiredList || search ? (
             <p className="text-sm text-[#64748b]">
-              <HistoryBackLink
-                label={backLabel}
-                fallbackHref={backHref}
-                listScrollKey={backListKey}
-                preferHistoryBack
-                className="text-[#2563eb] hover:text-[#1d4ed8]"
-              />
+              {isDrillDown || isManagerHome || isExpiredList ? (
+                <HistoryBackLink
+                  label={backLabel}
+                  fallbackHref={backHref}
+                  listScrollKey={backListKey}
+                  preferHistoryBack
+                  className="text-[#2563eb] hover:text-[#1d4ed8]"
+                />
+              ) : null}
+              {!loading && data && search ? (
+                <>
+                  {isDrillDown || isManagerHome || isExpiredList ? (
+                    <span className="mx-2 text-[#cbd5e1]">/</span>
+                  ) : null}
+                  {n7SearchResultHint(filtered.length, true)}
+                </>
+              ) : null}
             </p>
           ) : undefined
         }
@@ -353,29 +384,47 @@ export function N7FollowUpView({
             dateTo={dateTo}
             onChange={(next) => pushQuery(next)}
             trailing={
-              <NotionSelect
-                value={staffKey}
-                onChange={(e) =>
-                  pushQuery({ staffKey: e.target.value || null })
-                }
-                className="w-full sm:w-56"
-                aria-label="筛选队员"
-              >
-                <option value="">
-                  {isExpiredList ? "全部队员" : "全部队员（有待跟进）"}
-                </option>
-                {staffOptions.map((s) => (
-                  <option key={s.key} value={s.key}>
-                    {s.name}（{s.count}）
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <NotionInput
+                  placeholder="门店 / SN / 手机"
+                  value={searchDraft}
+                  onChange={(e) => setSearchDraft(e.target.value)}
+                  className="w-full sm:w-44"
+                  aria-label="搜索门店或设备 SN"
+                />
+                <NotionSelect
+                  value={staffKey}
+                  onChange={(e) =>
+                    pushQuery({ staffKey: e.target.value || null })
+                  }
+                  className="w-full sm:w-56"
+                  aria-label="筛选队员"
+                >
+                  <option value="">
+                    {isExpiredList ? "全部队员" : "全部队员（有待跟进）"}
                   </option>
-                ))}
-              </NotionSelect>
+                  {staffOptions.map((s) => (
+                    <option key={s.key} value={s.key}>
+                      {s.name}（{s.count}）
+                    </option>
+                  ))}
+                </NotionSelect>
+              </div>
             }
           />
         }
       />
 
       {exportError && <NotionAlert tone="error">{exportError}</NotionAlert>}
+
+      {!search && (
+        <NotionCallout>
+          <p>
+            待跟进名单按<strong>考核期</strong>展示：考核未结束即出现，与注册月份无关。
+            数据看板的拓展/达标仍按<strong>注册日期</strong>统计。
+          </p>
+        </NotionCallout>
+      )}
 
       {error && <NotionAlert tone="error">{error}</NotionAlert>}
       {loading && (

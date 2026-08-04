@@ -12,6 +12,7 @@ import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 import {
   NotionAlert,
+  NotionCallout,
   NotionInput,
   PageHeader,
   PageShell,
@@ -161,6 +162,12 @@ export function N7StaffBoard({
       />
 
       {error && <NotionAlert tone="error">{error}</NotionAlert>}
+      <NotionCallout>
+        <p>
+          团队看板按<strong>注册日期</strong>统计拓展与达标。
+          队员明细下钻与上方数字同口径；日常催办请用「待办」「跟进」。
+        </p>
+      </NotionCallout>
       {loading && <p className="text-sm text-[#94a3b8]">正在加载队员排行…</p>}
       {!loading && data && (
         <div className="space-y-4">

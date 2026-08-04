@@ -39,6 +39,7 @@ export async function GET(
       dateFrom: searchParams.get("dateFrom"),
       dateTo: searchParams.get("dateTo"),
       yearMonth: searchParams.get("month"),
+      q: searchParams.get("q"),
       tab:
         tab === "qualified" ||
         tab === "all" ||

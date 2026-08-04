@@ -2,6 +2,10 @@ import type { N7DeviceRecord, Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { parseN7DateRange } from "@/lib/n7-date";
 import {
+  buildN7DeviceTextSearchPrismaWhere,
+  N7_DEVICE_SEARCH_LIMIT,
+} from "@/lib/n7-search";
+import {
   daysGap,
   isFollowUpCandidate,
   isN7TimeHopeless,
@@ -102,6 +106,30 @@ function registeredWhere(
       ...(to ? { lte: to } : {}),
     },
   };
+}
+
+/** 待跟进运营名单：考核未结束（不按注册月截断） */
+function activeAssessmentWhere(): Prisma.N7DeviceRecordWhereInput {
+  return { remainingEnded: false };
+}
+
+/** 过期复盘名单：考核已结束且仍未达标 */
+function expiredAssessmentWhere(): Prisma.N7DeviceRecordWhereInput {
+  return { remainingEnded: true, isQualified: false };
+}
+
+async function buildN7ScopeWhereParts(opts: {
+  managerKey?: string | null;
+  staffKey?: string | null;
+}): Promise<Prisma.N7DeviceRecordWhereInput[]> {
+  const parts: Prisma.N7DeviceRecordWhereInput[] = [];
+  if (opts.managerKey) {
+    parts.push(await buildManagerDeviceWhere(opts.managerKey));
+  }
+  if (opts.staffKey) {
+    parts.push(await buildStaffDeviceWhere(opts.staffKey));
+  }
+  return parts;
 }
 
 function resolveRange(opts: N7RangeOpts) {
@@ -417,15 +445,22 @@ export async function getN7StaffDevices(
     staffKey: string;
     managerKey?: string | null;
     tab?: "followUp" | "qualified" | "all" | "expired";
+    q?: string | null;
   }
 ) {
   const { from, to, dateFrom, dateTo } = resolveRange(opts);
+  const searchQ = opts.q?.trim() ?? "";
+  const isSearch = searchQ.length > 0;
   const staffWhere = await buildStaffDeviceWhere(opts.staffKey);
 
-  const parts: Prisma.N7DeviceRecordWhereInput[] = [
-    registeredWhere(from, to),
-    staffWhere,
-  ];
+  const parts: Prisma.N7DeviceRecordWhereInput[] = [staffWhere];
+
+  if (isSearch) {
+    parts.push(buildN7DeviceTextSearchPrismaWhere(searchQ));
+  } else {
+    // 看板下钻：拓展/待跟进/过期均按注册日期区间（与经理排行同口径）
+    parts.push(registeredWhere(from, to));
+  }
 
   if (opts.managerKey) {
     parts.push(await buildManagerDeviceWhere(opts.managerKey));
@@ -434,17 +469,20 @@ export async function getN7StaffDevices(
   const devices = await db.n7DeviceRecord.findMany({
     where: { AND: parts },
     orderBy: { registeredAt: "desc" },
+    ...(isSearch ? { take: N7_DEVICE_SEARCH_LIMIT } : {}),
   });
 
   const mapped = devices.map(mapDevice);
   const tab = opts.tab ?? "followUp";
   let list = mapped;
-  if (tab === "followUp") {
-    list = sortFollowUp(mapped.filter((d) => d.priority != null));
-  } else if (tab === "qualified") {
-    list = mapped.filter((d) => d.isQualified);
-  } else if (tab === "expired") {
-    list = mapped.filter((d) => !d.isQualified && d.remainingEnded);
+  if (!isSearch) {
+    if (tab === "followUp") {
+      list = sortFollowUp(mapped.filter((d) => d.priority != null));
+    } else if (tab === "qualified") {
+      list = mapped.filter((d) => d.isQualified);
+    } else if (tab === "expired") {
+      list = mapped.filter((d) => !d.isQualified && d.remainingEnded);
+    }
   }
 
   const sample = devices[0];
@@ -466,10 +504,11 @@ export async function getN7StaffDevices(
       followUp: mapped.filter((d) => d.priority != null).length,
     },
     devices: list,
+    searchMode: isSearch,
   };
 }
 
-/** 待跟进 / 过期未达标设备明细（可按经理 / 队员范围过滤） */
+/** 待跟进 / 过期未达标设备明细（运营页：按考核期；看板统计走 leaderboard） */
 export async function getN7FollowUpDevices(
   opts: N7RangeOpts & {
     priority?: N7Priority | "all" | null;
@@ -477,10 +516,21 @@ export async function getN7FollowUpDevices(
     status?: "expired" | null;
     managerKey?: string | null;
     staffKey?: string | null;
+    q?: string | null;
   }
 ) {
   const { from, to, dateFrom, dateTo } = resolveRange(opts);
-  const parts: Prisma.N7DeviceRecordWhereInput[] = [registeredWhere(from, to)];
+  const searchQ = opts.q?.trim() ?? "";
+  const isSearch = searchQ.length > 0;
+  const parts: Prisma.N7DeviceRecordWhereInput[] = [];
+
+  if (isSearch) {
+    parts.push(buildN7DeviceTextSearchPrismaWhere(searchQ));
+  } else if (opts.status === "expired") {
+    parts.push(expiredAssessmentWhere());
+  } else {
+    parts.push(activeAssessmentWhere());
+  }
 
   if (opts.managerKey) {
     parts.push(await buildManagerDeviceWhere(opts.managerKey));
@@ -492,9 +542,47 @@ export async function getN7FollowUpDevices(
   const devices = await db.n7DeviceRecord.findMany({
     where: { AND: parts },
     orderBy: { registeredAt: "desc" },
+    ...(isSearch ? { take: N7_DEVICE_SEARCH_LIMIT } : {}),
   });
 
   const mapped = devices.map(mapDevice);
+
+  if (isSearch) {
+    let managerName: string | null = null;
+    if (opts.managerKey) {
+      if (opts.managerKey.startsWith("name:")) {
+        managerName = opts.managerKey.slice(5);
+      } else {
+        const u = await db.user.findUnique({
+          where: { id: opts.managerKey },
+          select: { name: true },
+        });
+        managerName = devices[0]?.managerName ?? u?.name ?? opts.managerKey;
+      }
+    }
+
+    return {
+      dateFrom,
+      dateTo,
+      filter: "all" as const,
+      status: "search" as const,
+      searchMode: true,
+      manager: opts.managerKey
+        ? { key: opts.managerKey, name: managerName ?? opts.managerKey }
+        : null,
+      totals: summarizeDevices(devices),
+      counts: {
+        followUp: mapped.filter((d) => d.priority != null).length,
+        P0: mapped.filter((d) => d.priority === "P0").length,
+        P1: mapped.filter((d) => d.priority === "P1").length,
+        P2: mapped.filter((d) => d.priority === "P2").length,
+        P3: mapped.filter((d) => d.priority === "P3").length,
+        expired: mapped.filter((d) => !d.isQualified && d.remainingEnded).length,
+      },
+      devices: mapped,
+    };
+  }
+
   const followUp = sortFollowUp(mapped.filter((d) => d.priority != null));
   const expired = mapped
     .filter((d) => !d.isQualified && d.remainingEnded)
@@ -525,6 +613,12 @@ export async function getN7FollowUpDevices(
   }
 
   const totals = summarizeDevices(devices);
+  const scopeParts = await buildN7ScopeWhereParts(opts);
+  const expiredCount = isExpired
+    ? expired.length
+    : await db.n7DeviceRecord.count({
+        where: { AND: [...scopeParts, expiredAssessmentWhere()] },
+      });
 
   return {
     dateFrom,
@@ -541,9 +635,10 @@ export async function getN7FollowUpDevices(
       P1: followUp.filter((d) => d.priority === "P1").length,
       P2: followUp.filter((d) => d.priority === "P2").length,
       P3: followUp.filter((d) => d.priority === "P3").length,
-      expired: totals.expiredUnqualifiedCount,
+      expired: expiredCount,
     },
     devices: list,
+    searchMode: false,
   };
 }
 
@@ -556,8 +651,41 @@ const N7_TODAY_LIST_CAP = 80;
  * - 快捷卡：未处理 / 过期未达标 / 区间已达标（不与底栏「达标跟进」重复）
  */
 export async function getN7TodayQueues(
-  opts: N7RangeOpts & { managerKey?: string | null; staffKey?: string | null }
+  opts: N7RangeOpts & {
+    managerKey?: string | null;
+    staffKey?: string | null;
+    q?: string | null;
+  }
 ) {
+  const searchQ = opts.q?.trim() ?? "";
+  if (searchQ) {
+    const follow = await getN7FollowUpDevices({
+      ...opts,
+      priority: "all",
+      q: searchQ,
+    });
+    return {
+      dateFrom: follow.dateFrom,
+      dateTo: follow.dateTo,
+      manager: follow.manager,
+      searchMode: true,
+      counts: {
+        urgent: follow.devices.length,
+        pending: follow.devices.filter((d) => !d.followUpDone).length,
+        other: 0,
+        qualified: follow.totals.qualifiedCount,
+        followUp: follow.counts.followUp,
+        expand: follow.totals.expandCount,
+        expired: follow.counts.expired,
+      },
+      queues: {
+        urgent: follow.devices,
+        other: [],
+      },
+      listCap: N7_DEVICE_SEARCH_LIMIT,
+    };
+  }
+
   const follow = await getN7FollowUpDevices({
     ...opts,
     priority: "all",
@@ -568,6 +696,25 @@ export async function getN7TodayQueues(
   const pending = followUp.filter((d) => !d.followUpDone);
   const other = followUp.filter((d) => d.priority !== "P0");
 
+  const scopeParts = await buildN7ScopeWhereParts(opts);
+  const { from, to } = resolveRange(opts);
+  const [qualifiedInRange, expiredInScope] = await Promise.all([
+    db.n7DeviceRecord.count({
+      where: {
+        AND: [...scopeParts, registeredWhere(from, to), { isQualified: true }],
+      },
+    }),
+    db.n7DeviceRecord.count({
+      where: {
+        AND: [
+          ...scopeParts,
+          registeredWhere(from, to),
+          expiredAssessmentWhere(),
+        ],
+      },
+    }),
+  ]);
+
   return {
     dateFrom: follow.dateFrom,
     dateTo: follow.dateTo,
@@ -576,10 +723,10 @@ export async function getN7TodayQueues(
       urgent: urgent.length,
       pending: pending.length,
       other: other.length,
-      qualified: follow.totals.qualifiedCount,
+      qualified: qualifiedInRange,
       followUp: follow.counts.followUp,
       expand: follow.totals.expandCount,
-      expired: follow.totals.expiredUnqualifiedCount,
+      expired: expiredInScope,
     },
     queues: {
       urgent: urgent.slice(0, N7_TODAY_LIST_CAP),

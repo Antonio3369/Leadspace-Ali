@@ -13,9 +13,12 @@ import { N7_NOTIFICATIONS_CHANGED } from "@/lib/n7-notifications-client";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
   NotionAlert,
+  NotionCallout,
+  NotionInput,
   PageHeader,
   PageShell,
 } from "@/components/ui/notion";
+import { n7SearchResultHint } from "@/lib/n7-search";
 import { N7DateRangePicker } from "@/components/n7/N7DateRangePicker";
 import { N7DeviceCardList } from "@/components/n7/N7DeviceCardList";
 import type { N7FollowUpPatchResult } from "@/components/n7/N7FollowUpStatusCell";
@@ -53,26 +56,50 @@ export function N7TodayView({
   const searchParams = useSearchParams();
   const { dateFrom, dateTo } = readN7DateRangeFromSearchParams(searchParams);
   const rangeQs = n7DateRangeQuery(dateFrom, dateTo);
+  const search = searchParams.get("q") ?? "";
   const showManager = !forcedManagerKey;
 
   const [data, setData] = useState<ApiResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [searchDraft, setSearchDraft] = useState(search);
   /** null = 非经理或无权；数字 = 经理未读数 */
   const [mgrUnread, setMgrUnread] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useRestoreListScroll(pathname, !loading && !!data);
 
-  function pushQuery(patch: { dateFrom?: string; dateTo?: string }) {
+  function pushQuery(patch: {
+    dateFrom?: string;
+    dateTo?: string;
+    q?: string;
+  }) {
     const params = new URLSearchParams(searchParams.toString());
     applyN7DateRangeToParams(
       params,
       patch.dateFrom ?? dateFrom,
       patch.dateTo ?? dateTo
     );
+    if (patch.q != null) {
+      if (patch.q) params.set("q", patch.q);
+      else params.delete("q");
+    }
     router.replace(`${n7Path()}?${params.toString()}`, { scroll: false });
   }
+
+  useEffect(() => {
+    setSearchDraft(search);
+  }, [search]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (searchDraft !== search) pushQuery({ q: searchDraft });
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchDraft]);
+
+  const urgentDevices = data?.queues.urgent ?? [];
 
   const bumpRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -106,6 +133,7 @@ export function N7TodayView({
     if (forcedManagerKey) {
       params.set("managerKey", forcedManagerKey);
     }
+    if (search.trim()) params.set("q", search.trim());
     fetch(`/api/n7/today?${params}`)
       .then(async (res) => {
         const json = await res.json();
@@ -125,7 +153,7 @@ export function N7TodayView({
     };
     // data 刻意不进依赖：仅用 refreshKey 触发静默刷新
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rangeQs, forcedManagerKey, refreshKey]);
+  }, [rangeQs, forcedManagerKey, refreshKey, search]);
 
   useEffect(() => {
     let cancelled = false;
@@ -230,7 +258,9 @@ export function N7TodayView({
   };
 
   const more =
-    data && data.counts.urgent > data.queues.urgent.length
+    !search &&
+    data &&
+    data.counts.urgent > data.queues.urgent.length
       ? {
           href: `${followBase}&priority=P0`,
           label:
@@ -250,11 +280,28 @@ export function N7TodayView({
             dateFrom={dateFrom}
             dateTo={dateTo}
             onChange={(next) => pushQuery(next)}
+            trailing={
+              <NotionInput
+                placeholder="门店 / SN / 手机"
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
+                className="w-full sm:w-44"
+                aria-label="搜索门店或设备 SN"
+              />
+            }
           />
         }
       />
 
       {error && <NotionAlert tone="error">{error}</NotionAlert>}
+      {!search && (
+        <NotionCallout>
+          <p>
+            系统催办与待跟进按<strong>考核期</strong>展示。
+            「区间已达标」等统计与数据看板一致，按<strong>注册日期</strong>。
+          </p>
+        </NotionCallout>
+      )}
       {loading && (
         <p className="text-sm text-[#94a3b8]">正在加载今日待办…</p>
       )}
@@ -310,17 +357,26 @@ export function N7TodayView({
           <section className="space-y-3">
             <div>
               <h2 className="text-base font-semibold text-[#111827]">
-                系统催办{" "}
+                {search ? "搜索结果" : "系统催办"}{" "}
                 <span className="tabular-nums text-[#64748b] font-medium">
-                  {data.counts.urgent}
+                  {search ? urgentDevices.length : data.counts.urgent}
                 </span>
               </h2>
+              {search ? (
+                <p className="mt-1 text-sm text-[#64748b]">
+                  {n7SearchResultHint(urgentDevices.length, true)}
+                </p>
+              ) : null}
             </div>
             <N7DeviceCardList
-              devices={data.queues.urgent}
+              devices={urgentDevices}
               showManager={showManager}
               rangeQs={rangeQs}
-              emptyText="暂无快到期设备，可去达标跟进看其余名单"
+              emptyText={
+                search
+                  ? "未找到匹配设备"
+                  : "暂无快到期设备，可去达标跟进看其余名单"
+              }
               {...(more
                 ? { moreHref: more.href, moreLabel: more.label }
                 : {})}

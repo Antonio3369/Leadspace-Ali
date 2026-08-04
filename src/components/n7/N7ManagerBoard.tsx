@@ -11,6 +11,7 @@ import { n7Path } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
   NotionAlert,
+  NotionCallout,
   NotionInput,
   PageHeader,
   PageShell,
@@ -137,6 +138,12 @@ export function N7ManagerBoard() {
       />
 
       {error && <NotionAlert tone="error">{error}</NotionAlert>}
+      <NotionCallout>
+        <p>
+          看板按<strong>注册日期</strong>统计拓展与达标（本月/上月切换上方日期即可）。
+          日常催办请用底栏「待办」「跟进」，那边按<strong>考核期</strong>展示。
+        </p>
+      </NotionCallout>
       {loading && (
         <p className="text-sm text-[#94a3b8]">正在加载经理排行…</p>
       )}
