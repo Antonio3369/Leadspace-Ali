@@ -5,6 +5,7 @@ import { xlvPath } from "@/lib/business-lines";
 import { XLV_ALERT_LABELS, xlvMerchantLabel, type XlvAlertKind, type XlvQualificationStatus } from "@/lib/xlv-rules";
 import type { XlvDeviceListItem } from "@/services/xlv/analytics";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
+import { XlvFollowUpStatusCell } from "@/components/xlv/XlvFollowUpStatusCell";
 
 function alertBadgeClass(kind: XlvDeviceListItem["alertKind"]) {
   if (kind === "single_silence") {
@@ -61,6 +62,7 @@ export function XlvDeviceCardList({
   showQualification = true,
   /** 顶部快捷筛选已选中时，列表内不再重复同类徽章 */
   activeShortcut,
+  showFollowUpStatus = false,
 }: {
   devices: XlvDeviceListItem[];
   showManager: boolean;
@@ -70,6 +72,7 @@ export function XlvDeviceCardList({
   linkToDetail?: boolean;
   showQualification?: boolean;
   activeShortcut?: XlvDashboardShortcutFilter | null;
+  showFollowUpStatus?: boolean;
 }) {
   const hideAlertBadge = Boolean(activeShortcut && isAlertShortcut(activeShortcut));
   const hideQualificationBadge = Boolean(
@@ -169,6 +172,11 @@ export function XlvDeviceCardList({
                           {gap}
                         </p>
                       ) : null}
+                      {"todayReason" in d && (d as { todayReason?: string }).todayReason ? (
+                        <p className="text-amber-800 font-medium">
+                          {(d as { todayReason: string }).todayReason}
+                        </p>
+                      ) : null}
                     </div>
 
                     {d.operatorName || (showManager && d.managerName) ? (
@@ -215,16 +223,25 @@ export function XlvDeviceCardList({
                   </div>
 
                   <div className="shrink-0 text-right min-w-[4.5rem]">
-                    <p
-                      className={`text-base font-semibold leading-tight ${
-                        d.alertKind === "active"
-                          ? "text-emerald-700"
-                          : "text-[#c41e3a]"
-                      }`}
-                    >
-                      {right.title}
-                    </p>
-                    <p className="text-[0.7rem] text-[#94a3b8] mt-0.5">{right.sub}</p>
+                    {showFollowUpStatus && "followUpDone" in d ? (
+                      <XlvFollowUpStatusCell
+                        deviceSn={d.deviceSn}
+                        done={Boolean((d as XlvDeviceListItem & { followUpDone?: boolean }).followUpDone)}
+                      />
+                    ) : (
+                      <>
+                        <p
+                          className={`text-base font-semibold leading-tight ${
+                            d.alertKind === "active"
+                              ? "text-emerald-700"
+                              : "text-[#c41e3a]"
+                          }`}
+                        >
+                          {right.title}
+                        </p>
+                        <p className="text-[0.7rem] text-[#94a3b8] mt-0.5">{right.sub}</p>
+                      </>
+                    )}
                   </div>
                 </div>
               </li>

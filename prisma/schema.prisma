@@ -444,6 +444,14 @@ model XlvDeviceRecord {
   salesUser              User?               @relation("XlvDeviceSales", fields: [salesUserId], references: [id])
   managerUserId          String?
   managerUser            User?               @relation("XlvDeviceManager", fields: [managerUserId], references: [id])
+  /** 沉睡回访：是否已关单（Excel 重导不覆盖） */
+  followUpDone           Boolean             @default(false)
+  followUpNote           String?
+  followUpAt             DateTime?
+  followUpById           String?
+  followUpConnectStatus  String?
+  followUpFlags          String[]            @default([])
+  followUpPhotoUrls      String[]            @default([])
   sourceMode             DataMode            @default(MANUAL_UPLOAD)
   importBatchId          String?
   importBatch            ImportLog?          @relation(fields: [importBatchId], references: [id])
@@ -458,6 +466,7 @@ model XlvDeviceRecord {
   @@index([statDate])
   @@index([sleepDays])
   @@index([firstTxnDate])
+  @@index([followUpDone])
 }
 
 /** 微信小绿盒：组织名册（作业员 → 经理，无 SN） */

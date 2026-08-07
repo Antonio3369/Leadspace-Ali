@@ -13,9 +13,12 @@ import {
   PageShell,
 } from "@/components/ui/notion";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
+import { CopyTextButton } from "@/components/ui/CopyTextButton";
 import { XlvSnapshotTrendChart } from "@/components/xlv/XlvSnapshotTrendChart";
 import { XlvAssessmentPanel } from "@/components/xlv/XlvAssessmentPanel";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
+import { XlvFollowUpCloseForm } from "@/components/xlv/XlvFollowUpCloseForm";
+import type { XlvFollowUpPatchResult } from "@/lib/xlv-follow-up-client";
 import type { XlvQualificationDetail } from "@/lib/xlv-rules";
 
 interface Snapshot {
@@ -44,6 +47,12 @@ interface Device {
   dailyTxns: number;
   dailyUsers: number;
   isActivated: boolean;
+  followUpDone?: boolean;
+  followUpNote?: string | null;
+  followUpAt?: string | null;
+  followUpConnectStatus?: string | null;
+  followUpFlags?: string[];
+  followUpPhotoUrls?: string[];
 }
 
 function fmtDate(iso: string | null) {
@@ -56,6 +65,14 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [qualificationDetail, setQualificationDetail] =
     useState<XlvQualificationDetail | null>(null);
+  const [followUp, setFollowUp] = useState({
+    done: false,
+    note: "",
+    connectStatus: null as string | null,
+    flags: [] as string[],
+    photoUrls: [] as string[],
+    at: null as string | null,
+  });
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -80,6 +97,14 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
             }))
           );
           setQualificationDetail(json.qualificationDetail ?? null);
+          setFollowUp({
+            done: Boolean(d.followUpDone),
+            note: d.followUpNote ?? "",
+            connectStatus: d.followUpConnectStatus ?? null,
+            flags: d.followUpFlags ?? [],
+            photoUrls: d.followUpPhotoUrls ?? [],
+            at: d.followUpAt ? String(d.followUpAt) : null,
+          });
         }
       })
       .catch((err) => {
@@ -107,11 +132,30 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
       })
     : "active";
 
+  const showFollowUp =
+    alertKind === "single_silence" || alertKind === "dormant";
+
+  function onFollowUpChanged(next: XlvFollowUpPatchResult) {
+    setFollowUp({
+      done: next.followUpDone,
+      note: next.followUpNote ?? "",
+      connectStatus: next.followUpConnectStatus,
+      flags: next.followUpFlags,
+      photoUrls: next.followUpPhotoUrls,
+      at: next.followUpAt,
+    });
+  }
+
   return (
     <PageShell>
       <PageHeader
         title={device ? xlvMerchantLabel(device) : "设备详情"}
         kicker="微信小绿盒"
+        titleSuffix={
+          device ? (
+            <CopyTextButton text={xlvMerchantLabel(device)} />
+          ) : undefined
+        }
         meta={
           <HistoryBackLink
             label="← 返回"
@@ -143,6 +187,7 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
                 <XlvQualificationBadge status={qualificationDetail.status} />
               ) : null}
               <span className="text-xs font-mono text-[#94a3b8]">{device.deviceSn}</span>
+              <CopyTextButton text={device.deviceSn} />
             </div>
 
             <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
@@ -192,6 +237,24 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
               detail={qualificationDetail}
               firstTxnDate={device.firstTxnDate}
             />
+          ) : null}
+
+          {showFollowUp ? (
+            <section className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-[#111827] mb-3">
+                沉睡回访
+              </h2>
+              <XlvFollowUpCloseForm
+                deviceSn={device.deviceSn}
+                done={followUp.done}
+                note={followUp.note}
+                connectStatus={followUp.connectStatus}
+                flags={followUp.flags}
+                photoUrls={followUp.photoUrls}
+                followUpAt={followUp.at}
+                onChanged={onFollowUpChanged}
+              />
+            </section>
           ) : null}
 
           <section className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm">

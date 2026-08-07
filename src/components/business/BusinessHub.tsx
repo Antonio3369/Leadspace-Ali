@@ -16,7 +16,7 @@ export function BusinessHub({
       <div className="w-full max-w-2xl space-y-8">
         <header className="text-center space-y-2">
           <p className="text-[0.78rem] font-semibold tracking-wide uppercase text-[#94a3b8]">
-            Leadspace.Alipay
+            Leadspace.Sales
           </p>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#111827] tracking-tight">
             选择业务

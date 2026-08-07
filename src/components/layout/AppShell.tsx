@@ -98,7 +98,7 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
         {scrollMemory}
         <header className="shrink-0 z-50 bg-white/92 backdrop-blur-md border-b border-[#eef2f7]">
           <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 max-w-[1520px] mx-auto w-full">
-            <span className="text-sm font-semibold text-[#111827] truncate">Leadspace.Alipay</span>
+            <span className="text-sm font-semibold text-[#111827] truncate">Leadspace.Sales</span>
             {signOutDesktop}
           </div>
         </header>
@@ -146,10 +146,10 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
               </button>
               <div className="min-w-0 text-center">
                 <p className="text-sm font-semibold text-[#111827] truncate">
-                  {lineName ?? "Leadspace.Alipay"}
+                  {lineName ?? "Leadspace.Sales"}
                 </p>
                 {lineName && (
-                  <p className="text-[0.68rem] text-[#94a3b8] truncate">Leadspace.Alipay</p>
+                  <p className="text-[0.68rem] text-[#94a3b8] truncate">Leadspace.Sales</p>
                 )}
               </div>
               {signOutMobile}

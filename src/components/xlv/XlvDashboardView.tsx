@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
@@ -256,12 +255,6 @@ export function XlvDashboardView({ role }: { role: string }) {
         }
         actions={
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <Link
-              href={xlvPath("/board")}
-              className="inline-flex items-center justify-center rounded-lg border border-[#e2e8f0] bg-white px-3 py-2 text-sm font-medium text-[#334155] hover:bg-[#f8fafc]"
-            >
-              团队看板 →
-            </Link>
             <NotionInput
             placeholder="商户 / SN / 作业员"
             value={searchDraft}

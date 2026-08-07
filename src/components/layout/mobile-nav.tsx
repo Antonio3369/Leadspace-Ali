@@ -59,7 +59,20 @@ export function buildXlvMobileTabs(role: UserRole, pathname: string): MobileTabI
   if (role !== "MANAGER" && role !== "SALES") return null;
 
   return [
-    { href: xlvPath(), label: "沉睡预警", tabLabel: "预警", match: "exact", icon: "todo" },
+    {
+      href: xlvPath(),
+      label: "今日待办",
+      tabLabel: "待办",
+      match: "exact",
+      icon: "todo",
+    },
+    {
+      href: xlvPath("/alerts"),
+      label: "沉睡预警",
+      tabLabel: "预警",
+      match: "prefix",
+      icon: "follow",
+    },
     {
       href: xlvPath("/board"),
       label: role === "MANAGER" ? "团队看板" : "我的设备",
@@ -98,7 +111,12 @@ export function isMobileNavActive(pathname: string, item: MobileTabItem) {
     return pathname === item.href || pathname.startsWith(`${item.href}/`);
   }
   if (item.match === "exact") {
-    if (isXlvPath(pathname)) return pathname === XLV_BASE;
+    if (isXlvPath(pathname)) {
+      if (pathname === XLV_BASE) return true;
+      if (pathname.startsWith(`${XLV_BASE}/follow-up`)) return true;
+      if (pathname === xlvPath("/today")) return true;
+      return false;
+    }
     return pathname === N7_BASE;
   }
   if (item.href === n7Path("/board")) {
@@ -110,6 +128,9 @@ export function isMobileNavActive(pathname: string, item: MobileTabItem) {
     if (pathname === xlvPath("/board")) return true;
     if (pathname.startsWith(`${XLV_BASE}/managers/`)) return true;
     return false;
+  }
+  if (item.href === xlvPath("/alerts")) {
+    return pathname === xlvPath("/alerts");
   }
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }

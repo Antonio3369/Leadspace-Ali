@@ -55,6 +55,7 @@ export function PageHeader({
   actions,
   trailing,
   titleClassName = "",
+  titleSuffix,
 }: {
   title: string;
   kicker?: string;
@@ -67,6 +68,8 @@ export function PageHeader({
   actions?: ReactNode;
   trailing?: ReactNode;
   titleClassName?: string;
+  /** 标题右侧附加内容（如一键复制） */
+  titleSuffix?: ReactNode;
 }) {
   const canBack = showBack || Boolean(backHref);
   return (
@@ -81,7 +84,10 @@ export function PageHeader({
             />
           )}
           {kicker && <p className={notion.kicker}>{kicker}</p>}
-          <h1 className={`${notion.title} ${titleClassName}`.trim()}>{title}</h1>
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <h1 className={`${notion.title} ${titleClassName}`.trim()}>{title}</h1>
+            {titleSuffix}
+          </div>
           {meta && <div className={notion.subtitle}>{meta}</div>}
         </div>
         {(actions || trailing) && (

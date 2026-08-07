@@ -8,9 +8,9 @@ import {
 } from "@/services/xlv/xlv-scope";
 import { PageHeader, PageShell } from "@/components/ui/notion";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
-import { XlvTodayView } from "@/components/xlv/XlvTodayView";
+import { XlvDashboardView } from "@/components/xlv/XlvDashboardView";
 
-export default async function XlvHomePage() {
+export default async function XlvAlertsPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
@@ -22,7 +22,7 @@ export default async function XlvHomePage() {
     return (
       <PageShell>
         <PageHeader
-          title="今日待办"
+          title="沉睡预警"
           kicker="微信小绿盒"
           meta={<p>当前账号未开通微信小绿盒，请联系管理员。</p>}
         />
@@ -46,7 +46,7 @@ export default async function XlvHomePage() {
         </PageShell>
       }
     >
-      <XlvTodayView role={user.role} />
+      <XlvDashboardView role={user.role} />
     </Suspense>
   );
 }

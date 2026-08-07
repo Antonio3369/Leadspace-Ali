@@ -57,12 +57,14 @@ const N7_SALES_NAV_ITEMS = [
 ];
 
 const XLV_NAV_ITEMS = [
-  { href: xlvPath(), label: "沉睡预警", icon: "😴" },
+  { href: xlvPath(), label: "今日待办", icon: "📋" },
+  { href: xlvPath("/alerts"), label: "沉睡预警", icon: "😴" },
   { href: xlvPath("/board"), label: "团队看板", icon: "📊" },
 ];
 
 const XLV_SALES_NAV_ITEMS = [
-  { href: xlvPath(), label: "沉睡预警", icon: "😴" },
+  { href: xlvPath(), label: "今日待办", icon: "📋" },
+  { href: xlvPath("/alerts"), label: "沉睡预警", icon: "😴" },
   { href: xlvPath("/board"), label: "我的设备", icon: "📊" },
 ];
 
@@ -78,7 +80,13 @@ function isActivePath(pathname: string, href: string) {
     return pathname === N7_BASE;
   }
   if (href === XLV_BASE) {
-    return pathname === XLV_BASE;
+    if (pathname === XLV_BASE) return true;
+    if (pathname.startsWith(`${XLV_BASE}/follow-up`)) return true;
+    if (pathname === xlvPath("/today")) return true;
+    return false;
+  }
+  if (href === xlvPath("/alerts")) {
+    return pathname === xlvPath("/alerts");
   }
   if (href === xlvPath("/board")) {
     if (pathname === xlvPath("/board")) return true;

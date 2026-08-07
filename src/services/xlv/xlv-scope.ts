@@ -63,6 +63,15 @@ export function buildXlvAssignedDeviceWhere(): Prisma.XlvDeviceRecordWhereInput 
   return { NOT: buildXlvInventoryDeviceWhere() };
 }
 
+export function buildXlvSleepAlertWhere(): Prisma.XlvDeviceRecordWhereInput {
+  return {
+    AND: [
+      buildXlvAssignedDeviceWhere(),
+      { sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS } },
+    ],
+  };
+}
+
 export function buildXlvAlertWhere(
   alert: XlvAlertKind
 ): Prisma.XlvDeviceRecordWhereInput {

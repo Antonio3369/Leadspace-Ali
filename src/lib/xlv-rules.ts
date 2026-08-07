@@ -2,6 +2,14 @@
 
 export const XLV_SLEEP_THRESHOLD_DAYS = 2;
 
+/** 今日待办：沉睡 ≥N 天未回访升 P0 */
+export const XLV_TODAY_URGENT_SLEEP_DAYS = 7;
+
+/** 今日待办：考核窗口剩余 ≤N 天仍未达标 */
+export const XLV_ASSESSMENT_EXPIRING_DAYS = 7;
+
+export type XlvTodayPriority = "P0" | "P1" | "P2";
+
 /** 自然月考核目标（首笔交易月为装机月，最多考核两个自然月） */
 export const XLV_MONTHLY_USER_TARGET = 20;
 export const XLV_MONTHLY_TXN_TARGET = 300;
@@ -89,6 +97,105 @@ export function assessXlvQualification(
   if (reference >= windowEnd) return "invalid";
 
   return "in_progress";
+}
+
+/** 距两月考核窗口结束还剩多少天（已结束返回 null） */
+export function getXlvAssessmentDaysRemaining(
+  firstTxnDate: Date | null,
+  asOf: Date = new Date()
+): number | null {
+  if (!firstTxnDate) return null;
+
+  const { y: y0, m: m0 } = utcYearMonth(firstTxnDate);
+  const y1 = m0 === 12 ? y0 + 1 : y0;
+  const m1 = m0 === 12 ? 1 : m0 + 1;
+  const windowEndExclusive = new Date(Date.UTC(y1, m1, 1));
+
+  const asOfDay = new Date(
+    Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate())
+  );
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const days = Math.ceil(
+    (windowEndExclusive.getTime() - asOfDay.getTime()) / msPerDay
+  );
+  if (days <= 0) return null;
+  return days;
+}
+
+export function isXlvAssessmentExpiringSoon(
+  device: {
+    firstTxnDate: Date | null;
+    cumulativeUsers: number;
+    cumulativeTxns: number;
+  },
+  snapshots: XlvSnapshotPoint[],
+  asOf?: Date,
+  threshold = XLV_ASSESSMENT_EXPIRING_DAYS
+): boolean {
+  if (assessXlvQualification(device, snapshots, asOf) !== "in_progress") {
+    return false;
+  }
+  const remaining = getXlvAssessmentDaysRemaining(
+    device.firstTxnDate,
+    asOf ?? (snapshots.length ? snapshots[snapshots.length - 1]!.statDate : new Date())
+  );
+  return remaining != null && remaining <= threshold;
+}
+
+export function classifyXlvTodayPriority(input: {
+  sleepDays: number;
+  cumulativeTxns: number;
+  followUpDone: boolean;
+  qualificationStatus: XlvQualificationStatus;
+  firstTxnDate: Date | null;
+  assessmentDaysLeft: number | null;
+}): XlvTodayPriority | null {
+  const alert = classifyXlvAlert({
+    sleepDays: input.sleepDays,
+    cumulativeTxns: input.cumulativeTxns,
+  });
+  const isSleep = alert === "single_silence" || alert === "dormant";
+
+  if (!input.followUpDone && isSleep) {
+    if (
+      alert === "single_silence" ||
+      input.sleepDays >= XLV_TODAY_URGENT_SLEEP_DAYS
+    ) {
+      return "P0";
+    }
+    return "P1";
+  }
+
+  if (
+    input.qualificationStatus === "in_progress" &&
+    input.assessmentDaysLeft != null &&
+    input.assessmentDaysLeft <= XLV_ASSESSMENT_EXPIRING_DAYS
+  ) {
+    return "P2";
+  }
+
+  return null;
+}
+
+export function xlvTodayReason(input: {
+  priority: XlvTodayPriority;
+  alertKind: Exclude<XlvAlertKind, "all">;
+  sleepDays: number;
+  assessmentDaysLeft: number | null;
+}): string {
+  if (input.priority === "P0") {
+    if (input.alertKind === "single_silence") {
+      return `单笔沉默 · 沉睡 ${input.sleepDays} 天`;
+    }
+    return `沉睡 ${input.sleepDays} 天未回访`;
+  }
+  if (input.priority === "P1") {
+    return `沉睡 ${input.sleepDays} 天待回访`;
+  }
+  if (input.assessmentDaysLeft != null) {
+    return `考核剩余 ${input.assessmentDaysLeft} 天`;
+  }
+  return "考核将到期";
 }
 
 export function isXlvDeviceQualified(

@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-08-07（微信小绿盒阶段 2：人员挂靠与重挂）
+**最后更新**：2026-08-08（微信小绿盒阶段 3A/3B：沉睡回访、今日待办）
 
 ---
 
@@ -46,12 +46,16 @@
 | 小绿盒沉睡 | `sleepDays ≥ 2` 为沉睡；`cumulativeTxns === 1` 且 `sleepDays ≥ 2` 为**单笔沉默**（更严重，单独标红） |
 | 小绿盒考核 | 自然月增量：**+20 用户 + 300 笔**；首笔交易月为装机月，最多考核两个自然月；状态 `qualified` / `in_progress` / `invalid`（`xlv-rules.ts` + 快照方案 A） |
 | 小绿盒经理自营 | 作业员与经理**同名**视为经理本人拓展；已挂 `managerUserId` 即视为作业员侧已挂靠，**不要求**单独 `salesUserId` |
-| 小绿盒看板 | `/xlv` 沉睡预警卡片 + 考核筛选；`/xlv/board` 经理排行（**库存不进排行**，摘要条单独展示 `总数/库存`）；三级下钻经理 → 队员 → 设备 |
+| 小绿盒看板 | `/xlv/alerts` 沉睡预警卡片 + 考核筛选；`/xlv/board` 经理排行（**库存不进排行**）；三级下钻经理 → 队员 → 设备 |
+| 小绿盒今日待办 | `/xlv`（首页）：P0 优先催办（单笔沉默或沉睡≥7天未回访）、P1 一般沉睡待回访、P2 考核将到期（两月窗口剩≤7天仍未达标）；与沉睡预警分工见 §6.2c |
+| 小绿盒沉睡回访 | 对齐 N7 V1 关单：接通/未接通、可叠加「不愿配合」「已答应继续使用」、**跟进图（至少一张）**；`followUp*` 字段 Excel 重导不覆盖；台账 `/xlv/follow-up`（侧栏不单独入口，从待办钻取） |
+| 小绿盒唤醒（待 3C 统计） | 已回访后，下一批导入若 `sleepDays < 2` 或 `lastTxnDate` 晚于 `followUpAt` → 记为已唤醒 |
 
 ### 1.2 本阶段停在哪里
 
 生产 https://ali.orblead.com。已上线：N7 底栏、队员开号与登录、系统催办与 V1 关单回告、设备按姓名+经理挂靠、人员管理停用/彻底删除、本队同名空号去重、**设备搜索**、**运营名单按考核期 / 看板按注册日**。  
-**代码已推 GitHub（待部署）**：微信小绿盒阶段 1（`/xlv` 沉睡预警、考核状态、团队看板、双表导入与导入摘要）。  
+**代码已推 GitHub（待部署）**：微信小绿盒阶段 1–2（沉睡预警、三表导入、人员挂靠）+ **阶段 3A/3B**（沉睡回访关单、今日待办、导航收拢）。  
+**未做**：小绿盒 3C 每日绩效与 Excel 导出。  
 **进行中**：关单企微外推 MVP-A（代码在 GitHub，见 §16.1；生产未配 Webhook，先测再上）。
 
 ---
@@ -200,7 +204,7 @@ src/lib/business-lines.ts  # 业务线常量与路径工具
 | `/` | 业务选择页（小蓝环 / 支付宝 N7 / 微信小绿盒） |
 | `/xlh/*` | 小蓝环：现有看板能力（总览、团队、商机、台账、管理） |
 | `/n7/*` | 支付宝 N7：今日待办、达标跟进、数据看板、设备详情、导入（见 §6.2b） |
-| `/xlv/*` | 微信小绿盒：沉睡预警、团队看板、设备详情、导入（见 §6.2c） |
+| `/xlv/*` | 微信小绿盒：今日待办、沉睡预警、团队看板、沉睡回访、设备详情、导入（见 §6.2c） |
 | `/login` `/onboarding` `/change-password` `/settings/password` | 全局，不挂业务前缀 |
 
 旧书签兼容（`next.config.ts` redirects）：`/ledger`、`/teams`、`/opportunities`、`/members`、`/admin/*`、`/screen` → 对应 `/xlh/...`。
@@ -268,7 +272,8 @@ Excel 导入 → 自动开通登录（ACTIVE + 默认密码 123456 + 首登改�
 | `/` | 业务选择页 | `BusinessHub`：小蓝环 / 支付宝 N7 / 微信小绿盒 |
 | `/xlh` | 小蓝环 · 数据总览 | URL 日期筛选，默认本月；主管双区 |
 | `/n7` | 支付宝 N7 · 今日待办 | 运营队列首页；复盘看板在 `/n7/board` |
-| `/xlv` | 微信小绿盒 · 沉睡预警 | 风险卡片 + 考核筛选；团队看板在 `/xlv/board` |
+| `/xlv` | 微信小绿盒 · **今日待办** | P0/P1/P2 行动清单；与 N7 一样为业务首页 |
+| `/xlv/alerts` | 微信小绿盒 · **沉睡预警** | 全量风险卡片 + 考核筛选；团队看板在 `/xlv/board` |
 
 ### 6.2 小蓝环业务页面（需登录，`src/app/(dashboard)/xlh/`）
 
@@ -331,26 +336,37 @@ Excel 导入 → 自动开通登录（ACTIVE + 默认密码 123456 + 首登改�
 
 ### 6.2c 微信小绿盒页面（需登录，`src/app/(dashboard)/xlv/`）
 
-侧栏：沉睡预警 · 团队看板（经理/管理员）；手机底栏同 N7 两级导航。业务员进入后直接看本人设备。
+侧栏：**今日待办** · **沉睡预警** · **团队看板**（经理/管理员）；手机底栏同 N7 两级导航。业务员进入后直接看本人设备。
 
 | 路径 | 要点 |
 |---|---|
-| `/xlv` | **沉睡预警**：单笔沉默 / 沉睡 / 正常活跃卡片；第二行考核卡片（已达标 / 考核中 / 无效用户）；`?alert=`、`?status=`、`?manager=`、`?q=` 筛选；默认列表**不含剩余库存** |
-| `/xlv/board` | **团队看板**：经理排行 → 队员排行 → 设备列表；摘要条含经理数、已铺设、**剩余库存（总数/库存）**、已达标率；库存**不进经理排行** |
+| `/xlv` | **今日待办**（首页）：P0 优先催办 / P1 一般沉睡 / P2 考核将到期；快捷卡链到 `/xlv/follow-up?follow=pending&priority=P0\|P1`；考核将到期链 `/xlv?status=in_progress` |
+| `/xlv/alerts` | **沉睡预警**（全量看板）：单笔沉默 / 沉睡 / 正常活跃；考核卡片；`?alert=`、`?status=`、`?manager=`、`?q=`；默认列表**不含剩余库存** |
+| `/xlv/follow-up` | **沉睡回访**（无侧栏入口）：`?follow=pending\|done`、`?priority=P0\|P1`；关单需跟进图（至少一张）+ 接通状态 + 备注；`promised_use` 展示「已答应继续使用」 |
+| `/xlv/board` | **团队看板**：经理排行 → 队员排行 → 设备列表；摘要条含经理数、已铺设、**剩余库存**、已达标率 |
 | `/xlv/managers/[managerKey]` | 经理下队员排行；`?status=` 考核筛选 |
 | `/xlv/managers/.../staff/[staffKey]` | 队员设备列表；沉睡类 + 考核状态筛选 |
-| `/xlv/devices/[sn]` | 设备详情：商户信息、考核进度面板、**多日快照趋势图**（日笔数柱 + 日用户折线） |
-| `/xlv/admin/import` | DIRECTOR：运营原始表 + 人员归属表 Excel 导入；完成后展示导入摘要 |
-| `/xlv/admin/attribution` | DIRECTOR：**人员挂靠** — 未匹配姓名报告、未挂靠设备列表、批量重挂、单台修正 |
+| `/xlv/devices/[sn]` | 设备详情：考核进度、趋势图；沉睡类可关单/重开回访；商户名与 SN 可复制 |
+| `/xlv/admin/import` | DIRECTOR：运营原始表 + 人员归属表 Excel 导入 |
+| `/xlv/admin/attribution` | DIRECTOR：**人员挂靠** — 未匹配姓名、未挂靠设备、批量重挂 |
+
+**今日优先级**（`classifyXlvTodayPriority`，每台仅入最高档）：
+
+| 档 | 条件 |
+|---|---|
+| P0 | 单笔沉默，或沉睡 ≥7 天且未回访 |
+| P1 | 其它沉睡且未回访 |
+| P2 | 考核中且剩余 ≤7 天（两月窗口） |
 
 **口径（勿混）**：
 
 | 名称 | 含义 |
 |---|---|
-| 剩余库存 | 运营表无经理字段的设备池；摘要条展示，可点进 `/xlv?manager=剩余库存` |
+| 剩余库存 | 运营表无经理字段的设备池；摘要条展示，可点进 `/xlv/alerts?manager=剩余库存` |
 | 已铺设 | 已挂经理/队员的设备；达标率、默认列表、看板排行的统计分母 |
 | 沉睡 / 单笔沉默 | `sleepDays ≥ 2`；仅 1 笔且沉睡为单笔沉默（优先标红） |
 | 考核状态 | 自然月增量达标判定；`qualified` / `in_progress` / `invalid` |
+| 回访字段 | `followUpDone` 等；Excel 重导**不覆盖** |
 
 规则与常量：`src/lib/xlv-rules.ts`；快照按中国日历日归一：`src/lib/xlv-stat-date.ts`。
 
@@ -538,7 +554,7 @@ Schema：`prisma/schema.prisma`
 | `MerchantRecord` | 商户明细（核心业务表；现行靠 Excel 导入写入） |
 | `N7DeviceRecord` | N7 设备考核；处理状态含 `followUpDone` / `followUpNote` / `followUpAt` / `followUpById` / `followUpConnectStatus` / `followUpFlags` / `followUpPhotoUrls`（Excel 重导不覆盖） |
 | `N7Notification` | N7 提醒通知（如 `sales_follow_up_done` → 所属经理）；`read` / `meta` |
-| `XlvDeviceRecord` | 小绿盒设备主表（SN 唯一）；含经理/作业员姓名与 `userId` 挂靠、沉睡指标、首末笔日期 |
+| `XlvDeviceRecord` | 小绿盒设备主表（SN 唯一）；含经理/作业员姓名与 `userId` 挂靠、沉睡指标、首末笔日期；回访字段 `followUpDone` / `followUpNote` / `followUpAt` / `followUpById` / `followUpConnectStatus` / `followUpFlags` / `followUpPhotoUrls`（Excel 重导不覆盖） |
 | `XlvTeamRoster` | 小绿盒组织名册（作业员 → 经理，无 SN） |
 | `XlvDeviceSnapshot` | 小绿盒按 SN + 统计日期存历史快照（支持自然月增量考核与趋势图） |
 | `Opportunity` | 商机 |
@@ -675,13 +691,21 @@ src/
 
 ## 13. 近期已完成
 
-### 2026-08-07（阶段 2 · 代码待推）
+### 2026-08-08（阶段 3A/3B · 代码待推）
+
+- [x] **沉睡回访**：`XlvDeviceRecord.followUp*`；设备详情关单；台账 `/xlv/follow-up`；`priority=P0|P1` 与今日待办对齐
+- [x] **今日待办** `/xlv`：P0/P1/P2 分区；`/xlv/today` → `/xlv`；沉睡预警迁至 `/xlv/alerts`
+- [x] 侧栏收拢为：今日待办 · 沉睡预警 · 团队看板（回访从待办钻取，不占主导航）
+- [x] UX：商户/SN 复制按钮；列表「去跟进」；跟进图文案；业务选择页品牌 **Leadspace.Sales**
+- [ ] **阶段 3C（未做）**：每日绩效、Excel 导出、唤醒统计
+
+### 2026-08-07（阶段 2 · 已推 GitHub）
 
 - [x] **人员挂靠** `/xlv/admin/attribution`：未匹配经理/作业员姓名清单（含设备数）
 - [x] 未挂靠设备列表（缺 `managerUserId` / `salesUserId`）；单台修正归属
 - [x] **重新匹配挂靠**：`backfillXlvManagerUserIds` + `relinkXlvSalesDevices`（对齐 N7 姓名+经理键）
 - [x] 经理开队员号 / 删除队员时同步重挂或解绑 `XlvDeviceRecord`
-- [ ] **阶段 3（未做）**：沉睡回访、今日待办、每日绩效、导出
+- [x] 三表导入、XLV 同步导入、沉睡预警五卡 UX（正在活跃中、无「考核中」卡）
 
 ### 2026-08-07（阶段 1 · 已推 GitHub）
 
@@ -912,7 +936,7 @@ Dockerfile
 | 阶段 | 内容 |
 |---|---|
 | **小绿盒 2** | ~~导入未匹配报告、未挂靠设备、relink、轻量归属~~（已完成，见 §6.2c `/xlv/admin/attribution`） |
-| **小绿盒 3** | 沉睡/单笔沉默回访跟进、今日待办、每日绩效、Excel 导出 |
+| **小绿盒 3** | ~~沉睡回访、今日待办~~（3A/3B 已完成，见 §6.2c）；**每日绩效、Excel 导出、唤醒统计**（3C） |
 | N7 | 业务员端写入处理状态；结构化跟进（下次联系日/原因枚举）；空态与移动端细节打磨（回顶/viewport 已做） |
 | P3 | **P 站 API 拉取**（真正上线后才可切换 `dataMode=API_SYNC` 并考虑关闭商户 Excel 上传） |
 | P4 | 公共大屏增强（自动刷新、投屏） |
@@ -1018,7 +1042,7 @@ Dockerfile
 | N7 关单外推 | `outbound-notifier.ts`（企微 Webhook）；钩在 `notifyManagerFollowUpDone` 后 |
 | N7 队员开号 / 去重 | `ManagerTeamPanel`, `api/admin/team`, `team-sales.ts`, `dedupe-team-sales.ts`, `backfill-sales-login.ts` |
 | N7 设备挂靠 | `findN7SalesInIndexes`, `n7-excel-importer.ts`, `relink-sales-devices.ts` |
-| 小绿盒沉睡/考核 | `xlv-rules.ts`, `services/xlv/assessment.ts`, `services/xlv/analytics.ts` |
+| 小绿盒沉睡/考核/待办 | `xlv-rules.ts`, `services/xlv/assessment.ts`, `services/xlv/analytics.ts`, `services/xlv/today.ts`, `services/xlv/follow-up.ts` |
 | 小绿盒导入 | `xlv-excel-parser.ts`, `xlv-excel-importer.ts`, `xlv-import-summary.ts`；入口 `/xlv/admin/import` |
 | 权限/越权 | `permissions.ts`, `manager-scope.ts`, `business-lines.ts`, `n7-scope.ts`, `xlv-scope.ts` |
 | 指标不对 | `business-rules.ts`, `analytics.ts`（小蓝环）/ `services/n7/analytics.ts`（N7）/ `services/xlv/analytics.ts`（小绿盒） |
