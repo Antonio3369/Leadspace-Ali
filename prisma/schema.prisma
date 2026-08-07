@@ -108,8 +108,8 @@ model User {
   status           UserStatus        @default(ACTIVE)
   accountLifecycle   AccountLifecycle  @default(IMPORTED)
   mustChangePassword Boolean           @default(false)
-  /** 可访问业务线：xlh / n7；负责人忽略此字段（始终全开） */
-  businessLines      String[]          @default(["xlh", "n7"])
+  /** 可访问业务线：xlh / n7 / xlv；负责人忽略此字段（始终全开） */
+  businessLines      String[]          @default(["xlh", "n7", "xlv"])
   teamId           String?
   team             OrgUnit?          @relation(fields: [teamId], references: [id])
   managerId        String?
@@ -121,6 +121,8 @@ model User {
   n7DevicesAsSales   N7DeviceRecord[] @relation("N7DeviceSales")
   n7DevicesAsManager N7DeviceRecord[] @relation("N7DeviceManager")
   n7Notifications    N7Notification[]
+  xlvDevicesAsSales   XlvDeviceRecord[] @relation("XlvDeviceSales")
+  xlvDevicesAsManager XlvDeviceRecord[] @relation("XlvDeviceManager")
   teamHistory      UserTeamHistory[]
   importLogs       ImportLog[]
   heavyImportJobs  HeavyImportJob[]
@@ -252,6 +254,7 @@ model ImportLog {
   errorMessage   String?
   merchants      MerchantRecord[]
   n7Devices      N7DeviceRecord[]
+  xlvDevices     XlvDeviceRecord[]
   createdAt      DateTime         @default(now())
   completedAt    DateTime?
 
@@ -262,7 +265,7 @@ model ImportLog {
 /** 大表导入异步任务（上传后立即返回 jobId，后台处理，前端轮询） */
 model HeavyImportJob {
   id           String       @id @default(cuid())
-  /** personnel | n7 | xlh-excel */
+  /** personnel | n7 | xlh-excel | xlv */
   kind         String
   fileName     String
   status       ImportStatus @default(PENDING)
@@ -408,4 +411,71 @@ model N7Notification {
   @@index([userId, read, createdAt])
   @@index([deviceSn])
   @@index([createdAt])
+}
+
+// ─── 微信小绿盒（按设备 SN + 日快照）────────────────────────────────────────
+
+/** 微信小绿盒：设备最新状态（导入快照中 statDate 最大的一行） */
+model XlvDeviceRecord {
+  id                     String              @id @default(cuid())
+  deviceSn               String              @unique
+  statDate               DateTime?
+  operatorName           String              @default("")
+  managerName            String              @default("")
+  companyName            String?
+  merchantName           String?
+  agentId                String?
+  agentName              String?
+  activationMerchantName String?
+  cumulativeUsers        Int                 @default(0)
+  cumulativeTxns         Int                 @default(0)
+  cumulativeAmount       Float               @default(0)
+  lastTxnDate            DateTime?
+  sleepDays              Int                 @default(0)
+  isActivated            Boolean             @default(false)
+  firstTxnDate           DateTime?
+  dailyUsers             Int                 @default(0)
+  dailyTxns              Int                 @default(0)
+  dailyAmount            Float               @default(0)
+  salesUserId            String?
+  salesUser              User?               @relation("XlvDeviceSales", fields: [salesUserId], references: [id])
+  managerUserId          String?
+  managerUser            User?               @relation("XlvDeviceManager", fields: [managerUserId], references: [id])
+  sourceMode             DataMode            @default(MANUAL_UPLOAD)
+  importBatchId          String?
+  importBatch            ImportLog?          @relation(fields: [importBatchId], references: [id])
+  snapshots              XlvDeviceSnapshot[]
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  @@index([salesUserId])
+  @@index([managerUserId])
+  @@index([managerName])
+  @@index([operatorName])
+  @@index([statDate])
+  @@index([sleepDays])
+  @@index([firstTxnDate])
+}
+
+/** 微信小绿盒：按统计日期的历史快照（方案 A 增量考核） */
+model XlvDeviceSnapshot {
+  id               String          @id @default(cuid())
+  deviceSn         String
+  device           XlvDeviceRecord @relation(fields: [deviceSn], references: [deviceSn], onDelete: Cascade)
+  statDate         DateTime
+  cumulativeUsers  Int             @default(0)
+  cumulativeTxns   Int             @default(0)
+  cumulativeAmount Float           @default(0)
+  lastTxnDate      DateTime?
+  sleepDays        Int             @default(0)
+  isActivated      Boolean         @default(false)
+  firstTxnDate     DateTime?
+  dailyUsers       Int             @default(0)
+  dailyTxns        Int             @default(0)
+  dailyAmount      Float           @default(0)
+  importBatchId    String?
+  createdAt        DateTime        @default(now())
+
+  @@unique([deviceSn, statDate])
+  @@index([statDate])
 }

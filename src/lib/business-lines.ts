@@ -13,20 +13,27 @@ export const BUSINESS_LINES = {
     description: "机具考核 · 今日待办与达标跟进",
     href: "/n7",
   },
+  xlv: {
+    id: "xlv",
+    name: "微信小绿盒",
+    description: "收银商户拓展 · 沉睡预警与考核看板",
+    href: "/xlv",
+  },
 } as const;
 
 export type BusinessLineId = keyof typeof BUSINESS_LINES;
 
-export const ALL_BUSINESS_LINE_IDS: BusinessLineId[] = ["xlh", "n7"];
+export const ALL_BUSINESS_LINE_IDS: BusinessLineId[] = ["xlh", "n7", "xlv"];
 
-/** 新建/导入经理默认两边都开 */
-export const DEFAULT_BUSINESS_LINES: BusinessLineId[] = ["xlh", "n7"];
+/** 新建/导入经理默认三条业务线都开 */
+export const DEFAULT_BUSINESS_LINES: BusinessLineId[] = ["xlh", "n7", "xlv"];
 
 export const XLH_BASE = "/xlh";
 export const N7_BASE = "/n7";
+export const XLV_BASE = "/xlv";
 
 export function isBusinessLineId(value: string): value is BusinessLineId {
-  return value === "xlh" || value === "n7";
+  return value === "xlh" || value === "n7" || value === "xlv";
 }
 
 /** 规范化存储值；非法项丢弃；空数组表示无业务线权限 */
@@ -43,7 +50,7 @@ export function normalizeBusinessLines(
 
 /**
  * 实际可访问业务线：
- * - DIRECTOR：始终两条
+ * - DIRECTOR：始终三条
  * - 其他：按账号上的 businessLines
  */
 export function resolveAccessibleBusinessLines(
@@ -74,6 +81,12 @@ export function n7Path(path = ""): string {
   return path.startsWith("/") ? `${N7_BASE}${path}` : `${N7_BASE}/${path}`;
 }
 
+/** 微信小绿盒业务内路径 */
+export function xlvPath(path = ""): string {
+  if (!path || path === "/") return XLV_BASE;
+  return path.startsWith("/") ? `${XLV_BASE}${path}` : `${XLV_BASE}/${path}`;
+}
+
 export function isBusinessHubPath(pathname: string): boolean {
   return pathname === "/";
 }
@@ -86,14 +99,19 @@ export function isN7Path(pathname: string): boolean {
   return pathname === N7_BASE || pathname.startsWith(`${N7_BASE}/`);
 }
 
+export function isXlvPath(pathname: string): boolean {
+  return pathname === XLV_BASE || pathname.startsWith(`${XLV_BASE}/`);
+}
+
 /** 是否显示业务内完整侧栏 */
 export function showBusinessShell(pathname: string): boolean {
-  return isXlhPath(pathname) || isN7Path(pathname);
+  return isXlhPath(pathname) || isN7Path(pathname) || isXlvPath(pathname);
 }
 
 export function currentBusinessLine(pathname: string): BusinessLineId | null {
   if (isXlhPath(pathname)) return "xlh";
   if (isN7Path(pathname)) return "n7";
+  if (isXlvPath(pathname)) return "xlv";
   return null;
 }
 

@@ -6,6 +6,7 @@ import { authConfig } from "@/lib/auth.config";
 import { db } from "@/lib/db";
 import { canSignIn, needsOnboarding } from "@/lib/account-lifecycle";
 import {
+  DEFAULT_BUSINESS_LINES,
   resolveAccessibleBusinessLines,
   type BusinessLineId,
 } from "@/lib/business-lines";
@@ -68,7 +69,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const storedLines =
           "businessLines" in user && Array.isArray(user.businessLines)
             ? user.businessLines
-            : ["xlh", "n7"];
+            : DEFAULT_BUSINESS_LINES;
 
         return {
           id: user.id,
@@ -116,7 +117,7 @@ async function loadLiveUserState(userId: string) {
       },
     });
     if (!fallback) return null;
-    return { ...fallback, businessLines: ["xlh", "n7"] as string[] };
+    return { ...fallback, businessLines: DEFAULT_BUSINESS_LINES as string[] };
   }
 }
 

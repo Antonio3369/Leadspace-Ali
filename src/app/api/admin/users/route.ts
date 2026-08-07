@@ -5,6 +5,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ENABLED_USER_DEFAULTS, MANAGER_ENABLED_LIFECYCLE } from "@/lib/account-lifecycle";
 import { allocatePinyinUsername } from "@/lib/pinyin-username";
+import { DEFAULT_BUSINESS_LINES } from "@/lib/business-lines";
 import type { UserRole } from "@/generated/prisma/client";
 
 const createUserSchema = z.object({
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
         aliases: body.aliases ?? [],
         accountLifecycle,
         mustChangePassword: true,
-        businessLines: ["xlh", "n7"],
+        businessLines: DEFAULT_BUSINESS_LINES,
       },
     });
 

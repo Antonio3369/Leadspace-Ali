@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-08-05（N7 设备搜索；运营名单按考核期、看板按注册日；已部署生产）
+**最后更新**：2026-08-07（微信小绿盒阶段 1：沉睡预警、考核看板、双表导入）
 
 ---
 
@@ -12,12 +12,12 @@
 | 项 | 说明 |
 |---|---|
 | 产品名 | **Leadspace.Alipay**（副标题：数据工作台 / 数据管理） |
-| 定位 | 支付宝业务数据工作台；**顶层按业务线分区**，当前含「小蓝环」与「支付宝 N7」 |
-| 业务 | 小蓝环：推广商户拓展数据导入、指标统计、风控台账、商机分析、团队/人员管理；N7：机具考核今日待办 / 达标跟进 / 数据看板（Excel 导入） |
-| 用户 | 事业部负责人、区域经理、团队主管、一线业务员（**N7 队员可登录**；小蓝环侧业务员仍主要作数据归属） |
-| 数据来源 | **现行：Excel 人工上传**（小蓝环人员名单 + 商户明细；N7 考核表）。P 站 API 自动拉取为后续阶段，**尚未上线** |
+| 定位 | 支付宝业务数据工作台；**顶层按业务线分区**，当前含「小蓝环」「支付宝 N7」「微信小绿盒」 |
+| 业务 | 小蓝环：推广商户拓展数据导入、指标统计、风控台账、商机分析、团队/人员管理；N7：机具考核今日待办 / 达标跟进 / 数据看板（Excel 导入）；**小绿盒**：收银商户沉睡预警、自然月考核达标、团队看板（Excel 导入） |
+| 用户 | 事业部负责人、区域经理、团队主管、一线业务员（**N7 队员可登录**；小蓝环 / 小绿盒侧业务员仍主要作数据归属） |
+| 数据来源 | **现行：Excel 人工上传**（小蓝环人员名单 + 商户明细；N7 考核表；**小绿盒运营原始表 + 人员归属表**）。P 站 API 自动拉取为后续阶段，**尚未上线** |
 
-**约定**：「业务线」是最上层；「商机」只属于某一业务线内部（目前仅小蓝环），不要把 N7 做成小蓝环下的一个商机。
+**约定**：「业务线」是最上层；「商机」只属于某一业务线内部（目前仅小蓝环），不要把 N7 / 小绿盒做成小蓝环下的一个商机。
 
 ### 1.1 已确认约定（勿再误判）
 
@@ -41,10 +41,16 @@
 | N7 开经理账号 | 管理员在 `/n7/admin/import` →「开经理账号」只填姓名开号（拼音 + `123456` + 首登改密，仅 N7） |
 | N7 名单口径（勿混） | **今日待办 `/n7`、达标跟进 `/n7/follow-up`**：按**考核期**（`remainingEnded=false` 待跟进；过期 Tab 为考核已结束未达标），**不按注册月截断**；上月注册、考核未结束本月仍可见。**数据看板 `/n7/board`、队员排行/队员设备明细**：按**注册日期**区间统计拓展/达标（本月/上月切换上方日期） |
 | N7 设备搜索 | 今日待办、达标跟进、队员明细支持搜**门店名 / SN / 手机**；URL 参数 `q`；有搜索词时**跨月全库**搜（不限注册月）；实现见 `src/lib/n7-search.ts` |
+| 小绿盒双表导入 | 管理员 `/xlv/admin/import`：**先**运营原始表（多日快照 + 全量指标）→ **再**人员归属表（按 SN 补作业员/经理）；后台任务 + 轮询；导入完成展示**摘要**（列匹配、日期范围、重复合并、未匹配姓名） |
+| 小绿盒口径 | **剩余库存** = 未挂经理设备；**已铺设** = 总数 − 库存；**正常活跃** = 总数 − 库存 − 沉睡 − 单笔沉默；达标率分母 = **已铺设**；默认列表排除库存 |
+| 小绿盒沉睡 | `sleepDays ≥ 2` 为沉睡；`cumulativeTxns === 1` 且 `sleepDays ≥ 2` 为**单笔沉默**（更严重，单独标红） |
+| 小绿盒考核 | 自然月增量：**+20 用户 + 300 笔**；首笔交易月为装机月，最多考核两个自然月；状态 `qualified` / `in_progress` / `invalid`（`xlv-rules.ts` + 快照方案 A） |
+| 小绿盒看板 | `/xlv` 沉睡预警卡片 + 考核筛选；`/xlv/board` 经理排行（**库存不进排行**，摘要条单独展示 `总数/库存`）；三级下钻经理 → 队员 → 设备 |
 
 ### 1.2 本阶段停在哪里
 
 生产 https://ali.orblead.com。已上线：N7 底栏、队员开号与登录、系统催办与 V1 关单回告、设备按姓名+经理挂靠、人员管理停用/彻底删除、本队同名空号去重、**设备搜索**、**运营名单按考核期 / 看板按注册日**。  
+**代码已推 GitHub（待部署）**：微信小绿盒阶段 1（`/xlv` 沉睡预警、考核状态、团队看板、双表导入与导入摘要）。  
 **进行中**：关单企微外推 MVP-A（代码在 GitHub，见 §16.1；生产未配 Webhook，先测再上）。
 
 ---
@@ -190,9 +196,10 @@ src/lib/business-lines.ts  # 业务线常量与路径工具
 
 | 路径 | 含义 |
 |---|---|
-| `/` | 业务选择页（小蓝环 / 支付宝 N7 两张卡片） |
+| `/` | 业务选择页（小蓝环 / 支付宝 N7 / 微信小绿盒） |
 | `/xlh/*` | 小蓝环：现有看板能力（总览、团队、商机、台账、管理） |
 | `/n7/*` | 支付宝 N7：今日待办、达标跟进、数据看板、设备详情、导入（见 §6.2b） |
+| `/xlv/*` | 微信小绿盒：沉睡预警、团队看板、设备详情、导入（见 §6.2c） |
 | `/login` `/onboarding` `/change-password` `/settings/password` | 全局，不挂业务前缀 |
 
 旧书签兼容（`next.config.ts` redirects）：`/ledger`、`/teams`、`/opportunities`、`/members`、`/admin/*`、`/screen` → 对应 `/xlh/...`。
@@ -257,9 +264,10 @@ Excel 导入 → 自动开通登录（ACTIVE + 默认密码 123456 + 首登改�
 
 | 路径 | 页面 | 要点 |
 |---|---|---|
-| `/` | 业务选择页 | `BusinessHub`：小蓝环 / 支付宝 N7 |
+| `/` | 业务选择页 | `BusinessHub`：小蓝环 / 支付宝 N7 / 微信小绿盒 |
 | `/xlh` | 小蓝环 · 数据总览 | URL 日期筛选，默认本月；主管双区 |
 | `/n7` | 支付宝 N7 · 今日待办 | 运营队列首页；复盘看板在 `/n7/board` |
+| `/xlv` | 微信小绿盒 · 沉睡预警 | 风险卡片 + 考核筛选；团队看板在 `/xlv/board` |
 
 ### 6.2 小蓝环业务页面（需登录，`src/app/(dashboard)/xlh/`）
 
@@ -320,6 +328,30 @@ Excel 导入 → 自动开通登录（ACTIVE + 默认密码 123456 + 首登改�
 
 列表列名约定：已用天数、已有用户、缺口；列表不展示 SN（详情页可见）。示意稿：`docs/n7-today-mock.html`（仅视觉参考）。
 
+### 6.2c 微信小绿盒页面（需登录，`src/app/(dashboard)/xlv/`）
+
+侧栏：沉睡预警 · 团队看板（经理/管理员）；手机底栏同 N7 两级导航。业务员进入后直接看本人设备。
+
+| 路径 | 要点 |
+|---|---|
+| `/xlv` | **沉睡预警**：单笔沉默 / 沉睡 / 正常活跃卡片；第二行考核卡片（已达标 / 考核中 / 无效用户）；`?alert=`、`?status=`、`?manager=`、`?q=` 筛选；默认列表**不含剩余库存** |
+| `/xlv/board` | **团队看板**：经理排行 → 队员排行 → 设备列表；摘要条含经理数、已铺设、**剩余库存（总数/库存）**、已达标率；库存**不进经理排行** |
+| `/xlv/managers/[managerKey]` | 经理下队员排行；`?status=` 考核筛选 |
+| `/xlv/managers/.../staff/[staffKey]` | 队员设备列表；沉睡类 + 考核状态筛选 |
+| `/xlv/devices/[sn]` | 设备详情：商户信息、考核进度面板、**多日快照趋势图**（日笔数柱 + 日用户折线） |
+| `/xlv/admin/import` | DIRECTOR：运营原始表 + 人员归属表 Excel 导入；完成后展示导入摘要 |
+
+**口径（勿混）**：
+
+| 名称 | 含义 |
+|---|---|
+| 剩余库存 | 运营表无经理字段的设备池；摘要条展示，可点进 `/xlv?manager=剩余库存` |
+| 已铺设 | 已挂经理/队员的设备；达标率、默认列表、看板排行的统计分母 |
+| 沉睡 / 单笔沉默 | `sleepDays ≥ 2`；仅 1 笔且沉睡为单笔沉默（优先标红） |
+| 考核状态 | 自然月增量达标判定；`qualified` / `in_progress` / `invalid` |
+
+规则与常量：`src/lib/xlv-rules.ts`；快照按中国日历日归一：`src/lib/xlv-stat-date.ts`。
+
 ### 6.4 认证页面
 
 | 路径 | 说明 |
@@ -335,12 +367,13 @@ Excel 导入 → 自动开通登录（ACTIVE + 默认密码 123456 + 首登改�
 src/app/api/
 ├── auth/           check-account, change-password, session-expired
 ├── admin/users/    用户 CRUD、开通、重置密码、business-lines
-├── import/         excel, personnel, n7
+├── import/         excel, personnel, n7, xlv
 ├── ledger/         台账分页 + export
 ├── stats/          指标 + charts
 ├── members/        人员列表 + export
 ├── teams/          团队明细 + export
 ├── n7/             today, managers, follow-up(+export), devices/[sn]（GET+PATCH）, daily
+├── xlv/            dashboard, board, devices/[sn], managers/.../staff/...
 └── onboarding/
 ```
 
@@ -498,11 +531,13 @@ Schema：`prisma/schema.prisma`
 | 模型 | 说明 |
 |---|---|
 | `OrgUnit` | 组织树：事业部 → 区域 → 团队 |
-| `User` | 用户；`role` + `status` + `accountLifecycle` + `mustChangePassword` + `businessLines`（`xlh` / `n7`） |
+| `User` | 用户；`role` + `status` + `accountLifecycle` + `mustChangePassword` + `businessLines`（`xlh` / `n7` / `xlv`） |
 | `SalesPlatformIdentity` | 业务员 P 站身份（作业账号 + 个人 PID）；导入或回填写入，供花名册展示与匹配 |
 | `MerchantRecord` | 商户明细（核心业务表；现行靠 Excel 导入写入） |
 | `N7DeviceRecord` | N7 设备考核；处理状态含 `followUpDone` / `followUpNote` / `followUpAt` / `followUpById` / `followUpConnectStatus` / `followUpFlags` / `followUpPhotoUrls`（Excel 重导不覆盖） |
 | `N7Notification` | N7 提醒通知（如 `sales_follow_up_done` → 所属经理）；`read` / `meta` |
+| `XlvDeviceRecord` | 小绿盒设备主表（SN 唯一）；含经理/作业员姓名与 `userId` 挂靠、沉睡指标、首末笔日期 |
+| `XlvDeviceSnapshot` | 小绿盒按 SN + 统计日期存历史快照（支持自然月增量考核与趋势图） |
 | `Opportunity` | 商机 |
 | `ImportLog` | 导入批次日志 |
 | `AnomalyRecord` | 异常数据（姓名不匹配等） |
@@ -532,6 +567,21 @@ Prisma client 生成路径：`src/generated/prisma/`（import 时用 `@/generate
 导入结果字段：`createdRows` / `updatedRows` / `prunedRows` / `skippedRows` / `anomalyRows`
 
 N7 考核表走独立入口 `/n7/admin/import`（`n7-excel-importer.ts`），与小蓝环商户明细不是同一套表。
+
+### 10.1b 小绿盒导入流程（现行）
+
+运营日常路径（管理员 DIRECTOR）：
+
+1. 登录 → 业务选择 → 微信小绿盒 → `/xlv/admin/import`
+2. **先**导入「运营原始表」— `xlv-excel-importer.ts`：按 SN + 统计日期写入 `XlvDeviceSnapshot`，更新 `XlvDeviceRecord` 最新指标；支持同一文件多日快照；按日历日去重合并
+3. **再**导入「人员归属表」— 按 SN 合并作业员/经理/商户名；姓名匹配系统用户写入 `salesUserId` / `managerUserId`
+
+导入完成后展示**摘要**：列识别、统计日期范围、新建/更新设备与快照、文件/库内重复合并、未匹配经理/作业员姓名、警告信息。
+
+| 入口 | 用途 |
+|---|---|
+| `/xlv/admin/import`（推荐） | 运营日常上传原始表 + 人员归属表 |
+| 后台任务 | `enqueueHeavyImport({ kind: "xlv" })` + 前端轮询（与其它业务线导入一致） |
 
 ### 10.2 导出
 
@@ -572,6 +622,7 @@ src/
 │   │   ├── page.tsx              # 业务选择页 /
 │   │   ├── xlh/                  # 小蓝环业务空间
 │   │   ├── n7/                   # 今日待办 / board / follow-up / devices / daily / import
+│   │   ├── xlv/                  # 沉睡预警 / board / devices / import
 │   │   └── settings/password/
 │   ├── login/
 │   ├── change-password/
@@ -582,12 +633,15 @@ src/
 │   ├── layout/AppShell.tsx       # ★ 布局壳
 │   ├── layout/Sidebar.tsx        # ★ 侧边栏 + 切换业务
 │   ├── n7/                       # N7TodayView / Board / FollowUp / DeviceDetail / StatusCell …
+│   ├── xlv/                      # XlvDashboardView / Board / DeviceDetail / ImportSummary …
 │   ├── dashboard/DashboardView.tsx
 │   ├── ledger/LedgerView.tsx
 │   ├── teams/TeamDetailsView.tsx
 │   └── opportunities/OpportunitiesPageContent.tsx
 ├── lib/
 │   ├── business-lines.ts         # ★ 业务线常量与路径
+│   ├── xlv-rules.ts              # ★ 小绿盒沉睡/考核规则
+│   ├── xlv-stat-date.ts          # 小绿盒统计日期归一（中国日历日）
 │   ├── n7-rules.ts               # ★ N7 考核优先级与人话标签
 │   ├── n7-search.ts              # N7 设备搜索（客户端筛选 + Prisma 跨月查询）
 │   ├── n7-follow-up.ts           # V1 关单枚举 / 摘要文案
@@ -603,6 +657,9 @@ src/
 │   └── ledger-labels.ts
 └── services/
     ├── n7/analytics.ts           # ★ N7 今日队列 / 看板 / 跟进（考核期 vs 注册日口径）
+    ├── xlv/analytics.ts          # ★ 小绿盒沉睡预警 / 看板 / 设备列表
+    ├── xlv/assessment.ts         # 考核状态与快照加载
+    ├── import/xlv-excel-*.ts     # 小绿盒 Excel 解析与导入
     ├── n7/notifications.ts       # 关单回告经理提醒通知
     ├── n7/follow-up-photos.ts    # 关单现场图落盘
     ├── stats/analytics.ts
@@ -612,6 +669,16 @@ src/
 ---
 
 ## 13. 近期已完成
+
+### 2026-08-07（代码已推 GitHub · **生产待部署**）
+
+- [x] **微信小绿盒阶段 1**：独立业务线 `/xlv`（`businessLines` 含 `xlv`；业务选择页第三张卡片）
+- [x] 双表 Excel 导入：运营原始表 + 人员归属表；后台任务；**导入摘要**（列匹配、日期范围、重复合并、未匹配姓名）
+- [x] 沉睡预警 `/xlv`：单笔沉默 / 沉睡 / 正常活跃；考核状态筛选（已达标 / 考核中 / 无效用户）；列表按场景排序
+- [x] 团队看板 `/xlv/board`：经理 → 队员 → 设备三级下钻；库存单独摘要、不进经理排行
+- [x] 设备详情：考核进度面板 + 多日快照趋势图；统计日期按中国日历日归一
+- [ ] **阶段 2（未做）**：导入未匹配报告页、未挂靠设备列表、人员 relink、轻量归属 CRUD
+- [ ] **阶段 3（未做）**：沉睡回访、今日待办、每日绩效、导出
 
 ### 2026-08-04（已部署生产）
 
@@ -833,6 +900,8 @@ Dockerfile
 
 | 阶段 | 内容 |
 |---|---|
+| **小绿盒 2** | 导入未匹配报告 UI、未挂靠设备列表、姓名 relink、轻量归属维护 |
+| **小绿盒 3** | 沉睡/单笔沉默回访跟进、今日待办、每日绩效、Excel 导出 |
 | N7 | 业务员端写入处理状态；结构化跟进（下次联系日/原因枚举）；空态与移动端细节打磨（回顶/viewport 已做） |
 | P3 | **P 站 API 拉取**（真正上线后才可切换 `dataMode=API_SYNC` 并考虑关闭商户 Excel 上传） |
 | P4 | 公共大屏增强（自动刷新、投屏） |
@@ -938,9 +1007,11 @@ Dockerfile
 | N7 关单外推 | `outbound-notifier.ts`（企微 Webhook）；钩在 `notifyManagerFollowUpDone` 后 |
 | N7 队员开号 / 去重 | `ManagerTeamPanel`, `api/admin/team`, `team-sales.ts`, `dedupe-team-sales.ts`, `backfill-sales-login.ts` |
 | N7 设备挂靠 | `findN7SalesInIndexes`, `n7-excel-importer.ts`, `relink-sales-devices.ts` |
-| 权限/越权 | `permissions.ts`, `manager-scope.ts`, `business-lines.ts`, `n7-scope.ts` |
-| 指标不对 | `business-rules.ts`, `analytics.ts`（小蓝环）/ `services/n7/analytics.ts`（N7） |
-| 导入失败 | `excel-parser.ts`, `excel-importer.ts`, `n7-excel-importer.ts`；入口 `/xlh/admin/import`、`/n7/admin/import` |
+| 小绿盒沉睡/考核 | `xlv-rules.ts`, `services/xlv/assessment.ts`, `services/xlv/analytics.ts` |
+| 小绿盒导入 | `xlv-excel-parser.ts`, `xlv-excel-importer.ts`, `xlv-import-summary.ts`；入口 `/xlv/admin/import` |
+| 权限/越权 | `permissions.ts`, `manager-scope.ts`, `business-lines.ts`, `n7-scope.ts`, `xlv-scope.ts` |
+| 指标不对 | `business-rules.ts`, `analytics.ts`（小蓝环）/ `services/n7/analytics.ts`（N7）/ `services/xlv/analytics.ts`（小绿盒） |
+| 导入失败 | `excel-parser.ts`, `excel-importer.ts`, `n7-excel-importer.ts`, `xlv-excel-*.ts`；入口 `/xlh/admin/import`、`/n7/admin/import`、`/xlv/admin/import` |
 | 台账筛选 | `ledger-url.ts`, `LedgerView.tsx`, `buildLedgerWhere` |
 | 日期默认值 | `ledger-date.ts` → `getCurrentMonthRange()` |
 | UI 不一致 | `notion.tsx`, 对照 `/xlh` 或 `/xlh/ledger` 页面 |

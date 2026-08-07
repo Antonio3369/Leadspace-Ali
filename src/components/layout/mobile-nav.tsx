@@ -1,6 +1,13 @@
 "use client";
 
-import { N7_BASE, isN7Path, n7Path } from "@/lib/business-lines";
+import {
+  N7_BASE,
+  XLV_BASE,
+  isN7Path,
+  isXlvPath,
+  n7Path,
+  xlvPath,
+} from "@/lib/business-lines";
 import type { UserRole } from "@/generated/prisma/client";
 
 export type MobileTabIcon = "todo" | "follow" | "board" | "daily" | "me";
@@ -15,7 +22,6 @@ export type MobileTabItem = {
   badge?: number;
 };
 
-/** N7 经理 / 队员手机底栏；管理员与小蓝环不改 */
 export function buildN7MobileTabs(role: UserRole, pathname: string): MobileTabItem[] | null {
   if (!isN7Path(pathname)) return null;
   if (role !== "MANAGER" && role !== "SALES") return null;
@@ -47,12 +53,42 @@ export function buildN7MobileTabs(role: UserRole, pathname: string): MobileTabIt
   ];
 }
 
+/** 微信小绿盒经理 / 队员手机底栏 */
+export function buildXlvMobileTabs(role: UserRole, pathname: string): MobileTabItem[] | null {
+  if (!isXlvPath(pathname)) return null;
+  if (role !== "MANAGER" && role !== "SALES") return null;
+
+  return [
+    { href: xlvPath(), label: "沉睡预警", tabLabel: "预警", match: "exact", icon: "todo" },
+    {
+      href: xlvPath("/board"),
+      label: role === "MANAGER" ? "团队看板" : "我的设备",
+      tabLabel: "看板",
+      match: "prefix",
+      icon: "board",
+    },
+  ];
+}
+
+export function buildMobileTabs(role: UserRole, pathname: string): MobileTabItem[] | null {
+  return buildN7MobileTabs(role, pathname) ?? buildXlvMobileTabs(role, pathname);
+}
+
 export function shouldUseN7BottomTabs(role: UserRole, pathname: string) {
   return (role === "MANAGER" || role === "SALES") && isN7Path(pathname);
 }
 
+export function shouldUseXlvBottomTabs(role: UserRole, pathname: string) {
+  return (role === "MANAGER" || role === "SALES") && isXlvPath(pathname);
+}
+
+export function shouldUseBottomTabs(role: UserRole, pathname: string) {
+  return shouldUseN7BottomTabs(role, pathname) || shouldUseXlvBottomTabs(role, pathname);
+}
+
 export function shouldShowBottomTabs(pathname: string) {
   if (pathname.startsWith(`${N7_BASE}/devices/`)) return false;
+  if (pathname.startsWith(`${XLV_BASE}/devices/`)) return false;
   if (pathname.startsWith("/settings/")) return false;
   return true;
 }
@@ -62,11 +98,17 @@ export function isMobileNavActive(pathname: string, item: MobileTabItem) {
     return pathname === item.href || pathname.startsWith(`${item.href}/`);
   }
   if (item.match === "exact") {
+    if (isXlvPath(pathname)) return pathname === XLV_BASE;
     return pathname === N7_BASE;
   }
   if (item.href === n7Path("/board")) {
     if (pathname === n7Path("/board")) return true;
     if (pathname.startsWith(`${N7_BASE}/managers/`)) return true;
+    return false;
+  }
+  if (item.href === xlvPath("/board")) {
+    if (pathname === xlvPath("/board")) return true;
+    if (pathname.startsWith(`${XLV_BASE}/managers/`)) return true;
     return false;
   }
   return pathname === item.href || pathname.startsWith(`${item.href}/`);

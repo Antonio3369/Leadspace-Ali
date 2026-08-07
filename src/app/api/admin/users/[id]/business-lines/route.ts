@@ -40,7 +40,7 @@ export async function PATCH(
     const lines = normalizeBusinessLines(body.businessLines);
     if (lines.length === 0 || !body.businessLines.every(isBusinessLineId)) {
       return NextResponse.json(
-        { error: "业务线仅支持：小蓝环、支付宝 N7，且至少选一项" },
+        { error: "业务线仅支持：小蓝环、支付宝 N7、微信小绿盒，且至少选一项" },
         { status: 400 }
       );
     }

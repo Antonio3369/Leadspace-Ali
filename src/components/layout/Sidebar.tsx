@@ -7,10 +7,13 @@ import {
   BUSINESS_LINES,
   N7_BASE,
   XLH_BASE,
+  XLV_BASE,
   currentBusinessLine,
   isN7Path,
+  isXlvPath,
   n7Path,
   xlhPath,
+  xlvPath,
 } from "@/lib/business-lines";
 import { markSidebarNavTop } from "@/lib/mainScroll";
 import type { UserRole } from "@/generated/prisma/client";
@@ -53,10 +56,33 @@ const N7_SALES_NAV_ITEMS = [
   { href: n7Path("/me"), label: "我的", icon: "👤" },
 ];
 
+const XLV_NAV_ITEMS = [
+  { href: xlvPath(), label: "沉睡预警", icon: "😴" },
+  { href: xlvPath("/board"), label: "团队看板", icon: "📊" },
+];
+
+const XLV_SALES_NAV_ITEMS = [
+  { href: xlvPath(), label: "沉睡预警", icon: "😴" },
+  { href: xlvPath("/board"), label: "我的设备", icon: "📊" },
+];
+
+const XLV_DIRECTOR_NAV_ITEMS = [
+  ...XLV_NAV_ITEMS,
+  { href: xlvPath("/admin/import"), label: "数据导入", icon: "⬆️" },
+];
+
 function isActivePath(pathname: string, href: string) {
   if (href === XLH_BASE) return pathname === href;
   if (href === N7_BASE) {
     return pathname === N7_BASE;
+  }
+  if (href === XLV_BASE) {
+    return pathname === XLV_BASE;
+  }
+  if (href === xlvPath("/board")) {
+    if (pathname === xlvPath("/board")) return true;
+    if (pathname.startsWith(`${XLV_BASE}/managers/`)) return true;
+    return false;
   }
   if (href === n7Path("/board")) {
     if (pathname === n7Path("/board")) return true;
@@ -80,6 +106,7 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
   const lineId = currentBusinessLine(pathname);
   const line = lineId ? BUSINESS_LINES[lineId] : null;
   const inN7 = isN7Path(pathname);
+  const inXlv = isXlvPath(pathname);
 
   function handleNavClick(href: string) {
     try {
@@ -95,7 +122,7 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
     user.role === "MANAGER" ? xlhPath("/admin/team") : xlhPath("/admin/org");
   const adminLabel = user.role === "MANAGER" ? "团队管理" : "组织管理";
   const showAdminNav =
-    !inN7 && (user.role === "DIRECTOR" || user.role === "MANAGER");
+    !inN7 && !inXlv && (user.role === "DIRECTOR" || user.role === "MANAGER");
 
   return (
     <aside
@@ -138,7 +165,27 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
-        {inN7 ? (
+        {inXlv ? (
+          (user.role === "DIRECTOR"
+            ? XLV_DIRECTOR_NAV_ITEMS
+            : user.role === "SALES"
+              ? XLV_SALES_NAV_ITEMS
+              : XLV_NAV_ITEMS
+          ).map((item) => {
+              const active = isActivePath(pathname, item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => handleNavClick(item.href)}
+                  className={navLinkClass(active)}
+                >
+                  <span className="w-5 text-center text-sm opacity-80">{item.icon}</span>
+                  {item.label}
+                </Link>
+              );
+            })
+        ) : inN7 ? (
           (user.role === "DIRECTOR"
             ? N7_DIRECTOR_NAV_ITEMS
             : user.role === "MANAGER"

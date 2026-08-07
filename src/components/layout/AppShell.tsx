@@ -8,10 +8,10 @@ import { ScrollMemory } from "@/components/layout/ScrollMemory";
 import { Sidebar } from "@/components/layout/Sidebar";
 import {
   MobileTabIconView,
-  buildN7MobileTabs,
+  buildMobileTabs,
   isMobileNavActive,
   shouldShowBottomTabs,
-  shouldUseN7BottomTabs,
+  shouldUseBottomTabs,
 } from "@/components/layout/mobile-nav";
 import {
   BUSINESS_LINES,
@@ -41,12 +41,12 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
   const line = currentBusinessLine(pathname);
   const lineName = line ? BUSINESS_LINES[line].name : null;
 
-  const mobileTabs = buildN7MobileTabs(user.role, pathname)?.map((item) =>
+  const mobileTabs = buildMobileTabs(user.role, pathname)?.map((item) =>
     item.icon === "todo" && user.role === "MANAGER" && notifUnread > 0
       ? { ...item, badge: notifUnread }
       : item
   );
-  const useBottomTabs = shouldUseN7BottomTabs(user.role, pathname);
+  const useBottomTabs = shouldUseBottomTabs(user.role, pathname);
   const showBottomTabs =
     useBottomTabs && shouldShowBottomTabs(pathname) && Boolean(mobileTabs);
 
@@ -179,7 +179,12 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
             className="md:hidden shrink-0 border-t border-[#eef2f7] bg-white/95 backdrop-blur-sm px-1 pt-1 pb-[max(0.35rem,env(safe-area-inset-bottom,0px))]"
             aria-label="主导航"
           >
-            <div className="grid grid-cols-5 items-end">
+            <div
+              className="grid items-end"
+              style={{
+                gridTemplateColumns: `repeat(${mobileTabs.length}, minmax(0, 1fr))`,
+              }}
+            >
               {mobileTabs.map((item) => {
                 const active = isMobileNavActive(pathname, item);
                 return (

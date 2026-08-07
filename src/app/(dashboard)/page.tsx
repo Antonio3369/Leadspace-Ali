@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { resolveAccessibleBusinessLines } from "@/lib/business-lines";
+import { resolveAccessibleBusinessLines, DEFAULT_BUSINESS_LINES } from "@/lib/business-lines";
 import { BusinessHub } from "@/components/business/BusinessHub";
 
 export default async function HomePage() {
@@ -16,7 +16,7 @@ export default async function HomePage() {
       where: { id: user.id },
       select: { role: true },
     }).then((row) =>
-      row ? { ...row, businessLines: ["xlh", "n7"] as string[] } : null
+      row ? { ...row, businessLines: DEFAULT_BUSINESS_LINES as string[] } : null
     )
   );
 

@@ -5,6 +5,7 @@ import {
   canAccessBusinessLine,
   isN7Path,
   isXlhPath,
+  isXlvPath,
   type BusinessLineId,
 } from "@/lib/business-lines";
 
@@ -114,6 +115,12 @@ export const authConfig = {
       if (
         isN7Path(pathname) &&
         !canAccessBusinessLine(auth.user.role, lines, "n7")
+      ) {
+        return Response.redirect(new URL("/", request.nextUrl));
+      }
+      if (
+        isXlvPath(pathname) &&
+        !canAccessBusinessLine(auth.user.role, lines, "xlv")
       ) {
         return Response.redirect(new URL("/", request.nextUrl));
       }

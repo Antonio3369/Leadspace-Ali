@@ -7,9 +7,10 @@ import {
 } from "@/lib/import-lock";
 import { importPersonnelFromBuffer } from "@/services/import/personnel-importer";
 import { importN7ExcelFile } from "@/services/import/n7-excel-importer";
+import { importXlvExcelFile } from "@/services/import/xlv-excel-importer";
 import { importExcelFile } from "@/services/import/excel-importer";
 
-export type HeavyImportKind = "personnel" | "n7" | "xlh-excel";
+export type HeavyImportKind = "personnel" | "n7" | "xlh-excel" | "xlv";
 
 const IMPORT_DIR =
   process.env.IMPORT_JOB_DIR || path.join("/tmp", "leadspace-import-jobs");
@@ -113,6 +114,11 @@ async function runHeavyImportJob(jobId: string) {
       else if (n7.status === "PARTIAL") finalStatus = "PARTIAL";
     } else if (job.kind === "xlh-excel") {
       result = await importExcelFile(buffer, job.fileName, job.uploadedById);
+    } else if (job.kind === "xlv") {
+      const xlv = await importXlvExcelFile(buffer, job.fileName, job.uploadedById);
+      result = xlv;
+      if (xlv.status === "FAILED") finalStatus = "FAILED";
+      else if (xlv.status === "PARTIAL") finalStatus = "PARTIAL";
     } else {
       throw new Error(`未知导入类型: ${job.kind}`);
     }

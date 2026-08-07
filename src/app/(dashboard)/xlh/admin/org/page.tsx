@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { EnableSuccessModal } from "@/components/admin/EnableSuccessModal";
 import { ADMIN_TARGET_RELOGIN_HINT, ENABLE_NEXT_STEPS } from "@/lib/account-lifecycle";
 import {
+  ALL_BUSINESS_LINE_IDS,
   BUSINESS_LINES,
+  DEFAULT_BUSINESS_LINES,
   normalizeBusinessLines,
   type BusinessLineId,
 } from "@/lib/business-lines";
@@ -224,7 +226,7 @@ export default function AdminOrgPage() {
     setError("");
     setMessage("");
     const current = normalizeBusinessLines(
-      user.businessLines?.length ? user.businessLines : ["xlh", "n7"]
+      user.businessLines?.length ? user.businessLines : DEFAULT_BUSINESS_LINES
     );
     const next = checked
       ? ([...new Set([...current, line])] as BusinessLineId[])
@@ -474,7 +476,7 @@ export default function AdminOrgPage() {
             ) : (
               filteredUsers.map((u) => {
                 const lines = normalizeBusinessLines(
-                  u.businessLines?.length ? u.businessLines : ["xlh", "n7"]
+                  u.businessLines?.length ? u.businessLines : DEFAULT_BUSINESS_LINES
                 );
                 return (
                   <tr key={u.id} className={notion.row}>
@@ -487,7 +489,7 @@ export default function AdminOrgPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex flex-col gap-1 min-w-[7.5rem]">
-                        {(["xlh", "n7"] as BusinessLineId[]).map((line) => (
+                        {ALL_BUSINESS_LINE_IDS.map((line) => (
                           <label
                             key={line}
                             className="inline-flex items-center gap-1.5 text-xs text-[#475569] cursor-pointer"
