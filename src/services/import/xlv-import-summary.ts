@@ -5,8 +5,10 @@ export type XlvImportColumnStatus = {
   matchedHeader?: string;
 };
 
+export type XlvImportFormat = "raw" | "roster" | "assignment";
+
 export type XlvImportSummary = {
-  format: "raw" | "personnel";
+  format: XlvImportFormat;
   sheetName: string;
   columns: XlvImportColumnStatus[];
   /** Excel 有效数据行（含重复 SN+日期） */
@@ -22,7 +24,16 @@ export type XlvImportSummary = {
   duplicateSnapshotsRemoved: number;
   devicesCreated: number;
   devicesUpdated: number;
-  /** 人员表：系统内未匹配到的姓名 */
+  /** 名册行 */
+  rosterRowsWritten: number;
+  rosterCreated: number;
+  rosterUpdated: number;
+  uniqueOperators: number;
+  /** 名册导入后回写设备归属 */
+  devicesBackfilledFromRoster: number;
+  /** SN 归属：从名册反查经理 */
+  managersInferredFromRoster: number;
+  /** 系统内未匹配到的姓名 */
   unmatchedManagers: string[];
   unmatchedOperators: string[];
   warnings: string[];
@@ -93,7 +104,33 @@ export function buildXlvRawColumnMeta(
   ];
 }
 
-export function buildXlvPersonnelColumnMeta(
+export function buildXlvRosterColumnMeta(
+  headers: string[],
+  idx: Record<"operator" | "manager" | "company", number>
+): XlvImportColumnStatus[] {
+  return [
+    {
+      id: "operator",
+      label: "所属作业员",
+      matched: idx.operator >= 0,
+      matchedHeader: headerLabel(headers, idx.operator),
+    },
+    {
+      id: "manager",
+      label: "所属经理",
+      matched: idx.manager >= 0,
+      matchedHeader: headerLabel(headers, idx.manager),
+    },
+    {
+      id: "company",
+      label: "所属公司",
+      matched: idx.company >= 0,
+      matchedHeader: headerLabel(headers, idx.company),
+    },
+  ];
+}
+
+export function buildXlvAssignmentColumnMeta(
   headers: string[],
   idx: Record<
     "sn" | "stat" | "operator" | "manager" | "merchant" | "users" | "txns",
@@ -140,3 +177,6 @@ export function buildXlvPersonnelColumnMeta(
     },
   ];
 }
+
+/** @deprecated 使用 buildXlvAssignmentColumnMeta */
+export const buildXlvPersonnelColumnMeta = buildXlvAssignmentColumnMeta;

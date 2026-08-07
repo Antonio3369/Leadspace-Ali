@@ -252,6 +252,76 @@ export function xlvManagerDisplayName(managerName: string) {
   return managerName?.trim() || XLV_INVENTORY_MANAGER_LABEL;
 }
 
+/** 作业员与经理同名：经理本人拓展，不视为缺作业员账号 */
+export function isXlvManagerSelfSale(record: {
+  operatorName: string;
+  managerName: string;
+}) {
+  const operator = record.operatorName?.trim();
+  const manager = record.managerName?.trim();
+  return !!operator && !!manager && operator === manager;
+}
+
+/** 占位姓名（SN 归属表常见「待定」等） */
+export const XLV_PLACEHOLDER_NAMES = new Set([
+  "待定",
+  "TBD",
+  "未知",
+  "—",
+  "-",
+  "/",
+]);
+
+export function isXlvPlaceholderName(name: string | null | undefined): boolean {
+  const n = name?.trim() ?? "";
+  if (!n) return true;
+  return XLV_PLACEHOLDER_NAMES.has(n);
+}
+
+/** 经理自营拓展：作业员=经理且经理姓名有效 */
+export function isXlvManagerSelfSaleResolved(record: {
+  operatorName: string;
+  managerName: string;
+}) {
+  return (
+    isXlvManagerSelfSale(record) && !isXlvPlaceholderName(record.managerName)
+  );
+}
+
+/** 作业员姓名缺失或为占位（经理自营除外） */
+export function isXlvOperatorAttributionMissing(record: {
+  operatorName: string;
+  managerName: string;
+}) {
+  if (isXlvManagerSelfSaleResolved(record)) return false;
+  return isXlvPlaceholderName(record.operatorName);
+}
+
+/** 经理姓名缺失或为占位 */
+export function isXlvManagerAttributionMissing(record: {
+  managerName: string;
+}) {
+  return isXlvPlaceholderName(record.managerName);
+}
+
+export function xlvRosterPairKey(managerName: string, operatorName: string) {
+  return `${managerName.trim()}::${operatorName.trim()}`;
+}
+
+/** 作业员+经理组合不在组织名册中（名册为空时不判） */
+export function isXlvOperatorNotInRoster(
+  record: { operatorName: string; managerName: string },
+  rosterPairs: ReadonlySet<string>
+) {
+  if (rosterPairs.size === 0) return false;
+  if (isXlvManagerSelfSaleResolved(record)) return false;
+  const operator = record.operatorName?.trim();
+  const manager = record.managerName?.trim();
+  if (!operator || isXlvPlaceholderName(operator)) return false;
+  if (!manager || isXlvPlaceholderName(manager)) return false;
+  return !rosterPairs.has(xlvRosterPairKey(manager, operator));
+}
+
 export type XlvAlertKind = "all" | "single_silence" | "dormant" | "active";
 
 export function classifyXlvAlert(device: {
@@ -269,6 +339,20 @@ export function classifyXlvAlert(device: {
   }
   return "active";
 }
+
+/** 近期有收款且尚未考核达标（不含已达标） */
+export function isXlvActiveInProgress(device: {
+  sleepDays: number;
+  cumulativeTxns: number;
+  qualificationStatus?: XlvQualificationStatus | null;
+}) {
+  return (
+    classifyXlvAlert(device) === "active" &&
+    device.qualificationStatus !== "qualified"
+  );
+}
+
+export const XLV_ACTIVE_IN_PROGRESS_LABEL = "正在活跃中";
 
 export const XLV_ALERT_LABELS: Record<Exclude<XlvAlertKind, "all">, string> = {
   single_silence: "单笔沉默",

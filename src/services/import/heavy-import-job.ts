@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { db } from "@/lib/db";
+import { getPgPool } from "@/lib/pg-pool";
 import {
   releaseImportLock,
   tryAcquireImportLock,
@@ -164,5 +165,58 @@ async function runHeavyImportJob(jobId: string) {
 }
 
 export async function getHeavyImportJob(jobId: string) {
-  return db.heavyImportJob.findUnique({ where: { id: jobId } });
+  try {
+    return await db.heavyImportJob.findUnique({ where: { id: jobId } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    if (!message.includes("bind message")) {
+      throw err;
+    }
+    return getHeavyImportJobViaPg(jobId);
+  }
+}
+
+type HeavyImportJobRow = NonNullable<Awaited<ReturnType<typeof db.heavyImportJob.findUnique>>>;
+
+async function getHeavyImportJobViaPg(jobId: string): Promise<HeavyImportJobRow | null> {
+  const pool = getPgPool();
+  const res = await pool.query<{
+    id: string;
+    kind: string;
+    fileName: string;
+    status: HeavyImportJobRow["status"];
+    progress: number;
+    message: string | null;
+    errorMessage: string | null;
+    resultJson: HeavyImportJobRow["resultJson"];
+    uploadedById: string;
+    createdAt: Date;
+    updatedAt: Date;
+    completedAt: Date | null;
+  }>(
+    `SELECT id, kind, "fileName", status, progress, message, "errorMessage", "resultJson",
+            "uploadedById", "createdAt", "updatedAt", "completedAt"
+     FROM "HeavyImportJob"
+     WHERE id = $1
+     LIMIT 1`,
+    [jobId]
+  );
+
+  const row = res.rows[0];
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    kind: row.kind,
+    fileName: row.fileName,
+    status: row.status,
+    progress: row.progress,
+    message: row.message,
+    errorMessage: row.errorMessage,
+    resultJson: row.resultJson,
+    uploadedById: row.uploadedById,
+    createdAt: new Date(row.createdAt),
+    updatedAt: new Date(row.updatedAt),
+    completedAt: row.completedAt ? new Date(row.completedAt) : null,
+  };
 }

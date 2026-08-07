@@ -13,6 +13,8 @@ export async function uploadImportWithJobPoll<T>(
   const uploadRes = await fetch(endpoint, {
     method: "POST",
     body: formData,
+    credentials: "same-origin",
+    signal: AbortSignal.timeout(5 * 60 * 1000),
   });
 
   const uploadJson = (await uploadRes.json().catch(() => ({}))) as {
@@ -22,6 +24,9 @@ export async function uploadImportWithJobPoll<T>(
   } & T;
 
   if (!uploadRes.ok) {
+    if (uploadRes.status === 401) {
+      throw new Error("登录已过期，请重新登录后再导入");
+    }
     throw new Error(uploadJson.error || "上传失败");
   }
 
@@ -39,7 +44,9 @@ export async function uploadImportWithJobPoll<T>(
     await new Promise((r) => setTimeout(r, 1500));
     const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
 
-    const res = await fetch(`/api/import/jobs/${encodeURIComponent(jobId)}`);
+    const res = await fetch(`/api/import/jobs/${encodeURIComponent(jobId)}`, {
+      credentials: "same-origin",
+    });
     const job = (await res.json()) as {
       error?: string;
       status?: string;
@@ -50,6 +57,9 @@ export async function uploadImportWithJobPoll<T>(
     };
 
     if (!res.ok) {
+      if (res.status === 401) {
+        throw new Error("登录已过期，请重新登录后再导入");
+      }
       throw new Error(job.error || "查询导入进度失败");
     }
 

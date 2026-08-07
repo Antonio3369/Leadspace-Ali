@@ -81,7 +81,7 @@ export async function createTeamSalesLoginAccount(
   });
 
   // 把本经理名下、作业员姓名匹配的设备挂到新帐号（避免导入旧号占着 salesUserId 导致新号无数据）
-  const relinked = await db.n7DeviceRecord.updateMany({
+  const relinkedN7 = await db.n7DeviceRecord.updateMany({
     where: {
       operatorName: name,
       OR: [
@@ -91,6 +91,7 @@ export async function createTeamSalesLoginAccount(
     },
     data: { salesUserId: created.id },
   });
+  const relinked = { count: relinkedN7.count };
 
   return {
     ...created,
@@ -162,16 +163,28 @@ export async function deleteTeamSalesAccount(
   });
   if (!target) throw new PermissionError("只能删除本队队员");
 
-  const deviceCount = await db.n7DeviceRecord.count({
-    where: { salesUserId: target.id },
-  });
+  const deviceCount =
+    (await db.n7DeviceRecord.count({
+      where: { salesUserId: target.id },
+    })) +
+    (await db.xlvDeviceRecord.count({
+      where: { salesUserId: target.id },
+    }));
 
   await db.$transaction(async (tx) => {
     await tx.n7DeviceRecord.updateMany({
       where: { salesUserId: target.id },
       data: { salesUserId: null },
     });
+    await tx.xlvDeviceRecord.updateMany({
+      where: { salesUserId: target.id },
+      data: { salesUserId: null },
+    });
     await tx.n7DeviceRecord.updateMany({
+      where: { managerUserId: target.id },
+      data: { managerUserId: null },
+    });
+    await tx.xlvDeviceRecord.updateMany({
       where: { managerUserId: target.id },
       data: { managerUserId: null },
     });

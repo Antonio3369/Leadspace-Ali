@@ -6,6 +6,7 @@ import {
   XLV_INVENTORY_MANAGER_LABEL,
   XLV_SLEEP_THRESHOLD_DAYS,
   isXlvUnassignedManager,
+  isXlvActiveInProgress,
   type XlvQualificationStatus,
   getXlvQualificationDetail,
   xlvQualificationGapLine,
@@ -110,10 +111,6 @@ export async function getXlvDashboardSummary(
     ]);
 
   const dormant = Math.max(0, dormantAll - singleSilence);
-  const active = Math.max(
-    0,
-    totalDevices - inventoryCount - singleSilence - dormant
-  );
 
   const assignedRows = await db.xlvDeviceRecord.findMany({
     where: { AND: [baseWhere, buildXlvAssignedDeviceWhere()] },
@@ -122,17 +119,23 @@ export async function getXlvDashboardSummary(
       firstTxnDate: true,
       cumulativeUsers: true,
       cumulativeTxns: true,
+      sleepDays: true,
     },
   });
   const snapshotMap = await loadXlvSnapshotMap(assignedRows.map((d) => d.deviceSn));
   let qualifiedCount = 0;
   let inProgressCount = 0;
   let invalidCount = 0;
+  let active = 0;
   for (const row of assignedRows) {
-    const status = xlvQualificationOf(row, snapshotMap.get(row.deviceSn) ?? []);
+    const snapshots = snapshotMap.get(row.deviceSn) ?? [];
+    const status = xlvQualificationOf(row, snapshots);
     if (status === "qualified") qualifiedCount += 1;
     else if (status === "in_progress") inProgressCount += 1;
     else if (status === "invalid") invalidCount += 1;
+    if (isXlvActiveInProgress({ ...row, qualificationStatus: status })) {
+      active += 1;
+    }
   }
 
   return {
@@ -182,9 +185,20 @@ export async function getXlvDeviceList(
 
   const snapshotMap = await loadXlvSnapshotMap(rows.map((r) => r.deviceSn));
   const enriched = attachXlvQualificationDetails(rows, snapshotMap);
-  const filtered = opts.qualificationStatus
-    ? enriched.filter((d) => d.qualificationStatus === opts.qualificationStatus)
-    : enriched;
+  let filtered = enriched;
+  if (opts.qualificationStatus) {
+    filtered = enriched.filter(
+      (d) => d.qualificationStatus === opts.qualificationStatus
+    );
+  } else if (opts.alert === "active") {
+    filtered = enriched.filter((d) =>
+      isXlvActiveInProgress({
+        sleepDays: d.sleepDays,
+        cumulativeTxns: d.cumulativeTxns,
+        qualificationStatus: d.qualificationStatus,
+      })
+    );
+  }
 
   const sortMode = resolveXlvDeviceSortMode({
     alert: opts.alert,
@@ -197,8 +211,11 @@ export async function getXlvDeviceList(
     opts.qualificationStatus
   );
 
+  const postFiltered =
+    Boolean(opts.qualificationStatus) || opts.alert === "active";
+
   return {
-    total: opts.qualificationStatus ? sorted.length : rows.length,
+    total: postFiltered ? sorted.length : rows.length,
     devices: sorted.map((row) => {
       const detail = getXlvQualificationDetail(row, snapshotMap.get(row.deviceSn) ?? []);
       return {

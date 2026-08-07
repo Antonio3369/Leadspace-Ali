@@ -1,11 +1,13 @@
 import * as XLSX from "xlsx";
 import { parseXlvStatDateFromCell } from "@/lib/xlv-stat-date";
 import {
-  buildXlvPersonnelColumnMeta,
+  buildXlvAssignmentColumnMeta,
   buildXlvRawColumnMeta,
+  buildXlvRosterColumnMeta,
+  type XlvImportFormat,
 } from "@/services/import/xlv-import-summary";
 
-export type XlvImportFormat = "raw" | "personnel";
+export type { XlvImportFormat };
 
 export interface ParsedXlvRawRow {
   format: "raw";
@@ -27,8 +29,16 @@ export interface ParsedXlvRawRow {
   rowIndex: number;
 }
 
-export interface ParsedXlvPersonnelRow {
-  format: "personnel";
+export interface ParsedXlvRosterRow {
+  format: "roster";
+  operatorName: string;
+  managerName: string;
+  companyName: string | null;
+  rowIndex: number;
+}
+
+export interface ParsedXlvAssignmentRow {
+  format: "assignment";
   deviceSn: string;
   statDate: Date | null;
   operatorName: string;
@@ -45,7 +55,13 @@ export interface ParsedXlvPersonnelRow {
   rowIndex: number;
 }
 
-export type ParsedXlvRow = ParsedXlvRawRow | ParsedXlvPersonnelRow;
+/** @deprecated 使用 ParsedXlvAssignmentRow */
+export type ParsedXlvPersonnelRow = ParsedXlvAssignmentRow;
+
+export type ParsedXlvRow =
+  | ParsedXlvRawRow
+  | ParsedXlvRosterRow
+  | ParsedXlvAssignmentRow;
 
 export type XlvParseColumnMeta = {
   columns: import("@/services/import/xlv-import-summary").XlvImportColumnStatus[];
@@ -83,7 +99,24 @@ function parseBool(value: unknown): boolean {
   return s === "1" || s.toLowerCase() === "true" || s === "是";
 }
 
-function headerIndex(headers: string[], names: string[]): number {
+const XLV_OPERATOR_HEADERS = [
+  "所属作业员",
+  "作业员（姓名）",
+  "作业员姓名",
+  "作业员",
+  "作业人员",
+] as const;
+
+const XLV_MANAGER_HEADERS = [
+  "所属经理（姓名）",
+  "所属经理",
+  "经理姓名",
+  "经理",
+] as const;
+
+const XLV_COMPANY_HEADERS = ["所属公司", "公司名称", "公司"] as const;
+
+function headerIndex(headers: string[], names: readonly string[]): number {
   const normalized = headers.map(normalizeHeader);
   for (const name of names) {
     const idx = normalized.indexOf(normalizeHeader(name));
@@ -92,11 +125,18 @@ function headerIndex(headers: string[], names: string[]): number {
   return -1;
 }
 
+function hasHeader(headers: string[], names: readonly string[]): boolean {
+  return headerIndex(headers, names) >= 0;
+}
+
 function detectFormat(headers: string[]): XlvImportFormat {
   const normalized = headers.map(normalizeHeader);
-  if (normalized.includes("所属作业员") || normalized.includes("所属经理")) {
-    return "personnel";
-  }
+  const hasSn = normalized.includes("设备SN") || normalized.includes("SN");
+  const hasOperator = hasHeader(headers, XLV_OPERATOR_HEADERS);
+  const hasManager = hasHeader(headers, XLV_MANAGER_HEADERS);
+
+  if (!hasSn && hasOperator && hasManager) return "roster";
+  if (hasSn && hasOperator) return "assignment";
   return "raw";
 }
 
@@ -128,6 +168,46 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
   const errors: string[] = [];
   const rows: ParsedXlvRow[] = [];
 
+  if (format === "roster") {
+    const idxOp = headerIndex(headers, XLV_OPERATOR_HEADERS);
+    const idxMgr = headerIndex(headers, XLV_MANAGER_HEADERS);
+    const idxCompany = headerIndex(headers, XLV_COMPANY_HEADERS);
+    const meta: XlvParseColumnMeta = {
+      columns: buildXlvRosterColumnMeta(headers, {
+        operator: idxOp,
+        manager: idxMgr,
+        company: idxCompany,
+      }),
+    };
+
+    if (idxOp < 0 || idxMgr < 0) {
+      return {
+        format,
+        sheetName,
+        rows: [],
+        errors: ["组织名册缺少列：所属作业员 / 所属经理"],
+        meta,
+      };
+    }
+
+    for (let i = 1; i < matrix.length; i++) {
+      const row = matrix[i] as unknown[];
+      const operatorName = cellStr(row[idxOp]);
+      const managerName = cellStr(row[idxMgr]);
+      if (!operatorName || !managerName) continue;
+      rows.push({
+        format: "roster",
+        operatorName,
+        managerName,
+        companyName: idxCompany >= 0 ? cellStr(row[idxCompany]) || null : null,
+        rowIndex: i + 1,
+      });
+    }
+
+    if (rows.length === 0) errors.push("未解析到有效名册行");
+    return { format, sheetName, rows, errors, meta };
+  }
+
   const idxSn = headerIndex(headers, ["设备SN", "SN"]);
   const idxStat = headerIndex(headers, ["统计日期"]);
   const idxUsers = headerIndex(headers, [
@@ -148,10 +228,10 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
 
   let meta: XlvParseColumnMeta | undefined;
 
-  if (format === "personnel") {
-    const idxOp = headerIndex(headers, ["所属作业员", "作业员"]);
-    const idxMgr = headerIndex(headers, ["所属经理", "经理"]);
-    const idxCompany = headerIndex(headers, ["所属公司", "公司"]);
+  if (format === "assignment") {
+    const idxOp = headerIndex(headers, XLV_OPERATOR_HEADERS);
+    const idxMgr = headerIndex(headers, XLV_MANAGER_HEADERS);
+    const idxCompany = headerIndex(headers, XLV_COMPANY_HEADERS);
     const idxMerchant = headerIndex(headers, ["商户名称"]);
     const idxLast = headerIndex(headers, ["最后一笔交易日期"]);
     const idxSleep = headerIndex(headers, ["沉睡天数"]);
@@ -159,7 +239,7 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
     const idxFirst = headerIndex(headers, ["首笔交易日期"]);
 
     meta = {
-      columns: buildXlvPersonnelColumnMeta(headers, {
+      columns: buildXlvAssignmentColumnMeta(headers, {
         sn: idxSn,
         stat: idxStat,
         operator: idxOp,
@@ -170,14 +250,18 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
       }),
     };
 
-    if (idxOp < 0 || idxMgr < 0) {
+    if (idxOp < 0) {
       return {
         format,
         sheetName,
         rows: [],
-        errors: ["人员表缺少列：所属作业员 / 所属经理"],
+        errors: ["SN 归属表缺少列：所属作业员"],
         meta,
       };
+    }
+
+    if (idxMgr < 0) {
+      errors.push("未含「所属经理」列，将尝试从已导入的组织名册反查经理");
     }
 
     for (let i = 1; i < matrix.length; i++) {
@@ -185,11 +269,11 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
       const deviceSn = cellStr(row[idxSn]);
       if (!deviceSn) continue;
       rows.push({
-        format: "personnel",
+        format: "assignment",
         deviceSn,
         statDate: idxStat >= 0 ? parseYmd(row[idxStat]) : null,
         operatorName: cellStr(row[idxOp]),
-        managerName: cellStr(row[idxMgr]),
+        managerName: idxMgr >= 0 ? cellStr(row[idxMgr]) : "",
         companyName: idxCompany >= 0 ? cellStr(row[idxCompany]) || null : null,
         merchantName: idxMerchant >= 0 ? cellStr(row[idxMerchant]) || null : null,
         cumulativeUsers: idxUsers >= 0 ? parseNum(row[idxUsers]) : 0,
@@ -311,7 +395,7 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
     }
   }
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && errors.length === 0) {
     errors.push("未解析到有效数据行");
   }
 

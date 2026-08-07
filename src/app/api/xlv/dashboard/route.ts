@@ -17,9 +17,10 @@ export async function GET(request: Request) {
     const managerName = searchParams.get("manager");
     const operatorName = searchParams.get("operator");
     const search = searchParams.get("q");
-    const qualificationStatus = parseXlvQualificationStatus(
-      searchParams.get("status")
-    );
+    const qualificationStatus =
+      alert !== "all"
+        ? null
+        : parseXlvQualificationStatus(searchParams.get("status"));
 
     const [summary, list, managers, filters] = await Promise.all([
       getXlvDashboardSummary(user),

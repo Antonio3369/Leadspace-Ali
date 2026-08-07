@@ -8,6 +8,7 @@ import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
   parseXlvAlertKind,
   parseXlvQualificationStatus,
+  XLV_ACTIVE_IN_PROGRESS_LABEL,
   XLV_INVENTORY_MANAGER_LABEL,
   XLV_QUALIFICATION_LABELS,
   type XlvAlertKind,
@@ -39,7 +40,13 @@ export function XlvDashboardView({ role }: { role: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const alert = parseXlvAlertKind(searchParams.get("alert"));
-  const status = parseXlvQualificationStatus(searchParams.get("status"));
+  const rawStatus = parseXlvQualificationStatus(searchParams.get("status"));
+  const status =
+    alert !== "all"
+      ? null
+      : rawStatus === "in_progress"
+        ? null
+        : rawStatus;
   const manager = searchParams.get("manager") ?? "";
   const operator = searchParams.get("operator") ?? "";
   const search = searchParams.get("q") ?? "";
@@ -64,8 +71,10 @@ export function XlvDashboardView({ role }: { role: string }) {
   );
 
   useEffect(() => {
-    setSearchDraft(search);
-  }, [search]);
+    if (searchParams.get("status") === "in_progress") {
+      pushQuery({ status: null });
+    }
+  }, [searchParams, pushQuery]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -75,12 +84,16 @@ export function XlvDashboardView({ role }: { role: string }) {
   }, [searchDraft, search, pushQuery]);
 
   useEffect(() => {
+    setSearchDraft(search);
+  }, [search]);
+
+  useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError("");
     const params = new URLSearchParams();
     if (alert !== "all") params.set("alert", alert);
-    if (status) params.set("status", status);
+    if (status && alert === "all") params.set("status", status);
     if (manager) params.set("manager", manager);
     if (operator) params.set("operator", operator);
     if (search) params.set("q", search);
@@ -134,9 +147,9 @@ export function XlvDashboardView({ role }: { role: string }) {
         },
         {
           id: "active" as const,
-          label: "正常活跃",
+          label: XLV_ACTIVE_IN_PROGRESS_LABEL,
           value: summary.active,
-          hint: "已分配且近期有收款",
+          hint: "未达标且近期有收款",
           tone: "green" as const,
         },
       ]
@@ -158,12 +171,23 @@ export function XlvDashboardView({ role }: { role: string }) {
     muted: "text-slate-600",
   };
 
-  function toggleAlertFilter(id: Exclude<XlvAlertKind, "all">) {
-    pushQuery({ alert: alert === id ? null : id });
-  }
-
-  function toggleStatusFilter(id: XlvQualificationStatus) {
-    pushQuery({ status: status === id ? null : id });
+  /** 五张卡片全局单选：预警与考核互斥，再点同项取消 */
+  function selectShortcutFilter(
+    id: Exclude<XlvAlertKind, "all"> | XlvQualificationStatus
+  ) {
+    const isAlert =
+      id === "single_silence" || id === "dormant" || id === "active";
+    if (isAlert) {
+      pushQuery({
+        alert: alert === id ? null : id,
+        status: null,
+      });
+      return;
+    }
+    pushQuery({
+      status: status === id ? null : id,
+      alert: null,
+    });
   }
 
   const qualShortcuts = summary
@@ -176,13 +200,6 @@ export function XlvDashboardView({ role }: { role: string }) {
           tone: "green" as const,
         },
         {
-          id: "in_progress" as const,
-          label: XLV_QUALIFICATION_LABELS.in_progress,
-          value: summary.inProgressCount,
-          hint: "考核窗口内",
-          tone: "sky" as const,
-        },
-        {
           id: "invalid" as const,
           label: XLV_QUALIFICATION_LABELS.invalid,
           value: summary.invalidCount,
@@ -191,6 +208,8 @@ export function XlvDashboardView({ role }: { role: string }) {
         },
       ]
     : [];
+
+  const activeShortcut = status ?? (alert !== "all" ? alert : null);
 
   return (
     <PageShell>
@@ -264,12 +283,12 @@ export function XlvDashboardView({ role }: { role: string }) {
 
       {summary && summary.totalDevices > 0 ? (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {shortcuts.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => toggleAlertFilter(item.id)}
+                onClick={() => selectShortcutFilter(item.id)}
                 className={`rounded-[14px] border px-4 py-3 text-left transition-colors ${toneClass[item.tone]} ${
                   alert === item.id ? "ring-2 ring-[#2563eb]/30" : ""
                 }`}
@@ -281,14 +300,11 @@ export function XlvDashboardView({ role }: { role: string }) {
                 <p className="text-sm font-medium text-[#334155]">{item.label}</p>
               </button>
             ))}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {qualShortcuts.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => toggleStatusFilter(item.id)}
+                onClick={() => selectShortcutFilter(item.id)}
                 className={`rounded-[14px] border px-4 py-3 text-left transition-colors ${toneClass[item.tone]} ${
                   status === item.id ? "ring-2 ring-[#2563eb]/30" : ""
                 }`}
@@ -346,16 +362,14 @@ export function XlvDashboardView({ role }: { role: string }) {
               <h2 className="text-sm font-semibold text-[#111827]">
                 {status === "qualified"
                   ? "已达标商户"
-                  : status === "in_progress"
-                    ? "考核中商户"
-                    : status === "invalid"
-                      ? "无效用户商户"
-                      : alert === "single_silence"
+                  : status === "invalid"
+                    ? "无效用户商户"
+                    : alert === "single_silence"
                         ? "单笔沉默商户"
                         : alert === "dormant"
                           ? "沉睡商户"
                           : alert === "active"
-                            ? "正常活跃商户"
+                            ? `${XLV_ACTIVE_IN_PROGRESS_LABEL}商户`
                             : manager === XLV_INVENTORY_MANAGER_LABEL
                               ? "剩余库存"
                               : "全部商户"}
@@ -374,6 +388,7 @@ export function XlvDashboardView({ role }: { role: string }) {
                 devices={data?.devices ?? []}
                 showManager={showManager}
                 linkToDetail
+                activeShortcut={activeShortcut}
                 emptyText={
                   hasDrill ? "当前筛选下暂无设备" : "暂无数据，请先导入运营表"
                 }

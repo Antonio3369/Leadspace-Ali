@@ -30,16 +30,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       if (token.id) {
-        const live = await loadLiveUserState(token.id as string);
-        if (live) {
-          token.status = live.status;
-          token.accountLifecycle = live.accountLifecycle;
-          token.mustChangePassword = live.mustChangePassword;
-          token.businessLines = resolveAccessibleBusinessLines(
-            token.role as string,
-            live.businessLines
-          );
-        }
+        // 不在每次请求时查库：Prisma PG adapter 在 dev 下会间歇性 bind 异常
+        token.businessLines = resolveAccessibleBusinessLines(
+          token.role as string,
+          (token.businessLines as BusinessLineId[]) ?? DEFAULT_BUSINESS_LINES
+        );
       }
       return token;
     },
@@ -93,32 +88,43 @@ export async function getSessionUser() {
   return session.user;
 }
 
-async function loadLiveUserState(userId: string) {
-  try {
-    return await db.user.findUnique({
-      where: { id: userId },
-      select: {
-        status: true,
-        accountLifecycle: true,
-        mustChangePassword: true,
-        businessLines: true,
-        role: true,
-      },
-    });
-  } catch {
-    // Prisma Client 未热更新时兜底，避免登录后 JWT 整段失败被踢回登录页
-    const fallback = await db.user.findUnique({
-      where: { id: userId },
-      select: {
-        status: true,
-        accountLifecycle: true,
-        mustChangePassword: true,
-        role: true,
-      },
-    });
-    if (!fallback) return null;
-    return { ...fallback, businessLines: DEFAULT_BUSINESS_LINES as string[] };
+async function finalizeSessionUser(
+  user: NonNullable<Awaited<ReturnType<typeof getSessionUser>>>
+) {
+  if (!canLogin(user.status)) {
+    throw new Error("FORBIDDEN");
   }
+
+  return {
+    ...user,
+    businessLines: resolveAccessibleBusinessLines(
+      user.role,
+      user.businessLines ?? DEFAULT_BUSINESS_LINES
+    ) as BusinessLineId[],
+  };
+}
+
+/** Route Handler 内优先用 req.auth（auth() 包装器注入），读不到时回退 auth() */
+export async function requireSessionFromAuth(
+  authUser: Awaited<ReturnType<typeof getSessionUser>> | null | undefined
+) {
+  const user = authUser ?? (await getSessionUser());
+  if (!user) {
+    throw new Error("UNAUTHORIZED");
+  }
+  return finalizeSessionUser(user);
+}
+
+async function loadLiveUserState(userId: string) {
+  return db.user.findUnique({
+    where: { id: userId },
+    select: {
+      status: true,
+      accountLifecycle: true,
+      mustChangePassword: true,
+      role: true,
+    },
+  });
 }
 
 /** 与数据库同步 session：仅在必须重新登录时踢出，其余漂移以 DB 为准 */
@@ -126,8 +132,21 @@ export async function ensureLiveSession(): Promise<SessionUser> {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
-  const live = await loadLiveUserState(user.id);
-  if (!live || !canLogin(live.status)) {
+  const live = await loadLiveUserState(user.id).catch(() => null);
+  if (!live) {
+    if (!canLogin(user.status)) {
+      redirect("/api/auth/session-expired?reason=disabled");
+    }
+    return {
+      ...user,
+      businessLines: resolveAccessibleBusinessLines(
+        user.role,
+        user.businessLines ?? DEFAULT_BUSINESS_LINES
+      ),
+    };
+  }
+
+  if (!canLogin(live.status)) {
     redirect("/api/auth/session-expired?reason=disabled");
   }
 
@@ -148,11 +167,12 @@ export async function ensureLiveSession(): Promise<SessionUser> {
   // 其余漂移（含刚改完密 mustChangePassword true→false）直接以 DB 为准，避免误踢导致「改两次」
   const businessLines = resolveAccessibleBusinessLines(
     live.role,
-    live.businessLines
+    user.businessLines ?? DEFAULT_BUSINESS_LINES
   );
 
   return {
     ...user,
+    role: live.role,
     status: live.status,
     accountLifecycle: live.accountLifecycle,
     mustChangePassword: live.mustChangePassword,
@@ -165,20 +185,5 @@ export async function requireSessionUser() {
   if (!user) {
     throw new Error("UNAUTHORIZED");
   }
-
-  const live = await loadLiveUserState(user.id);
-  if (!live || !canLogin(live.status)) {
-    throw new Error("FORBIDDEN");
-  }
-
-  return {
-    ...user,
-    status: live.status,
-    accountLifecycle: live.accountLifecycle,
-    mustChangePassword: live.mustChangePassword,
-    businessLines: resolveAccessibleBusinessLines(
-      live.role,
-      live.businessLines
-    ) as BusinessLineId[],
-  };
+  return finalizeSessionUser(user);
 }

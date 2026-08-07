@@ -1,26 +1,47 @@
 "use client";
 
+import Link from "next/link";
 import type { XlvImportSummary } from "@/services/import/xlv-import-summary";
+import { xlvPath } from "@/lib/business-lines";
+
+const FORMAT_LABELS: Record<XlvImportSummary["format"], string> = {
+  raw: "运营原始表",
+  roster: "组织名册",
+  assignment: "SN 归属表",
+};
 
 export function XlvImportSummaryPanel({ summary }: { summary: XlvImportSummary }) {
   const missingColumns = summary.columns.filter((col) => !col.matched);
   const matchedColumns = summary.columns.filter((col) => col.matched);
+  const showUnmatched =
+    (summary.format === "roster" || summary.format === "assignment") &&
+    (summary.unmatchedManagers.length > 0 ||
+      summary.unmatchedOperators.length > 0);
 
   return (
     <div className="rounded-[12px] border border-[#eef2f7] bg-[#f8fafc] px-4 py-3 text-sm space-y-3">
       <div>
         <p className="font-semibold text-[#111827]">导入摘要</p>
         <p className="text-xs text-[#94a3b8] mt-0.5">
-          工作表 {summary.sheetName} ·{" "}
-          {summary.format === "raw" ? "运营原始表" : "人员归属表"}
+          工作表 {summary.sheetName} · {FORMAT_LABELS[summary.format]}
         </p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
         <Stat label="文件行数" value={summary.rawRowsInFile} />
-        <Stat label="设备 SN" value={summary.uniqueDevices} />
-        <Stat label="新建设备" value={summary.devicesCreated} />
-        <Stat label="更新设备" value={summary.devicesUpdated} />
+        {summary.format === "raw" || summary.format === "assignment" ? (
+          <>
+            <Stat label="设备 SN" value={summary.uniqueDevices} />
+            <Stat label="新建设备" value={summary.devicesCreated} />
+            <Stat label="更新设备" value={summary.devicesUpdated} />
+          </>
+        ) : (
+          <>
+            <Stat label="作业员" value={summary.uniqueOperators} />
+            <Stat label="新建名册" value={summary.rosterCreated} />
+            <Stat label="更新名册" value={summary.rosterUpdated} />
+          </>
+        )}
         {summary.format === "raw" ? (
           <>
             <Stat label="写入快照" value={summary.snapshotsWritten} />
@@ -29,6 +50,19 @@ export function XlvImportSummaryPanel({ summary }: { summary: XlvImportSummary }
             <Stat label="合并重复行" value={summary.fileDuplicateRowsCollapsed} />
             <Stat label="清理库内重复" value={summary.duplicateSnapshotsRemoved} />
           </>
+        ) : null}
+        {summary.format === "roster" && summary.devicesBackfilledFromRoster > 0 ? (
+          <Stat
+            label="回写设备"
+            value={summary.devicesBackfilledFromRoster}
+          />
+        ) : null}
+        {summary.format === "assignment" &&
+        summary.managersInferredFromRoster > 0 ? (
+          <Stat
+            label="名册反查经理"
+            value={summary.managersInferredFromRoster}
+          />
         ) : null}
       </div>
 
@@ -65,18 +99,9 @@ export function XlvImportSummaryPanel({ summary }: { summary: XlvImportSummary }
         </div>
       ) : null}
 
-      {summary.format === "personnel" &&
-      (summary.unmatchedManagers.length > 0 ||
-        summary.unmatchedOperators.length > 0) ? (
+      {showUnmatched ? (
         <div className="text-xs space-y-1">
-          <p className="font-medium text-[#334155]">系统未匹配姓名</p>
-          {summary.unmatchedManagers.length > 0 ? (
-            <p className="text-[#64748b]">
-              经理（{summary.unmatchedManagers.length}）：{" "}
-              {summary.unmatchedManagers.slice(0, 8).join("、")}
-              {summary.unmatchedManagers.length > 8 ? "…" : ""}
-            </p>
-          ) : null}
+          <p className="font-medium text-[#334155]">不在组织名册中</p>
           {summary.unmatchedOperators.length > 0 ? (
             <p className="text-[#64748b]">
               作业员（{summary.unmatchedOperators.length}）：{" "}
@@ -84,6 +109,17 @@ export function XlvImportSummaryPanel({ summary }: { summary: XlvImportSummary }
               {summary.unmatchedOperators.length > 8 ? "…" : ""}
             </p>
           ) : null}
+          <p className="text-[#94a3b8]">
+            小绿盒以三表 Excel 姓名为准，不关联 N7 系统账号。
+          </p>
+          <p>
+            <Link
+              href={xlvPath("/admin/attribution")}
+              className="text-[#2563eb] hover:text-[#1d4ed8] font-medium"
+            >
+              前往人员归属 →
+            </Link>
+          </p>
         </div>
       ) : null}
 

@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
-import { requireSessionUser } from "@/lib/auth";
-import { canImportExcel } from "@/lib/permissions";
+import { auth } from "@/lib/auth";
+import { canImportExcel, canLogin } from "@/lib/permissions";
 import { getHeavyImportJob } from "@/services/import/heavy-import-job";
 
-export async function GET(
-  _request: Request,
-  context: { params: Promise<{ id: string }> }
-) {
+export const GET = auth(async (request, context) => {
   try {
-    const user = await requireSessionUser();
+    const user = request.auth?.user;
+    if (!user) {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
+    if (!canLogin(user.status)) {
+      return NextResponse.json({ error: "账号不可用" }, { status: 403 });
+    }
     if (!canImportExcel(user.role)) {
       return NextResponse.json({ error: "无权查看" }, { status: 403 });
     }
@@ -38,6 +41,9 @@ export async function GET(
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
+    if (message === "FORBIDDEN") {
+      return NextResponse.json({ error: "账号不可用" }, { status: 403 });
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
-}
+});

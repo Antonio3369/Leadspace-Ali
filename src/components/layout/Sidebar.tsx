@@ -69,6 +69,7 @@ const XLV_SALES_NAV_ITEMS = [
 const XLV_DIRECTOR_NAV_ITEMS = [
   ...XLV_NAV_ITEMS,
   { href: xlvPath("/admin/import"), label: "数据导入", icon: "⬆️" },
+  { href: xlvPath("/admin/attribution"), label: "人员归属", icon: "🔗" },
 ];
 
 function isActivePath(pathname: string, href: string) {

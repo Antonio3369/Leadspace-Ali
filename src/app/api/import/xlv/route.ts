@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
-import { requireSessionUser } from "@/lib/auth";
-import { canImportExcel } from "@/lib/permissions";
-import { enqueueHeavyImport } from "@/services/import/heavy-import-job";
+import { auth } from "@/lib/auth";
+import { canImportExcel, canLogin } from "@/lib/permissions";
+import { importXlvExcelFile } from "@/services/import/xlv-excel-importer";
 
-export const maxDuration = 120;
+/** 原始表行多、耗时长，同步导入最长等待 5 分钟 */
+export const maxDuration = 300;
 
-export async function POST(request: Request) {
+export const POST = auth(async (request) => {
   try {
-    const user = await requireSessionUser();
+    const user = request.auth?.user;
+    if (!user) {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
+    if (!canLogin(user.status)) {
+      return NextResponse.json({ error: "账号不可用" }, { status: 403 });
+    }
 
     if (!canImportExcel(user.role)) {
       return NextResponse.json({ error: "仅管理员可上传 Excel 数据" }, { status: 403 });
@@ -33,26 +40,24 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const queued = await enqueueHeavyImport({
-      kind: "xlv",
-      fileName: file.name,
-      buffer,
-      uploadedById: user.id,
-    });
+    const result = await importXlvExcelFile(buffer, file.name, user.id);
 
-    if ("error" in queued) {
-      return NextResponse.json({ error: queued.error }, { status: queued.status });
+    if (result.status === "FAILED") {
+      return NextResponse.json(
+        { error: result.errors[0] || "导入失败" },
+        { status: 400 }
+      );
     }
 
-    return NextResponse.json(
-      { async: true, jobId: queued.jobId, message: "已开始后台导入" },
-      { status: 202 }
-    );
+    return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "导入失败";
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
+    if (message === "FORBIDDEN") {
+      return NextResponse.json({ error: "账号不可用" }, { status: 403 });
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
-}
+});

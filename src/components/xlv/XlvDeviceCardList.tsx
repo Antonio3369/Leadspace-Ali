@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { xlvPath } from "@/lib/business-lines";
-import { XLV_ALERT_LABELS, xlvMerchantLabel } from "@/lib/xlv-rules";
+import { XLV_ALERT_LABELS, xlvMerchantLabel, type XlvAlertKind, type XlvQualificationStatus } from "@/lib/xlv-rules";
 import type { XlvDeviceListItem } from "@/services/xlv/analytics";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
 
@@ -40,6 +40,16 @@ function rightLabel(d: XlvDeviceListItem) {
   return { title: "正常", sub: d.sleepDays === 0 ? "今日有动" : `${d.sleepDays} 天` };
 }
 
+export type XlvDashboardShortcutFilter =
+  | Exclude<XlvAlertKind, "all">
+  | XlvQualificationStatus;
+
+function isAlertShortcut(
+  filter: XlvDashboardShortcutFilter
+): filter is Exclude<XlvAlertKind, "all"> {
+  return filter === "single_silence" || filter === "dormant" || filter === "active";
+}
+
 /** 对齐 N7 设备卡片：商户名 + 指标进度 + 归属人 */
 export function XlvDeviceCardList({
   devices,
@@ -49,6 +59,8 @@ export function XlvDeviceCardList({
   onPickManager,
   linkToDetail = false,
   showQualification = true,
+  /** 顶部快捷筛选已选中时，列表内不再重复同类徽章 */
+  activeShortcut,
 }: {
   devices: XlvDeviceListItem[];
   showManager: boolean;
@@ -57,7 +69,12 @@ export function XlvDeviceCardList({
   onPickManager?: (name: string) => void;
   linkToDetail?: boolean;
   showQualification?: boolean;
+  activeShortcut?: XlvDashboardShortcutFilter | null;
 }) {
+  const hideAlertBadge = Boolean(activeShortcut && isAlertShortcut(activeShortcut));
+  const hideQualificationBadge = Boolean(
+    activeShortcut && !isAlertShortcut(activeShortcut)
+  );
   const borderTone = devices.some((d) => d.alertKind === "single_silence")
     ? "border-[#fecaca]"
     : devices.some((d) => d.alertKind === "dormant")
@@ -85,12 +102,16 @@ export function XlvDeviceCardList({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
-                      <span
-                        className={`inline-flex rounded-md border px-1.5 py-0.5 text-xs font-semibold ${alertBadgeClass(d.alertKind)}`}
-                      >
-                        {XLV_ALERT_LABELS[d.alertKind]}
-                      </span>
-                      {showQualification && d.qualificationStatus ? (
+                      {!hideAlertBadge ? (
+                        <span
+                          className={`inline-flex rounded-md border px-1.5 py-0.5 text-xs font-semibold ${alertBadgeClass(d.alertKind)}`}
+                        >
+                          {XLV_ALERT_LABELS[d.alertKind]}
+                        </span>
+                      ) : null}
+                      {showQualification &&
+                      !hideQualificationBadge &&
+                      d.qualificationStatus ? (
                         <XlvQualificationBadge
                           status={d.qualificationStatus}
                           compact
@@ -122,7 +143,9 @@ export function XlvDeviceCardList({
 
                     <div className="text-xs leading-snug space-y-0.5">
                       <p className="tabular-nums text-[#334155]">{progressLine(d)}</p>
-                      {d.qualificationGapLine && showQualification ? (
+                      {d.qualificationGapLine &&
+                      showQualification &&
+                      !hideQualificationBadge ? (
                         <p
                           className={
                             d.qualificationStatus === "qualified"

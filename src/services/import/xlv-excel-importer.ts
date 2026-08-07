@@ -2,17 +2,24 @@ import { randomBytes } from "crypto";
 import { db } from "@/lib/db";
 import {
   parseXlvExcelBuffer,
-  type ParsedXlvPersonnelRow,
+  type ParsedXlvAssignmentRow,
   type ParsedXlvRawRow,
+  type ParsedXlvRosterRow,
 } from "@/services/import/xlv-excel-parser";
 import {
-  buildUserLookupIndexes,
-  findManagerInIndexes,
-  findN7SalesInIndexes,
-} from "@/services/org/user-matcher";
+  isXlvManagerSelfSale,
+  isXlvPlaceholderName,
+  xlvRosterPairKey,
+} from "@/lib/xlv-rules";
 import { enrichXlvSnapshotDailyMetrics } from "@/services/xlv/snapshot-daily";
 import { normalizeXlvStatDate, xlvStatDateKey } from "@/lib/xlv-stat-date";
-import type { XlvImportSummary } from "@/services/import/xlv-import-summary";
+import type { XlvImportFormat, XlvImportSummary } from "@/services/import/xlv-import-summary";
+import {
+  buildXlvRosterIndex,
+  buildXlvRosterPairSet,
+  loadXlvRosterEntries,
+  resolveXlvManagerFromRoster,
+} from "@/services/xlv/roster";
 
 function createId() {
   return `c${randomBytes(12).toString("hex")}`;
@@ -20,7 +27,7 @@ function createId() {
 
 export interface XlvImportResult {
   importLogId?: string;
-  format: "raw" | "personnel";
+  format: XlvImportFormat;
   totalRows: number;
   importedRows: number;
   snapshotRows: number;
@@ -113,7 +120,7 @@ async function upsertSnapshots(
         where: { deviceSn: snap.deviceSn },
         select: { id: true, statDate: true },
       });
-      const sameDay = existingRows.filter(
+      const sameCalendarDay = existingRows.filter(
         (row) => xlvStatDateKey(row.statDate) === dateKey
       );
 
@@ -131,30 +138,24 @@ async function upsertSnapshots(
         importBatchId,
       };
 
-      if (sameDay.length > 0) {
-        await db.xlvDeviceSnapshot.update({
-          where: { id: sameDay[0]!.id },
-          data: {
-            ...data,
-            statDate,
-          },
-        });
+      if (sameCalendarDay.length > 1) {
+        stats.duplicatesRemoved += sameCalendarDay.length - 1;
+      }
+      for (const row of sameCalendarDay) {
+        await db.xlvDeviceSnapshot.delete({ where: { id: row.id } });
+      }
+
+      await db.xlvDeviceSnapshot.create({
+        data: {
+          id: createId(),
+          deviceSn: snap.deviceSn,
+          statDate,
+          ...data,
+        },
+      });
+      if (sameCalendarDay.length > 0) {
         stats.updated += 1;
-        if (sameDay.length > 1) {
-          stats.duplicatesRemoved += sameDay.length - 1;
-        }
-        for (const dup of sameDay.slice(1)) {
-          await db.xlvDeviceSnapshot.delete({ where: { id: dup.id } });
-        }
       } else {
-        await db.xlvDeviceSnapshot.create({
-          data: {
-            id: createId(),
-            deviceSn: snap.deviceSn,
-            statDate,
-            ...data,
-          },
-        });
         stats.created += 1;
       }
     }
@@ -173,11 +174,7 @@ function statDateRangeFromRows(rows: ParsedXlvRawRow[]) {
   return { min: keys[0]!, max: keys[keys.length - 1]! };
 }
 
-async function importRawRows(
-  rows: ParsedXlvRawRow[],
-  importBatchId: string,
-  indexes: Awaited<ReturnType<typeof buildUserLookupIndexes>>
-) {
+async function importRawRows(rows: ParsedXlvRawRow[], importBatchId: string) {
   const dedupedSnapshots = uniqueSnapshots(rows);
   const snapshots = enrichXlvSnapshotDailyMetrics(dedupedSnapshots);
   for (const s of snapshots) s.importBatchId = importBatchId;
@@ -204,18 +201,6 @@ async function importRawRows(
     });
     const hadMetrics = Boolean(existing?.statDate);
 
-    const managerUser = existing?.managerName
-      ? findManagerInIndexes(indexes, existing.managerName)
-      : null;
-    const salesUser =
-      existing?.operatorName && existing?.managerName
-        ? findN7SalesInIndexes(
-            indexes,
-            existing.operatorName,
-            managerUser
-          )
-        : null;
-
     const merchantName =
       existing?.merchantName ||
       row.activationMerchantName ||
@@ -241,8 +226,6 @@ async function importRawRows(
       companyName,
       operatorName: existing?.operatorName ?? "",
       managerName: existing?.managerName ?? "",
-      salesUserId: salesUser?.id ?? existing?.salesUserId ?? null,
-      managerUserId: managerUser?.id ?? existing?.managerUserId ?? null,
       importBatchId,
     };
 
@@ -265,29 +248,101 @@ async function importRawRows(
   };
 }
 
-async function importPersonnelRows(
-  rows: ParsedXlvPersonnelRow[],
-  importBatchId: string,
-  indexes: Awaited<ReturnType<typeof buildUserLookupIndexes>>
+async function writeRosterRow(row: ParsedXlvRosterRow) {
+  const existing = await db.xlvTeamRoster.findFirst({
+    where: {
+      operatorName: row.operatorName,
+      managerName: row.managerName,
+    },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await db.xlvTeamRoster.update({
+      where: { id: existing.id },
+      data: { companyName: row.companyName },
+    });
+    return "updated" as const;
+  }
+
+  await db.xlvTeamRoster.create({
+    data: {
+      id: createId(),
+      operatorName: row.operatorName,
+      managerName: row.managerName,
+      companyName: row.companyName,
+    },
+  });
+  return "created" as const;
+}
+
+async function importRosterRows(rows: ParsedXlvRosterRow[], _importBatchId: string) {
+  let created = 0;
+  let updated = 0;
+  const seenOperators = new Set<string>();
+
+  for (const row of rows) {
+    seenOperators.add(row.operatorName);
+    const outcome = await writeRosterRow(row);
+    if (outcome === "created") created += 1;
+    else updated += 1;
+  }
+
+  return {
+    snapshotRows: 0,
+    createdDevices: 0,
+    updatedDevices: 0,
+    rosterRowsWritten: rows.length,
+    rosterCreated: created,
+    rosterUpdated: updated,
+    uniqueOperators: seenOperators.size,
+    devicesBackfilledFromRoster: 0,
+    managersInferredFromRoster: 0,
+    unmatchedManagers: [] as string[],
+    unmatchedOperators: [] as string[],
+    uniqueDevices: 0,
+  };
+}
+
+async function importAssignmentRows(
+  rows: ParsedXlvAssignmentRow[],
+  importBatchId: string
 ) {
   let createdDevices = 0;
   let updatedDevices = 0;
-  const unmatchedManagers = new Set<string>();
+  let managersInferredFromRoster = 0;
   const unmatchedOperators = new Set<string>();
+  const rosterEntries = await loadXlvRosterEntries();
+  const rosterByOperator = buildXlvRosterIndex(rosterEntries);
+  const rosterPairs = buildXlvRosterPairSet(rosterEntries);
 
   for (const row of rows) {
-    const managerUser = findManagerInIndexes(indexes, row.managerName);
-    const salesUser = findN7SalesInIndexes(
-      indexes,
-      row.operatorName,
-      managerUser
-    );
+    let managerName = row.managerName.trim();
+    let companyName = row.companyName;
 
-    if (row.managerName && !managerUser) {
-      unmatchedManagers.add(row.managerName);
+    if (!managerName && row.operatorName.trim()) {
+      const resolved = resolveXlvManagerFromRoster(
+        rosterByOperator,
+        row.operatorName,
+        null
+      );
+      if (resolved && !resolved.ambiguous && resolved.managerName) {
+        managerName = resolved.managerName;
+        companyName = companyName ?? resolved.companyName;
+        managersInferredFromRoster += 1;
+      }
     }
-    if (row.operatorName && !salesUser) {
-      unmatchedOperators.add(row.operatorName);
+
+    const operatorName = row.operatorName.trim();
+    if (
+      rosterPairs.size > 0 &&
+      operatorName &&
+      !isXlvPlaceholderName(operatorName) &&
+      !isXlvManagerSelfSale({ operatorName, managerName })
+    ) {
+      if (!rosterPairs.has(xlvRosterPairKey(managerName, operatorName))) {
+        unmatchedOperators.add(operatorName);
+      }
     }
 
     const existing = await db.xlvDeviceRecord.findUnique({
@@ -296,11 +351,9 @@ async function importPersonnelRows(
 
     const data = {
       operatorName: row.operatorName,
-      managerName: row.managerName,
-      companyName: row.companyName,
+      managerName,
+      companyName,
       merchantName: row.merchantName,
-      salesUserId: salesUser?.id ?? null,
-      managerUserId: managerUser?.id ?? null,
       statDate: row.statDate ?? existing?.statDate ?? null,
       cumulativeUsers: row.cumulativeUsers || existing?.cumulativeUsers || 0,
       cumulativeTxns: row.cumulativeTxns || existing?.cumulativeTxns || 0,
@@ -334,7 +387,13 @@ async function importPersonnelRows(
     snapshotRows: 0,
     createdDevices,
     updatedDevices,
-    unmatchedManagers: [...unmatchedManagers].sort(),
+    rosterRowsWritten: 0,
+    rosterCreated: 0,
+    rosterUpdated: 0,
+    uniqueOperators: 0,
+    devicesBackfilledFromRoster: 0,
+    managersInferredFromRoster,
+    unmatchedManagers: [],
     unmatchedOperators: [...unmatchedOperators].sort(),
     uniqueDevices: new Set(rows.map((r) => r.deviceSn)).size,
   };
@@ -370,11 +429,11 @@ export async function importXlvExcelFile(
     },
   });
 
-  const indexes = await buildUserLookupIndexes();
   const rawRows = parsed.rows.filter((r) => r.format === "raw") as ParsedXlvRawRow[];
-  const personnelRows = parsed.rows.filter(
-    (r) => r.format === "personnel"
-  ) as ParsedXlvPersonnelRow[];
+  const rosterRows = parsed.rows.filter((r) => r.format === "roster") as ParsedXlvRosterRow[];
+  const assignmentRows = parsed.rows.filter(
+    (r) => r.format === "assignment"
+  ) as ParsedXlvAssignmentRow[];
 
   let snapshotRows = 0;
   let createdDevices = 0;
@@ -382,7 +441,7 @@ export async function importXlvExcelFile(
   let importSummary: Partial<XlvImportSummary> = {};
 
   if (parsed.format === "raw") {
-    const result = await importRawRows(rawRows, importLog.id, indexes);
+    const result = await importRawRows(rawRows, importLog.id);
     snapshotRows = result.snapshotRows;
     createdDevices = result.createdDevices;
     updatedDevices = result.updatedDevices;
@@ -394,15 +453,40 @@ export async function importXlvExcelFile(
       snapshotsUpdated: result.snapshotStats.updated,
       duplicateSnapshotsRemoved: result.snapshotStats.duplicatesRemoved,
       fileDuplicateRowsCollapsed: result.fileDuplicateRowsCollapsed,
+      rosterRowsWritten: 0,
+      rosterCreated: 0,
+      rosterUpdated: 0,
+      uniqueOperators: 0,
+      devicesBackfilledFromRoster: 0,
+      managersInferredFromRoster: 0,
       unmatchedManagers: [],
       unmatchedOperators: [],
     };
+  } else if (parsed.format === "roster") {
+    const result = await importRosterRows(rosterRows, importLog.id);
+    const rosterHint =
+      "名册已写入。设备经理/公司回填请前往「人员归属核对」点击「从名册同步」。";
+    if (!parsed.errors.includes(rosterHint)) {
+      parsed.errors.push(rosterHint);
+    }
+    importSummary = {
+      uniqueDevices: 0,
+      snapshotsWritten: 0,
+      snapshotsCreated: 0,
+      snapshotsUpdated: 0,
+      duplicateSnapshotsRemoved: 0,
+      fileDuplicateRowsCollapsed: 0,
+      rosterRowsWritten: result.rosterRowsWritten,
+      rosterCreated: result.rosterCreated,
+      rosterUpdated: result.rosterUpdated,
+      uniqueOperators: result.uniqueOperators,
+      devicesBackfilledFromRoster: result.devicesBackfilledFromRoster,
+      managersInferredFromRoster: 0,
+      unmatchedManagers: result.unmatchedManagers,
+      unmatchedOperators: result.unmatchedOperators,
+    };
   } else {
-    const result = await importPersonnelRows(
-      personnelRows,
-      importLog.id,
-      indexes
-    );
+    const result = await importAssignmentRows(assignmentRows, importLog.id);
     createdDevices = result.createdDevices;
     updatedDevices = result.updatedDevices;
     importSummary = {
@@ -412,12 +496,21 @@ export async function importXlvExcelFile(
       snapshotsUpdated: 0,
       duplicateSnapshotsRemoved: 0,
       fileDuplicateRowsCollapsed: 0,
+      rosterRowsWritten: 0,
+      rosterCreated: 0,
+      rosterUpdated: 0,
+      uniqueOperators: 0,
+      devicesBackfilledFromRoster: 0,
+      managersInferredFromRoster: result.managersInferredFromRoster,
       unmatchedManagers: result.unmatchedManagers,
       unmatchedOperators: result.unmatchedOperators,
     };
   }
 
-  const importedRows = createdDevices + updatedDevices;
+  const importedRows =
+    parsed.format === "roster"
+      ? importSummary.rosterRowsWritten ?? 0
+      : createdDevices + updatedDevices;
   const status =
     parsed.errors.length > 0 ? "PARTIAL" : ("SUCCESS" as const);
 
@@ -435,6 +528,12 @@ export async function importXlvExcelFile(
     duplicateSnapshotsRemoved: importSummary.duplicateSnapshotsRemoved ?? 0,
     devicesCreated: createdDevices,
     devicesUpdated: updatedDevices,
+    rosterRowsWritten: importSummary.rosterRowsWritten ?? 0,
+    rosterCreated: importSummary.rosterCreated ?? 0,
+    rosterUpdated: importSummary.rosterUpdated ?? 0,
+    uniqueOperators: importSummary.uniqueOperators ?? 0,
+    devicesBackfilledFromRoster: importSummary.devicesBackfilledFromRoster ?? 0,
+    managersInferredFromRoster: importSummary.managersInferredFromRoster ?? 0,
     unmatchedManagers: importSummary.unmatchedManagers ?? [],
     unmatchedOperators: importSummary.unmatchedOperators ?? [],
     warnings: parsed.errors,

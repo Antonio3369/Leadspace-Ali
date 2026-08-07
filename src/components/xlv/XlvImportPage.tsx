@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import { xlvPath } from "@/lib/business-lines";
 import { uploadImportWithJobPoll } from "@/lib/import-upload-client";
 import {
   NotionAlert,
@@ -15,7 +17,7 @@ import {
 import { XlvImportSummaryPanel } from "@/components/xlv/XlvImportSummaryPanel";
 import type { XlvImportSummary } from "@/services/import/xlv-import-summary";
 
-type ImportTab = "raw" | "personnel";
+type ImportTab = "raw" | "roster" | "assignment";
 
 interface XlvImportResult {
   format?: string;
@@ -38,16 +40,23 @@ const TAB_CONFIG: Record<
   raw: {
     title: "运营原始表",
     description:
-      "上传微信侧导出的原始表（含「导出时间范围」「统计日期」等列）。支持同一文件内 8/1–8/4 多日快照；系统按 SN+统计日期写入历史快照，并更新设备最新状态。不会删除库中已有 SN。",
+      "上传微信侧导出的原始表（含「统计日期」等列）。按 SN + 统计日期写入快照与最新指标。大表需等待 1–3 分钟，请勿关闭页面。",
     endpoint: "/api/import/xlv",
     buttonLabel: "导入原始表",
   },
-  personnel: {
-    title: "人员归属表",
+  roster: {
+    title: "组织名册",
     description:
-      "上传运营加工表（含「所属作业员」「所属经理」「商户名称」等列）。按 SN 合并人员归属与商户名；建议先导入原始表，再导入本表补齐归属。",
+      "上传经理–队员关系表（含「所属作业员」「所属经理」，无需设备 SN）。导入后请到「人员归属核对」点击「从名册同步」，将经理/公司写回设备。",
     endpoint: "/api/import/xlv",
-    buttonLabel: "导入人员归属表",
+    buttonLabel: "导入组织名册",
+  },
+  assignment: {
+    title: "SN 归属表",
+    description:
+      "按设备 SN 挂作业员（「所属作业员」必填；「所属经理」可省略，系统从组织名册反查）。建议顺序：① 原始表 → ② 名册 → ③ 本表。",
+    endpoint: "/api/import/xlv",
+    buttonLabel: "导入 SN 归属表",
   },
 };
 
@@ -102,13 +111,25 @@ export function XlvImportPage() {
       <PageHeader
         title="数据导入"
         kicker="微信小绿盒"
-        meta={<p>原始表写快照与指标；人员表按 SN 合并作业员与经理归属。</p>}
+        meta={
+          <p className="text-sm text-[#64748b]">
+            建议顺序：① 运营原始表 → ② 组织名册 → ③ SN 归属表。
+            {" "}
+            <Link
+              href={xlvPath("/admin/attribution")}
+              className="text-[#2563eb] hover:text-[#1d4ed8] font-medium"
+            >
+              人员归属核对 →
+            </Link>
+          </p>
+        }
       />
 
       <NotionTabs
         tabs={[
-          { key: "raw", label: "运营原始表" },
-          { key: "personnel", label: "人员归属表" },
+          { key: "raw", label: "① 运营原始表" },
+          { key: "roster", label: "② 组织名册" },
+          { key: "assignment", label: "③ SN 归属" },
         ]}
         active={tab}
         onChange={(id) => {
@@ -135,10 +156,24 @@ export function XlvImportPage() {
         />
 
         {uploading && (
-          <NotionProgressBar value={progress} label={progressLabel || "处理中…"} />
+          <NotionProgressBar
+            value={progress}
+            label={progressLabel || (tab === "raw" ? "大表导入中，请稍候…" : "处理中…")}
+          />
         )}
 
-        {error && <NotionAlert tone="error">{error}</NotionAlert>}
+        {error && (
+          <NotionAlert tone="error">
+            <p>{error}</p>
+            {error.includes("登录") ? (
+              <p className="mt-2">
+                <Link href="/login" className="font-medium text-[#2563eb] hover:text-[#1d4ed8]">
+                  前往登录 →
+                </Link>
+              </p>
+            ) : null}
+          </NotionAlert>
+        )}
         {message && <NotionAlert tone="success">{message}</NotionAlert>}
 
         {result && (
