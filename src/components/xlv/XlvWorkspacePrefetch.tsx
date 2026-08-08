@@ -5,24 +5,26 @@ import { usePathname } from "next/navigation";
 import { isXlvPath } from "@/lib/business-lines";
 import { prefetchXlvApi } from "@/lib/xlv-api-cache";
 
-/** 在小绿盒工作区内预取主要 Tab 的 API，切换底栏时更快 */
+/** 在小绿盒工作区内预取另一 Tab 的 API；全量看板延后加载，避免并发 OOM */
 export function XlvWorkspacePrefetch() {
   const pathname = usePathname();
 
   useEffect(() => {
     if (!isXlvPath(pathname)) return;
 
-    const urls = [
-      `/api/xlv/today`,
-      `/api/xlv/dashboard?alert=sleep`,
-      `/api/xlv/dashboard`,
-    ];
+    const isAlerts = pathname.endsWith("/alerts");
+    const peerTab = isAlerts ? `/api/xlv/today` : `/api/xlv/dashboard?alert=sleep`;
 
-    const timer = window.setTimeout(() => {
-      for (const url of urls) prefetchXlvApi(url);
-    }, 400);
+    const peerTimer = window.setTimeout(() => prefetchXlvApi(peerTab), 300);
 
-    return () => window.clearTimeout(timer);
+    const fullTimer = window.setTimeout(() => {
+      prefetchXlvApi(`/api/xlv/dashboard`);
+    }, 15_000);
+
+    return () => {
+      window.clearTimeout(peerTimer);
+      window.clearTimeout(fullTimer);
+    };
   }, [pathname]);
 
   return null;

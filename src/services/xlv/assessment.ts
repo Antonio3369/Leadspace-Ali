@@ -35,34 +35,50 @@ export async function loadXlvSnapshotMap(deviceSns: string[]) {
     return new Map<string, XlvSnapshotRow[]>();
   }
 
-  const rows = await db.xlvDeviceSnapshot.findMany({
-    where: { deviceSn: { in: deviceSns } },
-    select: {
-      deviceSn: true,
-      statDate: true,
-      cumulativeUsers: true,
-      cumulativeTxns: true,
-      dailyUsers: true,
-      dailyTxns: true,
-      sleepDays: true,
-      lastTxnDate: true,
-    },
-    orderBy: [{ deviceSn: "asc" }, { statDate: "asc" }],
-  });
+  return loadXlvSnapshotMapSerial(deviceSns);
+}
 
-  const map = new Map<string, XlvSnapshotRow[]>();
-  for (const row of rows) {
-    const list = map.get(row.deviceSn) ?? [];
-    list.push(row);
-    map.set(row.deviceSn, list);
-  }
-  for (const [deviceSn, list] of map) {
-    map.set(
-      deviceSn,
-      enrichXlvSnapshotDailyMetrics(dedupeXlvSnapshotsByStatDate(list))
-    );
-  }
-  return map;
+/** 进程内串行加载快照，避免 Tab 切换时多请求并发把容器打 OOM */
+let snapshotLoadGate: Promise<unknown> = Promise.resolve();
+
+async function loadXlvSnapshotMapSerial(deviceSns: string[]) {
+  const run = async () => {
+    const rows = await db.xlvDeviceSnapshot.findMany({
+      where: { deviceSn: { in: deviceSns } },
+      select: {
+        deviceSn: true,
+        statDate: true,
+        cumulativeUsers: true,
+        cumulativeTxns: true,
+        dailyUsers: true,
+        dailyTxns: true,
+        sleepDays: true,
+        lastTxnDate: true,
+      },
+      orderBy: [{ deviceSn: "asc" }, { statDate: "asc" }],
+    });
+
+    const map = new Map<string, XlvSnapshotRow[]>();
+    for (const row of rows) {
+      const list = map.get(row.deviceSn) ?? [];
+      list.push(row);
+      map.set(row.deviceSn, list);
+    }
+    for (const [deviceSn, list] of map) {
+      map.set(
+        deviceSn,
+        enrichXlvSnapshotDailyMetrics(dedupeXlvSnapshotsByStatDate(list))
+      );
+    }
+    return map;
+  };
+
+  const result = snapshotLoadGate.then(() => run());
+  snapshotLoadGate = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
 }
 
 export function buildXlvQualificationDetail(

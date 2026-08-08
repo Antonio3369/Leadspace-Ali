@@ -1,7 +1,11 @@
 import { fetchJsonWithRetry } from "@/lib/fetch-json";
-import { readXlvApiCache, writeXlvApiCache } from "@/lib/xlv-api-cache";
+import {
+  readXlvApiCache,
+  runXlvApiOnce,
+  shouldBackgroundRefreshXlvApi,
+} from "@/lib/xlv-api-cache";
 
-/** 带 Tab 缓存的 XLV GET：有缓存先返回，后台静默刷新 */
+/** 带 Tab 缓存的 XLV GET：有缓存先返回，必要时后台静默刷新 */
 export async function fetchXlvJson<T>(
   url: string,
   opts?: {
@@ -17,18 +21,19 @@ export async function fetchXlvJson<T>(
   const cached = useCache ? readXlvApiCache<T>(url) : null;
 
   const load = () =>
-    fetchJsonWithRetry<T>(url, undefined, {
-      context: opts?.context,
-      maxAttempts: opts?.maxAttempts,
-      retryDelayMs: opts?.retryDelayMs,
-      onRetry: opts?.onRetry,
-    }).then((fresh) => {
-      writeXlvApiCache(url, fresh);
-      return fresh;
-    });
+    runXlvApiOnce(url, () =>
+      fetchJsonWithRetry<T>(url, undefined, {
+        context: opts?.context,
+        maxAttempts: opts?.maxAttempts,
+        retryDelayMs: opts?.retryDelayMs,
+        onRetry: opts?.onRetry,
+      })
+    );
 
   if (cached) {
-    void load().catch(() => undefined);
+    if (shouldBackgroundRefreshXlvApi(url)) {
+      void load().catch(() => undefined);
+    }
     return cached;
   }
 
