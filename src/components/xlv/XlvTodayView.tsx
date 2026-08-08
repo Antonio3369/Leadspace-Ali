@@ -32,7 +32,12 @@ interface ApiResponse {
     P2: XlvTodayDeviceItem[];
   };
   listCap: number;
-  filters?: { managers?: string[]; operators?: string[] };
+  operatorCounts?: Record<string, number>;
+  filters?: {
+    managers?: string[];
+    operators?: string[];
+    operatorCounts?: Record<string, number>;
+  };
 }
 
 const TONE_CLASS = {
@@ -65,6 +70,9 @@ export function XlvTodayView({
   const [error, setError] = useState("");
   const [managers, setManagers] = useState<string[]>([]);
   const [operators, setOperators] = useState<string[]>([]);
+  const [operatorCounts, setOperatorCounts] = useState<Record<string, number>>(
+    {}
+  );
   const [refreshKey, setRefreshKey] = useState(0);
   const [retryLabel, setRetryLabel] = useState("");
   const [loadedFilterKey, setLoadedFilterKey] = useState("");
@@ -115,6 +123,7 @@ export function XlvTodayView({
       setData(cached);
       setManagers(cached.filters?.managers ?? []);
       setOperators(cached.filters?.operators ?? []);
+      setOperatorCounts(cached.operatorCounts ?? {});
       setLoading(false);
     }
 
@@ -131,6 +140,7 @@ export function XlvTodayView({
           setData(json);
           setManagers(json.filters?.managers ?? []);
           setOperators(json.filters?.operators ?? []);
+          setOperatorCounts(json.operatorCounts ?? {});
           setRetryLabel("");
           setLoadedFilterKey(filterKey);
         }
@@ -274,10 +284,13 @@ export function XlvTodayView({
                   onChange={(e) => pushQuery({ operator: e.target.value || null })}
                   className="sm:w-40 min-h-11"
                 >
-                  <option value="">全部作业员</option>
+                  <option value="">
+                    全部作业员
+                    {data ? ` (${data.counts.total})` : ""}
+                  </option>
                   {operators.map((o) => (
                     <option key={o} value={o}>
-                      {o}
+                      {o} ({operatorCounts[o] ?? 0})
                     </option>
                   ))}
                 </NotionSelect>

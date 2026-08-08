@@ -167,7 +167,6 @@ export async function getXlvTodayQueues(
 
   const scopeWhere = buildXlvDeviceWhere(user, {
     managerName: opts?.managerName,
-    operatorName: opts?.operatorName,
     search: opts?.search,
   });
 
@@ -186,6 +185,7 @@ export async function getXlvTodayQueues(
     P1: [],
     P2: [],
   };
+  const operatorCounts = new Map<string, number>();
 
   for (const row of enriched) {
     const asOf = row.statDate ?? new Date();
@@ -203,23 +203,38 @@ export async function getXlvTodayQueues(
     });
     if (!priority) continue;
 
-    buckets[priority].push(
-      mapTodayDevice(row, priority, assessmentDaysLeft)
-    );
+    const item = mapTodayDevice(row, priority, assessmentDaysLeft);
+    buckets[priority].push(item);
+    const operator = item.operatorName?.trim();
+    if (operator) {
+      operatorCounts.set(operator, (operatorCounts.get(operator) ?? 0) + 1);
+    }
   }
 
+  const operatorFilter = opts?.operatorName?.trim();
+  const filteredBuckets = operatorFilter
+    ? {
+        P0: buckets.P0.filter((d) => d.operatorName === operatorFilter),
+        P1: buckets.P1.filter((d) => d.operatorName === operatorFilter),
+        P2: buckets.P2.filter((d) => d.operatorName === operatorFilter),
+      }
+    : buckets;
+
   const queues = {
-    P0: sortTodayQueue(buckets.P0, "P0").slice(0, XLV_TODAY_LIST_CAP),
-    P1: sortTodayQueue(buckets.P1, "P1").slice(0, XLV_TODAY_LIST_CAP),
-    P2: sortTodayQueue(buckets.P2, "P2").slice(0, XLV_TODAY_LIST_CAP),
+    P0: sortTodayQueue(filteredBuckets.P0, "P0").slice(0, XLV_TODAY_LIST_CAP),
+    P1: sortTodayQueue(filteredBuckets.P1, "P1").slice(0, XLV_TODAY_LIST_CAP),
+    P2: sortTodayQueue(filteredBuckets.P2, "P2").slice(0, XLV_TODAY_LIST_CAP),
   };
 
   const counts = {
-    P0: buckets.P0.length,
-    P1: buckets.P1.length,
-    P2: buckets.P2.length,
-    pendingFollowUp: buckets.P0.length + buckets.P1.length,
-    total: buckets.P0.length + buckets.P1.length + buckets.P2.length,
+    P0: filteredBuckets.P0.length,
+    P1: filteredBuckets.P1.length,
+    P2: filteredBuckets.P2.length,
+    pendingFollowUp: filteredBuckets.P0.length + filteredBuckets.P1.length,
+    total:
+      filteredBuckets.P0.length +
+      filteredBuckets.P1.length +
+      filteredBuckets.P2.length,
   };
 
   const searchMode = Boolean(opts?.search?.trim());
@@ -229,5 +244,6 @@ export async function getXlvTodayQueues(
     counts,
     queues,
     listCap: XLV_TODAY_LIST_CAP,
+    operatorCounts: Object.fromEntries(operatorCounts),
   };
 }
