@@ -136,7 +136,6 @@ export function XlvDashboardView({
 
     if (cachedSummary) {
       setSummary(cachedSummary.summary);
-      setFilters(cachedSummary.filters);
     }
 
     void fetchXlvJson<SummaryResponse>(summaryUrl, {
@@ -152,7 +151,6 @@ export function XlvDashboardView({
               prev?.inProgressCount ?? summaryJson.summary.inProgressCount,
             invalidCount: prev?.invalidCount ?? summaryJson.summary.invalidCount,
           }));
-          setFilters(summaryJson.filters);
         }
       })
       .catch(() => undefined);
@@ -161,6 +159,23 @@ export function XlvDashboardView({
       cancelled = true;
     };
   }, [active]);
+
+  /** 队员下拉随所选经理收窄（负责人选经理后只看该团队） */
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    const params = new URLSearchParams();
+    if (manager) params.set("manager", manager);
+    const url = `/api/xlv/dashboard/summary?${params}`;
+    void fetchXlvJson<SummaryResponse>(url, { context: "加载筛选" })
+      .then((json) => {
+        if (!cancelled) setFilters(json.filters);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [active, manager]);
 
   useEffect(() => {
     if (!active) return;
