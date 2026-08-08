@@ -131,8 +131,13 @@ export async function resumeImportJobPoll<T>(
 
   if (!probe.ok || probeJob.status === "FAILED") {
     clearJobStorage(endpoint);
-    if (typeof probeJob.errorMessage === "string" && probeJob.errorMessage) {
-      throw new Error(probeJob.errorMessage);
+    const msg = probeJob.errorMessage;
+    // 部署/重启导致的中断：清掉旧任务，让用户直接重新选文件上传
+    if (typeof msg === "string" && msg.includes("服务重启")) {
+      return null;
+    }
+    if (typeof msg === "string" && msg) {
+      throw new Error(msg);
     }
     return null;
   }
@@ -262,9 +267,14 @@ async function pollImportJob<T>(
           return job.result as T;
         }
         clearJobStorage(endpoint);
-        throw new Error(
-          typeof job.errorMessage === "string" ? job.errorMessage : "导入失败"
-        );
+        const failMsg =
+          typeof job.errorMessage === "string" ? job.errorMessage : "导入失败";
+        if (failMsg.includes("服务重启")) {
+          throw new Error(
+            "导入因服务更新中断，请重新选择文件并点击导入（数据未完整写入时需重导）。"
+          );
+        }
+        throw new Error(failMsg);
       }
     }
   } catch (err) {
