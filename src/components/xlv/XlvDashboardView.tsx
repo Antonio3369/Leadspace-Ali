@@ -8,7 +8,6 @@ import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
   parseXlvAlertKind,
   parseXlvQualificationStatus,
-  XLV_ACTIVE_IN_PROGRESS_LABEL,
   XLV_INVENTORY_MANAGER_LABEL,
   XLV_QUALIFICATION_LABELS,
   type XlvAlertKind,
@@ -81,12 +80,7 @@ export function XlvDashboardView({
     searchParams.get("alert") ?? (isAlertsHome && !hasQuery ? "sleep" : null)
   );
   const rawStatus = parseXlvQualificationStatus(searchParams.get("status"));
-  const status =
-    alert !== "all"
-      ? null
-      : rawStatus === "in_progress"
-        ? null
-        : rawStatus;
+  const status = alert !== "all" ? null : rawStatus;
   const manager = searchParams.get("manager") ?? "";
   const operator = searchParams.get("operator") ?? "";
   const search = searchParams.get("q") ?? "";
@@ -122,12 +116,6 @@ export function XlvDashboardView({
     },
     [pathname, router, searchParams]
   );
-
-  useEffect(() => {
-    if (searchParams.get("status") === "in_progress") {
-      pushQuery({ status: null });
-    }
-  }, [searchParams, pushQuery]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -311,7 +299,7 @@ export function XlvDashboardView({
     manager || operator || alert !== "all" || status || search
   );
 
-  const shortcuts = summary
+  const alertShortcuts = summary
     ? [
         {
           id: "single_silence" as const,
@@ -327,12 +315,31 @@ export function XlvDashboardView({
           hint: "≥2 天无收款",
           tone: "amber" as const,
         },
+      ]
+    : [];
+
+  const qualShortcuts = summary
+    ? [
         {
-          id: "active" as const,
-          label: XLV_ACTIVE_IN_PROGRESS_LABEL,
-          value: qualLoaded ? summary.active : null,
-          hint: "未达标且近期有收款",
+          id: "in_progress" as const,
+          label: XLV_QUALIFICATION_LABELS.in_progress,
+          value: qualLoaded ? summary.inProgressCount : null,
+          hint: "两月窗口考核中",
+          tone: "sky" as const,
+        },
+        {
+          id: "qualified" as const,
+          label: XLV_QUALIFICATION_LABELS.qualified,
+          value: qualLoaded ? summary.qualifiedCount : null,
+          hint: "自然月达标",
           tone: "green" as const,
+        },
+        {
+          id: "invalid" as const,
+          label: XLV_QUALIFICATION_LABELS.invalid,
+          value: qualLoaded ? summary.invalidCount : null,
+          hint: "两月未达标",
+          tone: "muted" as const,
         },
       ]
     : [];
@@ -356,8 +363,7 @@ export function XlvDashboardView({
   function selectShortcutFilter(
     id: XlvDeviceAlertKind | XlvQualificationStatus
   ) {
-    const isAlert =
-      id === "single_silence" || id === "dormant" || id === "active";
+    const isAlert = id === "single_silence" || id === "dormant";
     if (isAlert) {
       pushQuery({
         alert: alert === id ? null : id,
@@ -371,30 +377,13 @@ export function XlvDashboardView({
     });
   }
 
-  const qualShortcuts = summary
-    ? [
-        {
-          id: "qualified" as const,
-          label: XLV_QUALIFICATION_LABELS.qualified,
-          value: qualLoaded ? summary.qualifiedCount : null,
-          hint: "自然月达标",
-          tone: "green" as const,
-        },
-        {
-          id: "invalid" as const,
-          label: XLV_QUALIFICATION_LABELS.invalid,
-          value: qualLoaded ? summary.invalidCount : null,
-          hint: "两月未达标",
-          tone: "muted" as const,
-        },
-      ]
-    : [];
-
   const activeShortcut = status ?? (alert !== "all" ? alert : null);
 
   const listTitle =
     status === "qualified"
       ? "已达标商户"
+      : status === "in_progress"
+        ? "考核中商户"
       : status === "invalid"
         ? "无效用户商户"
         : alert === "sleep"
@@ -403,11 +392,9 @@ export function XlvDashboardView({
             ? "单笔沉默商户"
             : alert === "dormant"
               ? "沉睡商户"
-              : alert === "active"
-                ? `${XLV_ACTIVE_IN_PROGRESS_LABEL}商户`
-                : manager === XLV_INVENTORY_MANAGER_LABEL
-                  ? "剩余库存"
-                  : "全部商户";
+              : manager === XLV_INVENTORY_MANAGER_LABEL
+                ? "剩余库存"
+                : "全部商户";
 
   return (
     <PageShell>
@@ -455,39 +442,53 @@ export function XlvDashboardView({
 
       {summary && summary.totalDevices > 0 ? (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {shortcuts.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => selectShortcutFilter(item.id)}
-                className={`rounded-[14px] border px-4 py-3 text-left transition-colors ${toneClass[item.tone]} ${
-                  alert === item.id ? "ring-2 ring-[#2563eb]/30" : ""
-                }`}
-              >
-                <p className="text-xs text-[#64748b]">{item.hint}</p>
-                <p className={`mt-1 text-2xl font-bold tabular-nums ${valueClass[item.tone]}`}>
-                  {item.value == null ? "…" : item.value}
-                </p>
-                <p className="text-sm font-medium text-[#334155]">{item.label}</p>
-              </button>
-            ))}
-            {qualShortcuts.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => selectShortcutFilter(item.id)}
-                className={`rounded-[14px] border px-4 py-3 text-left transition-colors ${toneClass[item.tone]} ${
-                  status === item.id ? "ring-2 ring-[#2563eb]/30" : ""
-                }`}
-              >
-                <p className="text-xs text-[#64748b]">{item.hint}</p>
-                <p className={`mt-1 text-2xl font-bold tabular-nums ${valueClass[item.tone]}`}>
-                  {item.value == null ? "…" : item.value}
-                </p>
-                <p className="text-sm font-medium text-[#334155]">{item.label}</p>
-              </button>
-            ))}
+          <div className="space-y-4">
+            <section className="space-y-2">
+              <h2 className="text-xs font-medium text-[#94a3b8] px-0.5">沉睡预警</h2>
+              <div className="grid grid-cols-2 gap-3">
+                {alertShortcuts.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => selectShortcutFilter(item.id)}
+                    className={`rounded-[14px] border px-4 py-3 text-left transition-colors ${toneClass[item.tone]} ${
+                      alert === item.id ? "ring-2 ring-[#2563eb]/30" : ""
+                    }`}
+                  >
+                    <p className="text-xs text-[#64748b]">{item.hint}</p>
+                    <p
+                      className={`mt-1 text-2xl font-bold tabular-nums ${valueClass[item.tone]}`}
+                    >
+                      {item.value}
+                    </p>
+                    <p className="text-sm font-medium text-[#334155]">{item.label}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section className="space-y-2">
+              <h2 className="text-xs font-medium text-[#94a3b8] px-0.5">考核状态</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {qualShortcuts.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => selectShortcutFilter(item.id)}
+                    className={`rounded-[14px] border px-4 py-3 text-left transition-colors ${toneClass[item.tone]} ${
+                      status === item.id ? "ring-2 ring-[#2563eb]/30" : ""
+                    }`}
+                  >
+                    <p className="text-xs text-[#64748b]">{item.hint}</p>
+                    <p
+                      className={`mt-1 text-2xl font-bold tabular-nums ${valueClass[item.tone]}`}
+                    >
+                      {item.value == null ? "…" : item.value}
+                    </p>
+                    <p className="text-sm font-medium text-[#334155]">{item.label}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
           </div>
 
           {(role === "DIRECTOR" || role === "MANAGER") && (
