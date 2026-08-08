@@ -9,7 +9,7 @@ export const XLV_SLEEP_THRESHOLD_DAYS = 2;
 export const XLV_TODAY_URGENT_SLEEP_DAYS = 7;
 
 /** 今日待办：考核窗口剩余 ≤N 天仍未达标 */
-export const XLV_ASSESSMENT_EXPIRING_DAYS = 7;
+export const XLV_ASSESSMENT_EXPIRING_DAYS = 15;
 
 export type XlvTodayPriority = "P0" | "P1" | "P2";
 

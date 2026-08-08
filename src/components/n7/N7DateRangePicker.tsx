@@ -18,6 +18,7 @@ export function N7DateRangePicker({
   onChange,
   dateLabel = "注册日期",
   trailing,
+  compact = false,
 }: {
   dateFrom: string;
   dateTo: string;
@@ -26,6 +27,8 @@ export function N7DateRangePicker({
   dateLabel?: string;
   /** 放在结束日期右侧，如搜索框；手机端会换行全宽 */
   trailing?: ReactNode;
+  /** 嵌入页头时略收紧间距 */
+  compact?: boolean;
 }) {
   function applyPreset(preset: LedgerDatePreset) {
     const range = getPresetRange(preset);
@@ -37,8 +40,10 @@ export function N7DateRangePicker({
     return range.dateFrom === dateFrom && range.dateTo === dateTo;
   }
 
+  const gap = compact ? "gap-2" : "gap-3";
+
   return (
-    <div className="flex flex-col items-stretch sm:items-end gap-2 w-full sm:w-auto">
+    <div className={`flex flex-col items-stretch w-full sm:w-auto ${gap}`}>
       <div className="flex flex-wrap items-center gap-2">
         {PRESETS.map((preset) => {
           const active = isPresetActive(preset.key);
@@ -47,7 +52,7 @@ export function N7DateRangePicker({
               key={preset.key}
               type="button"
               onClick={() => applyPreset(preset.key)}
-              className={`min-h-10 px-3 py-2 text-sm rounded-lg border transition-colors ${
+              className={`min-h-11 px-3.5 py-2 text-sm rounded-lg border transition-colors ${
                 active
                   ? "bg-[#eff6ff] border-[#bfdbfe] text-[#2563eb] font-medium"
                   : "border-[#e2e8f0] bg-white text-[#64748b] hover:border-[#2563eb]/40 hover:text-[#2563eb]"
@@ -58,25 +63,52 @@ export function N7DateRangePicker({
           );
         })}
       </div>
-      <div className="flex flex-col gap-2 w-full sm:w-auto">
-        <div className="flex flex-wrap items-center gap-2 text-sm text-[#64748b]">
-          <span className="shrink-0 text-xs sm:text-sm">{dateLabel}</span>
+
+      <div className={`flex flex-col ${gap} w-full`}>
+        <p className="text-xs font-medium text-[#64748b] sm:sr-only">{dateLabel}</p>
+
+        {/* 手机：起止日期上下排列，便于点选 */}
+        <div className="grid grid-cols-1 gap-2 w-full sm:hidden">
+          <label className="space-y-1">
+            <span className="text-xs text-[#94a3b8]">{dateLabel}起</span>
+            <NotionInput
+              type="date"
+              value={dateFrom}
+              onChange={(e) => onChange({ dateFrom: e.target.value, dateTo })}
+              className="min-h-11 w-full"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs text-[#94a3b8]">{dateLabel}止</span>
+            <NotionInput
+              type="date"
+              value={dateTo}
+              onChange={(e) => onChange({ dateFrom, dateTo: e.target.value })}
+              className="min-h-11 w-full"
+            />
+          </label>
+        </div>
+
+        {/* 桌面：单行 */}
+        <div className="hidden sm:flex flex-wrap items-center gap-2 text-sm text-[#64748b]">
+          <span className="shrink-0">{dateLabel}</span>
           <NotionInput
             type="date"
             value={dateFrom}
             onChange={(e) => onChange({ dateFrom: e.target.value, dateTo })}
-            className="min-h-10 w-full min-w-0 flex-1 sm:w-[10.5rem] sm:flex-none"
+            className="min-h-10 w-[10.5rem]"
           />
           <span className="text-[#94a3b8] shrink-0">至</span>
           <NotionInput
             type="date"
             value={dateTo}
             onChange={(e) => onChange({ dateFrom, dateTo: e.target.value })}
-            className="min-h-10 w-full min-w-0 flex-1 sm:w-[10.5rem] sm:flex-none"
+            className="min-h-10 w-[10.5rem]"
           />
         </div>
+
         {trailing ? (
-          <div className="w-full sm:w-auto sm:self-end [&_input]:w-full [&_input]:min-h-10 [&_select]:w-full [&_select]:min-h-10">
+          <div className="w-full [&_input]:w-full [&_input]:min-h-11 [&_select]:w-full [&_select]:min-h-11">
             {trailing}
           </div>
         ) : null}

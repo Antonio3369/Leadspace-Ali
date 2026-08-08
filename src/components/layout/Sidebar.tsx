@@ -77,7 +77,7 @@ const XLV_MANAGER_NAV_ITEMS = [
 const XLV_SALES_NAV_ITEMS = [
   { href: xlvPath(), label: "今日待办", icon: "📋" },
   { href: xlvPath("/alerts"), label: "沉睡预警", icon: "😴" },
-  { href: xlvPath("/board"), label: "我的设备", icon: "📊" },
+  { href: xlvPath("/board"), label: "设备看板", icon: "📊" },
   { href: xlvPath("/daily"), label: "回访情况", icon: "📈" },
   { href: xlvPath("/me"), label: "我的", icon: "👤" },
 ];

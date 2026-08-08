@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
-import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 import {
   NotionAlert,
   NotionCallout,
@@ -172,14 +171,6 @@ export function XlvFollowUpView({ role }: { role: string }) {
       <PageHeader
         title="沉睡回访"
         kicker="微信小绿盒"
-        meta={
-          <HistoryBackLink
-            label="← 返回今日待办"
-            fallbackHref={xlvPath()}
-            preferHistoryBack
-            className="inline-flex text-sm font-medium text-[#2563eb] hover:text-[#1d4ed8]"
-          />
-        }
       />
 
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}

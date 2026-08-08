@@ -7,13 +7,13 @@ import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
   NotionAlert,
-  NotionCallout,
   NotionInput,
   NotionSelect,
   PageHeader,
   PageShell,
 } from "@/components/ui/notion";
 import { XlvDeviceCardList } from "@/components/xlv/XlvDeviceCardList";
+import { XLV_ASSESSMENT_EXPIRING_DAYS } from "@/lib/xlv-rules";
 import type { XlvTodayDeviceItem } from "@/services/xlv/today";
 
 interface ApiResponse {
@@ -165,7 +165,7 @@ export function XlvTodayView({ role }: { role: string }) {
           id: "p2",
           label: "考核将到期",
           value: data.counts.P2,
-          hint: "两月窗口剩≤7天",
+          hint: `两月窗口剩≤${XLV_ASSESSMENT_EXPIRING_DAYS}天`,
           href: `${xlvPath("/alerts")}?status=in_progress`,
           tone: "sky" as const,
         },
@@ -258,7 +258,7 @@ export function XlvTodayView({ role }: { role: string }) {
               placeholder="搜索商户 / SN / 作业员"
               value={searchDraft}
               onChange={(e) => setSearchDraft(e.target.value)}
-              className="w-full sm:w-52"
+              className="w-full sm:w-52 min-h-11"
             />
             {showManagerFilter ? (
               <NotionSelect
@@ -269,7 +269,7 @@ export function XlvTodayView({ role }: { role: string }) {
                     operator: null,
                   })
                 }
-                className="sm:w-40"
+                className="sm:w-40 min-h-11"
               >
                 <option value="">全部经理</option>
                 {managers.map((m) => (
@@ -283,7 +283,7 @@ export function XlvTodayView({ role }: { role: string }) {
               <NotionSelect
                 value={operator}
                 onChange={(e) => pushQuery({ operator: e.target.value || null })}
-                className="sm:w-40"
+                className="sm:w-40 min-h-11"
               >
                 <option value="">全部作业员</option>
                 {operators.map((o) => (
@@ -298,15 +298,6 @@ export function XlvTodayView({ role }: { role: string }) {
       />
 
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
-
-      {!search && (
-        <NotionCallout>
-          <p>
-            优先催办：单笔沉默，或沉睡 ≥7 天且未回访。一般沉睡待回访、考核将到期（两月窗口剩
-            ≤7 天仍未达标）分列展示；跟进请进设备详情或沉睡回访。
-          </p>
-        </NotionCallout>
-      )}
 
       {loading && !data ? (
         <p className="text-sm text-[#94a3b8] py-8 text-center">加载中…</p>

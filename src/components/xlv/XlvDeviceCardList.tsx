@@ -96,12 +96,18 @@ export function XlvDeviceCardList({
             const merchant = xlvMerchantLabel(d);
             const right = rightLabel(d);
             const gap = gapLine(d);
-            return (
-              <li
-                key={d.deviceSn}
-                data-list-anchor={d.deviceSn}
-                className="px-3.5 py-3 hover:bg-[#f8fafc]"
-              >
+            const detailHref = xlvPath(
+              `/devices/${encodeURIComponent(d.deviceSn)}${
+                showFollowUpStatus &&
+                "followUpDone" in d &&
+                !(d as XlvDeviceListItem & { followUpDone?: boolean }).followUpDone
+                  ? "#xlv-follow-up"
+                  : ""
+              }`
+            );
+
+            const rowBody = (
+              <>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
@@ -129,12 +135,9 @@ export function XlvDeviceCardList({
                     </div>
 
                     {linkToDetail ? (
-                      <Link
-                        href={xlvPath(`/devices/${encodeURIComponent(d.deviceSn)}`)}
-                        className="block text-sm font-medium text-[#2563eb] hover:text-[#1d4ed8] truncate"
-                      >
+                      <p className="text-sm font-medium text-[#2563eb] truncate">
                         {merchant}
-                      </Link>
+                      </p>
                     ) : (
                       <p className="text-sm font-medium text-[#111827] truncate">
                         {merchant}
@@ -185,7 +188,11 @@ export function XlvDeviceCardList({
                           onPickOperator ? (
                             <button
                               type="button"
-                              onClick={() => onPickOperator(d.operatorName)}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onPickOperator(d.operatorName);
+                              }}
                               className="text-[#2563eb] hover:text-[#1d4ed8]"
                             >
                               {d.operatorName}
@@ -202,7 +209,11 @@ export function XlvDeviceCardList({
                             {onPickManager ? (
                               <button
                                 type="button"
-                                onClick={() => onPickManager(d.managerName)}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  onPickManager(d.managerName);
+                                }}
                                 className="text-[#2563eb] hover:text-[#1d4ed8]"
                               >
                                 {d.managerName}
@@ -227,6 +238,7 @@ export function XlvDeviceCardList({
                       <XlvFollowUpStatusCell
                         deviceSn={d.deviceSn}
                         done={Boolean((d as XlvDeviceListItem & { followUpDone?: boolean }).followUpDone)}
+                        suppressDetailLink={linkToDetail}
                       />
                     ) : (
                       <>
@@ -244,6 +256,25 @@ export function XlvDeviceCardList({
                     )}
                   </div>
                 </div>
+              </>
+            );
+
+            return (
+              <li
+                key={d.deviceSn}
+                data-list-anchor={d.deviceSn}
+                className="border-b border-[#f1f5f9] last:border-b-0"
+              >
+                {linkToDetail ? (
+                  <Link
+                    href={detailHref}
+                    className="block px-3.5 py-3.5 active:bg-[#f8fafc] hover:bg-[#f8fafc] transition-colors"
+                  >
+                    {rowBody}
+                  </Link>
+                ) : (
+                  <div className="px-3.5 py-3 hover:bg-[#f8fafc]">{rowBody}</div>
+                )}
               </li>
             );
           })}

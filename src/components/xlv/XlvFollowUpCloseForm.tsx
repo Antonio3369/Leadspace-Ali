@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
+import { xlvPath } from "@/lib/business-lines";
 import {
   connectStatusLabel,
   followUpFlagLabel,
@@ -32,6 +34,9 @@ function fmt(iso: string | null) {
   return new Date(iso).toLocaleString("zh-CN", { hour12: false });
 }
 
+const choiceBtn =
+  "min-h-11 rounded-xl px-3 py-2.5 text-sm font-medium border transition-colors disabled:opacity-50";
+
 export function XlvFollowUpCloseForm({
   deviceSn,
   done,
@@ -61,6 +66,7 @@ export function XlvFollowUpCloseForm({
   const [message, setMessage] = useState("");
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
 
   const lightbox = previewSrc ? (
     <N7PhotoLightbox src={previewSrc} onClose={() => setPreviewSrc(null)} />
@@ -89,6 +95,7 @@ export function XlvFollowUpCloseForm({
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
+      if (cameraRef.current) cameraRef.current.value = "";
     }
   }
 
@@ -175,7 +182,7 @@ export function XlvFollowUpCloseForm({
                 key={p}
                 type="button"
                 onClick={() => setPreviewSrc(xlvFollowUpPhotoSrc(p))}
-                className="block h-16 w-16 overflow-hidden rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-0"
+                className="block h-20 w-20 sm:h-16 sm:w-16 overflow-hidden rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-0"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -191,6 +198,7 @@ export function XlvFollowUpCloseForm({
           type="button"
           disabled={saving}
           onClick={() => void reopen()}
+          className="w-full sm:w-auto min-h-11"
         >
           {saving ? "保存中…" : "改回待回访"}
         </NotionButton>
@@ -201,20 +209,20 @@ export function XlvFollowUpCloseForm({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {lightbox}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8]">
           沉睡回访跟进
         </p>
-        <p className="mt-1 text-xs text-[#94a3b8]">
+        <p className="mt-1 text-xs text-[#94a3b8] leading-relaxed">
           选择接通结果，可叠加标签，并上传跟进图（至少一张）后完成。
         </p>
       </div>
 
       <div>
-        <p className="text-xs text-[#64748b] mb-1.5">接通结果（必选）</p>
-        <div className="flex flex-wrap gap-2">
+        <p className="text-xs text-[#64748b] mb-2">接通结果（必选）</p>
+        <div className="grid grid-cols-2 gap-2">
           {(
             [
               ["connected", "已接通"],
@@ -226,10 +234,10 @@ export function XlvFollowUpCloseForm({
               type="button"
               disabled={saving}
               onClick={() => setConnectStatus(value)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium border transition-colors disabled:opacity-50 ${
+              className={`${choiceBtn} ${
                 connectStatus === value
                   ? "border-sky-300 bg-sky-50 text-sky-900"
-                  : "border-[#e2e8f0] bg-white text-[#64748b] hover:bg-[#f8fafc]"
+                  : "border-[#e2e8f0] bg-white text-[#64748b] active:bg-[#f8fafc]"
               }`}
             >
               {label}
@@ -239,8 +247,8 @@ export function XlvFollowUpCloseForm({
       </div>
 
       <div>
-        <p className="text-xs text-[#64748b] mb-1.5">可叠加（选填）</p>
-        <div className="flex flex-wrap gap-2">
+        <p className="text-xs text-[#64748b] mb-2">可叠加（选填）</p>
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
           {(
             [
               ["unwilling", "不愿配合"],
@@ -252,10 +260,10 @@ export function XlvFollowUpCloseForm({
               type="button"
               disabled={saving}
               onClick={() => toggleFlag(value)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium border transition-colors disabled:opacity-50 ${
+              className={`${choiceBtn} sm:w-auto ${
                 flags.includes(value)
                   ? "border-amber-300 bg-amber-50 text-amber-900"
-                  : "border-[#e2e8f0] bg-white text-[#64748b] hover:bg-[#f8fafc]"
+                  : "border-[#e2e8f0] bg-white text-[#64748b] active:bg-[#f8fafc]"
               }`}
             >
               {label}
@@ -265,13 +273,18 @@ export function XlvFollowUpCloseForm({
       </div>
 
       <div>
-        <p className="text-xs text-[#64748b] mb-1.5">跟进图（至少一张）</p>
-        <div className="flex flex-wrap gap-2 mb-2">
+        <p className="text-xs text-[#64748b] mb-2">
+          跟进图（至少一张）
+          <span className="text-[#94a3b8] ml-1">
+            {photoUrls.length}/9
+          </span>
+        </p>
+        <div className="flex flex-wrap gap-2 mb-3">
           {photoUrls.map((p) => (
-            <div key={p} className="relative h-16 w-16">
+            <div key={p} className="relative h-20 w-20 sm:h-16 sm:w-16">
               <button
                 type="button"
-                className="h-16 w-16 overflow-hidden rounded-lg border border-[#e2e8f0] p-0"
+                className="h-full w-full overflow-hidden rounded-xl border border-[#e2e8f0] p-0"
                 onClick={() => setPreviewSrc(xlvFollowUpPhotoSrc(p))}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -283,7 +296,8 @@ export function XlvFollowUpCloseForm({
               </button>
               <button
                 type="button"
-                className="absolute -right-1 -top-1 h-5 w-5 rounded-full bg-[#111827] text-[10px] text-white"
+                aria-label="删除图片"
+                className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#111827] text-xs text-white"
                 onClick={() =>
                   setPhotoUrls((prev) => prev.filter((x) => x !== p))
                 }
@@ -292,7 +306,27 @@ export function XlvFollowUpCloseForm({
               </button>
             </div>
           ))}
+          {photoUrls.length < 9 ? (
+            <button
+              type="button"
+              disabled={uploading || saving}
+              onClick={() => cameraRef.current?.click()}
+              className="flex h-20 w-20 sm:h-16 sm:w-16 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[#cbd5e1] bg-[#f8fafc] text-[#64748b] active:bg-[#f1f5f9] disabled:opacity-50"
+            >
+              <span className="text-xl leading-none">📷</span>
+              <span className="text-[0.65rem]">拍照</span>
+            </button>
+          ) : null}
         </div>
+
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/heic,.heic"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => void onPickFiles(e.target.files)}
+        />
         <input
           ref={fileRef}
           type="file"
@@ -301,39 +335,63 @@ export function XlvFollowUpCloseForm({
           className="hidden"
           onChange={(e) => void onPickFiles(e.target.files)}
         />
-        <NotionButton
-          type="button"
-          disabled={uploading || saving || photoUrls.length >= 9}
-          onClick={() => fileRef.current?.click()}
-        >
-          {uploading ? "上传中…" : "添加图片"}
-        </NotionButton>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <NotionButton
+            type="button"
+            variant="secondary"
+            disabled={uploading || saving || photoUrls.length >= 9}
+            onClick={() => cameraRef.current?.click()}
+            className="w-full sm:w-auto min-h-11"
+          >
+            {uploading ? "上传中…" : "拍照上传"}
+          </NotionButton>
+          <NotionButton
+            type="button"
+            variant="ghost"
+            disabled={uploading || saving || photoUrls.length >= 9}
+            onClick={() => fileRef.current?.click()}
+            className="w-full sm:w-auto min-h-11"
+          >
+            从相册选择
+          </NotionButton>
+        </div>
       </div>
 
       <div>
-        <label className="block text-xs text-[#64748b] mb-1.5">
-          备注（选填）
-        </label>
+        <label className="block text-xs text-[#64748b] mb-2">备注（选填）</label>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          rows={2}
+          rows={3}
           maxLength={2000}
           placeholder="沟通结果、下次动作等"
-          className={`${notion.input} w-full resize-y min-h-[56px]`}
+          className={`${notion.input} w-full resize-y min-h-[72px] text-base sm:text-sm`}
         />
+        <NotionButton
+          type="button"
+          disabled={saving || uploading}
+          onClick={() => void submitDone()}
+          className="mt-3 w-full min-h-12 text-base sm:text-sm sm:min-h-10 sm:w-auto"
+        >
+          {saving ? "保存中…" : "完成跟进"}
+        </NotionButton>
       </div>
 
-      <NotionButton
-        type="button"
-        disabled={saving || uploading}
-        onClick={() => void submitDone()}
-      >
-        {saving ? "保存中…" : "完成跟进"}
-      </NotionButton>
-
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
-      {message ? <NotionAlert tone="success">{message}</NotionAlert> : null}
+      {message ? (
+        <NotionAlert tone="success">
+          <div className="space-y-2">
+            <p>{message}</p>
+            <Link
+              href={xlvPath("/daily")}
+              className="inline-flex text-sm font-medium text-[#2563eb] hover:text-[#1d4ed8]"
+            >
+              查看回访情况 →
+            </Link>
+          </div>
+        </NotionAlert>
+      ) : null}
     </div>
   );
 }

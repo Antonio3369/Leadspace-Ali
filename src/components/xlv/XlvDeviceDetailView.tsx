@@ -156,8 +156,8 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
 
       {device ? (
-        <div className="space-y-4">
-          <div className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm space-y-3">
+        <div className="flex flex-col gap-4">
+          <div className="order-1 rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${
@@ -219,15 +219,11 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
             </dl>
           </div>
 
-          {qualificationDetail ? (
-            <XlvAssessmentPanel
-              detail={qualificationDetail}
-              firstTxnDate={device.firstTxnDate}
-            />
-          ) : null}
-
           {showFollowUp ? (
-            <section className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm">
+            <section
+              id="xlv-follow-up"
+              className="order-2 md:order-3 rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm scroll-mt-4"
+            >
               <h2 className="text-sm font-semibold text-[#111827] mb-3">
                 沉睡回访
               </h2>
@@ -244,7 +240,16 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
             </section>
           ) : null}
 
-          <section className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm">
+          {qualificationDetail ? (
+            <div className="order-3 md:order-2">
+              <XlvAssessmentPanel
+                detail={qualificationDetail}
+                firstTxnDate={device.firstTxnDate}
+              />
+            </div>
+          ) : null}
+
+          <section className="order-4 rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-[#111827] mb-3">
               交易趋势
               {device.lastTxnDate ? (

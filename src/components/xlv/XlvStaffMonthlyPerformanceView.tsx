@@ -86,8 +86,11 @@ export function XlvStaffMonthlyPerformanceView({
         kicker={`微信小绿盒 · ${data?.manager.name ?? "—"}`}
         meta={
           <div className="space-y-1 text-sm text-[#64748b]">
-            <p>
+            <p className="hidden sm:block">
               拓展/达标按<strong>首笔交易日期</strong>落在所选区间统计；回访按<strong>跟进日</strong>；唤醒由导入数据自动判定。
+            </p>
+            <p className="sm:hidden">
+              拓展/达标看首笔交易月；回访看跟进日。
             </p>
             {backHref ? (
               <HistoryBackLink
@@ -100,17 +103,35 @@ export function XlvStaffMonthlyPerformanceView({
           </div>
         }
         actions={
-          <N7DateRangePicker
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            onChange={(next) => {
-              const params = new URLSearchParams(searchParams.toString());
-              applyN7DateRangeToParams(params, next.dateFrom, next.dateTo);
-              router.replace(`${basePath}?${params}`, { scroll: false });
-            }}
-          />
+          <div className="hidden md:block">
+            <N7DateRangePicker
+              compact
+              dateLabel="统计区间"
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onChange={(next) => {
+                const params = new URLSearchParams(searchParams.toString());
+                applyN7DateRangeToParams(params, next.dateFrom, next.dateTo);
+                router.replace(`${basePath}?${params}`, { scroll: false });
+              }}
+            />
+          </div>
         }
       />
+
+      <div className="md:hidden sticky top-0 z-10 -mx-4 px-4 py-3 bg-[#f4f6f9]/95 backdrop-blur-sm border-b border-[#eef2f7]">
+        <N7DateRangePicker
+          compact
+          dateLabel="统计区间"
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onChange={(next) => {
+            const params = new URLSearchParams(searchParams.toString());
+            applyN7DateRangeToParams(params, next.dateFrom, next.dateTo);
+            router.replace(`${basePath}?${params}`, { scroll: false });
+          }}
+        />
+      </div>
 
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
       {loading ? <p className="text-sm text-[#94a3b8]">加载中…</p> : null}
@@ -188,12 +209,12 @@ function StatCard({
         ? "text-[#16a34a]"
         : "text-[#111827]";
   return (
-    <div className="rounded-[12px] border border-[#eef2f7] bg-white px-4 py-3 shadow-sm">
+    <div className="rounded-[12px] border border-[#eef2f7] bg-white px-3 py-3 sm:px-4 sm:py-3 shadow-sm">
       <p className="text-[0.72rem] text-[#94a3b8]">{label}</p>
-      <p className={`mt-1 text-xl font-semibold tabular-nums ${valueClass}`}>
+      <p className={`mt-1 text-lg sm:text-xl font-semibold tabular-nums ${valueClass}`}>
         {value.toLocaleString()}
       </p>
-      {sub ? <p className="mt-1 text-[0.68rem] text-[#94a3b8]">{sub}</p> : null}
+      {sub ? <p className="mt-1 text-[0.68rem] leading-snug text-[#94a3b8]">{sub}</p> : null}
     </div>
   );
 }
@@ -228,7 +249,37 @@ function DeviceSection({
         {title}
         <span className="ml-2 text-xs font-normal text-[#94a3b8]">{devices.length} 台</span>
       </h2>
-      <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm overflow-x-auto">
+
+      <div className="sm:hidden space-y-2">
+        {devices.map((d) => (
+          <Link
+            key={d.deviceSn}
+            href={xlvPath(`/devices/${encodeURIComponent(d.deviceSn)}`)}
+            className="block rounded-[12px] border border-[#eef2f7] bg-white px-3.5 py-3 shadow-sm active:bg-[#f8fafc]"
+          >
+            <p className="font-mono text-xs text-[#2563eb]">{d.deviceSn}</p>
+            <p className="mt-1 text-sm font-medium text-[#111827] truncate">
+              {d.merchantName || "—"}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#64748b]">
+              <span>首笔 {d.firstTxnDate ?? "—"}</span>
+              {showQualification ? (
+                <XlvQualificationBadge status={d.qualificationStatus} compact />
+              ) : null}
+              {showWakeUp ? (
+                <>
+                  <span>跟进 {d.followUpAt ?? "—"}</span>
+                  <span className={d.woken ? "text-[#16a34a] font-medium" : "text-amber-800"}>
+                    {d.woken ? "已唤醒" : "仍沉睡"}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      <div className="hidden sm:block rounded-[14px] border border-[#eef2f7] bg-white shadow-sm overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-[#f1f5f9] text-left text-xs text-[#94a3b8]">

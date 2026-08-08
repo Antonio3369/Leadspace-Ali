@@ -75,7 +75,7 @@ export function buildXlvMobileTabs(role: UserRole, pathname: string): MobileTabI
     },
     {
       href: xlvPath("/board"),
-      label: role === "MANAGER" ? "团队看板" : "我的设备",
+      label: role === "MANAGER" ? "团队看板" : "设备看板",
       tabLabel: "看板",
       match: "prefix",
       icon: "board",
