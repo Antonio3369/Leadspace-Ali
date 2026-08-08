@@ -5,7 +5,10 @@ import {
   type XlvQualificationDetail,
   type XlvQualificationStatus,
 } from "@/lib/xlv-rules";
-import { dedupeXlvSnapshotsByStatDate } from "@/services/xlv/snapshot-daily";
+import {
+  dedupeXlvSnapshotsByStatDate,
+  enrichXlvSnapshotDailyMetrics,
+} from "@/services/xlv/snapshot-daily";
 
 export type { XlvQualificationDetail, XlvQualificationStatus };
 
@@ -37,18 +40,23 @@ export async function loadXlvSnapshotMap(deviceSns: string[]) {
       statDate: true,
       cumulativeUsers: true,
       cumulativeTxns: true,
+      dailyUsers: true,
+      dailyTxns: true,
       sleepDays: true,
       lastTxnDate: true,
     },
-    orderBy: { statDate: "asc" },
+    orderBy: [{ deviceSn: "asc" }, { statDate: "asc" }],
   });
 
   const map = new Map<
     string,
     {
+      deviceSn: string;
       statDate: Date;
       cumulativeUsers: number;
       cumulativeTxns: number;
+      dailyUsers: number;
+      dailyTxns: number;
       sleepDays: number;
       lastTxnDate: Date | null;
     }[]
@@ -59,7 +67,10 @@ export async function loadXlvSnapshotMap(deviceSns: string[]) {
     map.set(row.deviceSn, list);
   }
   for (const [deviceSn, list] of map) {
-    map.set(deviceSn, dedupeXlvSnapshotsByStatDate(list));
+    map.set(
+      deviceSn,
+      enrichXlvSnapshotDailyMetrics(dedupeXlvSnapshotsByStatDate(list))
+    );
   }
   return map;
 }

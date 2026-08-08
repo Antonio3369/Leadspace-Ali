@@ -119,8 +119,13 @@ const XLV_COMPANY_HEADERS = ["所属公司", "公司名称", "公司"] as const;
 function headerIndex(headers: string[], names: readonly string[]): number {
   const normalized = headers.map(normalizeHeader);
   for (const name of names) {
-    const idx = normalized.indexOf(normalizeHeader(name));
-    if (idx >= 0) return idx;
+    const n = normalizeHeader(name);
+    const exact = normalized.indexOf(n);
+    if (exact >= 0) return exact;
+    const partial = normalized.findIndex(
+      (h) => h.startsWith(n) || (n.length >= 6 && h.includes(n))
+    );
+    if (partial >= 0) return partial;
   }
   return -1;
 }

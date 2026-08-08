@@ -325,20 +325,23 @@ export async function getXlvDeviceDetail(user: SessionUser, deviceSn: string) {
     throw new Error("设备不存在");
   }
 
-  const snapshots = enrichXlvSnapshotDailyMetrics(
-    (await db.xlvDeviceSnapshot.findMany({
+  const rawSnapshots = (
+    await db.xlvDeviceSnapshot.findMany({
       where: { deviceSn },
       orderBy: { statDate: "asc" },
-    })).map((snap) => ({
-      ...snap,
-      statDate: normalizeXlvStatDate(snap.statDate),
-    }))
-  );
-
-  const qualificationDetail = buildXlvQualificationDetail(device, snapshots);
-  const txnTrend = buildXlvTxnActivityTrend(snapshots).map((p) => ({
-    ...p,
+    })
+  ).map((snap) => ({
+    ...snap,
+    statDate: normalizeXlvStatDate(snap.statDate),
   }));
+
+  const snapshots = enrichXlvSnapshotDailyMetrics(rawSnapshots);
+  const qualificationDetail = buildXlvQualificationDetail(device, snapshots);
+  const txnTrend = buildXlvTxnActivityTrend(snapshots, { skipEnrich: true }).map(
+    (p) => ({
+      ...p,
+    })
+  );
 
   return { device, qualificationDetail, txnTrend };
 }

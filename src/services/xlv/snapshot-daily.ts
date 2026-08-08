@@ -54,10 +54,17 @@ export function enrichXlvSnapshotDailyMetrics<T extends SnapshotDailyFields>(
   snapshots: T[]
 ): T[] {
   const deduped = dedupeXlvSnapshotsByStatDate(snapshots);
-  const enriched = deduped.map((snap) => ({
-    ...snap,
-    statDate: normalizeXlvStatDate(snap.statDate),
-  }));
+  const enriched = deduped
+    .map((snap) => ({
+      ...snap,
+      statDate: normalizeXlvStatDate(snap.statDate),
+    }))
+    .sort(
+      (a, b) =>
+        a.deviceSn.localeCompare(b.deviceSn) ||
+        a.statDate.getTime() - b.statDate.getTime()
+    );
+
   const previousBySn = new Map<string, T>();
 
   for (const snap of enriched) {
@@ -72,8 +79,13 @@ export function enrichXlvSnapshotDailyMetrics<T extends SnapshotDailyFields>(
         previous.cumulativeTxns
       );
 
-      if (usersDelta != null) snap.dailyUsers = usersDelta;
-      if (txnsDelta != null) snap.dailyTxns = txnsDelta;
+      // 优先保留 Excel「当日」列；仅在缺失时用累计差分补全
+      if (snap.dailyUsers <= 0 && usersDelta != null) {
+        snap.dailyUsers = usersDelta;
+      }
+      if (snap.dailyTxns <= 0 && txnsDelta != null) {
+        snap.dailyTxns = txnsDelta;
+      }
     }
     previousBySn.set(snap.deviceSn, snap);
   }
@@ -114,9 +126,11 @@ export function buildXlvTxnActivityTrend(
     dailyTxns: number;
     sleepDays: number;
   }>,
-  opts?: { maxPoints?: number }
+  opts?: { maxPoints?: number; skipEnrich?: boolean }
 ): XlvTxnActivityPoint[] {
-  const enriched = enrichXlvSnapshotDailyMetrics(snapshots);
+  const enriched = opts?.skipEnrich
+    ? snapshots
+    : enrichXlvSnapshotDailyMetrics(snapshots);
   const byDate = new Map<string, XlvTxnActivityPoint>();
 
   for (const snap of enriched) {
@@ -189,7 +203,17 @@ function normalizeAssessmentSnapshots(
   }));
 }
 
-/** 考核月成绩：按自然月内实际收款日汇总（与交易趋势一致），装机月可无快照时用累计估算 */
+function isSnapshotInCalendarMonth(statDate: Date, year: number, month: number) {
+  const [y, m] = xlvStatDateKey(statDate).split("-").map(Number);
+  return y === year && m === month;
+}
+
+function isSnapshotBeforeCalendarMonth(statDate: Date, year: number, month: number) {
+  const [y, m] = xlvStatDateKey(statDate).split("-").map(Number);
+  return y < year || (y === year && m < month);
+}
+
+/** 考核月成绩：月内累计增量（月末截面减月前基线），与微信表「累计*」口径一致 */
 export function computeXlvMonthAssessmentTotals(
   snapshots: Array<{
     deviceSn?: string;
@@ -210,24 +234,49 @@ export function computeXlvMonthAssessmentTotals(
   },
   allowInstallMonthFallback = false
 ): { users: number; txns: number; estimated: boolean } | null {
-  const normalized = normalizeAssessmentSnapshots(snapshots);
-  const trend = buildXlvTxnActivityTrend(normalized, { maxPoints: 9999 });
-  const prefix = `${year}-${String(month).padStart(2, "0")}`;
+  const enriched = enrichXlvSnapshotDailyMetrics(
+    normalizeAssessmentSnapshots(snapshots)
+  );
 
-  let users = 0;
-  let txns = 0;
-  for (const point of trend) {
-    if (!point.date.startsWith(prefix)) continue;
-    users += point.dailyUsers;
-    txns += point.dailyTxns;
-  }
+  const inMonth = enriched
+    .filter((s) => isSnapshotInCalendarMonth(s.statDate, year, month))
+    .sort((a, b) => a.statDate.getTime() - b.statDate.getTime());
 
-  if (users > 0 || txns > 0) {
-    return { users, txns, estimated: false };
+  if (inMonth.length > 0) {
+    const lastInMonth = inMonth[inMonth.length - 1]!;
+
+    // 装机月：取该月最后截面累计（设备当月从 0 起算，对齐微信表末行「累计*」）
+    if (allowInstallMonthFallback) {
+      if (lastInMonth.cumulativeUsers > 0 || lastInMonth.cumulativeTxns > 0) {
+        return {
+          users: lastInMonth.cumulativeUsers,
+          txns: lastInMonth.cumulativeTxns,
+          estimated: false,
+        };
+      }
+    } else {
+      const baseline = enriched
+        .filter((s) => isSnapshotBeforeCalendarMonth(s.statDate, year, month))
+        .sort((a, b) => b.statDate.getTime() - a.statDate.getTime())[0];
+
+      const users = Math.max(
+        0,
+        lastInMonth.cumulativeUsers - (baseline?.cumulativeUsers ?? 0)
+      );
+      const txns = Math.max(
+        0,
+        lastInMonth.cumulativeTxns - (baseline?.cumulativeTxns ?? 0)
+      );
+
+      if (users > 0 || txns > 0) {
+        return { users, txns, estimated: false };
+      }
+    }
   }
 
   if (!allowInstallMonthFallback || !device?.firstTxnDate) return null;
 
+  const prefix = `${year}-${String(month).padStart(2, "0")}`;
   const [fy, fm] = prefix.split("-").map(Number);
   const ft = xlvStatDateKey(device.firstTxnDate);
   const [dy, dm] = ft.split("-").map(Number);
