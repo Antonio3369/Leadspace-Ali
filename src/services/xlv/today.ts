@@ -124,6 +124,7 @@ const TODAY_DEVICE_SELECT = {
   followUpAt: true,
   followUpConnectStatus: true,
   followUpFlags: true,
+  qualificationStatus: true,
 } as const;
 
 /** 非搜索模式：只拉可能进 P0/P1/P2 的设备，避免全量 1000 台 + 快照 */

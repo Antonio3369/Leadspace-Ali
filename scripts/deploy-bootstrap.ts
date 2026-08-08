@@ -59,6 +59,13 @@ async function main() {
   console.log(
     `    重挂 ${relink.totalRelinked} 台，停用孤儿旧号 ${relink.disabledOrphans}`
   );
+
+  console.log("==> 回填小绿盒考核状态（仅未评估设备）...");
+  const { backfillXlvQualificationIfNeeded } = await import(
+    "../src/services/xlv/recompute-qualification"
+  );
+  const xlv = await backfillXlvQualificationIfNeeded();
+  console.log(`    已评估 ${xlv.updated} 台`);
 }
 
 main()

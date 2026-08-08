@@ -105,7 +105,11 @@ export function attachXlvQualifications<T extends XlvDeviceQualificationInput>(
   return attachXlvQualificationDetails(devices, snapshotMap);
 }
 
-export function attachXlvQualificationDetails<T extends XlvDeviceQualificationInput>(
+export function attachXlvQualificationDetails<
+  T extends XlvDeviceQualificationInput & {
+    qualificationStatus?: XlvQualificationStatus;
+  },
+>(
   devices: T[],
   snapshotMap: Map<
     string,
@@ -117,7 +121,8 @@ export function attachXlvQualificationDetails<T extends XlvDeviceQualificationIn
     const qualificationDetail = buildXlvQualificationDetail(device, snapshots);
     return {
       ...device,
-      qualificationStatus: qualificationDetail.status,
+      qualificationStatus:
+        device.qualificationStatus ?? qualificationDetail.status,
       qualificationDetail,
     };
   });

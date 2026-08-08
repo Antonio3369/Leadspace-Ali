@@ -40,6 +40,13 @@ enum XlvMemberRole {
   OPERATOR
 }
 
+/** 小绿盒考核状态（导入后写入，查询时直接 COUNT） */
+enum XlvQualificationStatus {
+  qualified
+  in_progress
+  invalid
+}
+
 enum PhotoStatus {
   PENDING
   APPROVED
@@ -457,8 +464,11 @@ model XlvDeviceRecord {
   followUpById           String?
   followUpConnectStatus  String?
   followUpFlags          String[]            @default([])
-  followUpPhotoUrls      String[]            @default([])
-  sourceMode             DataMode            @default(MANUAL_UPLOAD)
+  followUpPhotoUrls      String[]                 @default([])
+  /** 考核状态：导入后重算写入，页面查询不再加载全量快照 */
+  qualificationStatus    XlvQualificationStatus   @default(in_progress)
+  qualificationAssessedAt  DateTime?
+  sourceMode             DataMode                 @default(MANUAL_UPLOAD)
   importBatchId          String?
   importBatch            ImportLog?          @relation(fields: [importBatchId], references: [id])
   snapshots              XlvDeviceSnapshot[]
@@ -473,6 +483,7 @@ model XlvDeviceRecord {
   @@index([sleepDays])
   @@index([firstTxnDate])
   @@index([followUpDone])
+  @@index([qualificationStatus])
 }
 
 /** 微信小绿盒：组织名册（作业员 → 经理，无 SN） */

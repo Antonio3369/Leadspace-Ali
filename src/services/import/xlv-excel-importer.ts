@@ -28,6 +28,7 @@ import {
   type SnapshotWrite,
   type XlvImportProgress,
 } from "@/services/import/xlv-raw-bulk";
+import { recomputeXlvQualificationForDevices } from "@/services/xlv/recompute-qualification";
 
 function createId() {
   return `c${randomBytes(12).toString("hex")}`;
@@ -196,6 +197,17 @@ async function importRawRows(
     importBatchId,
     onProgress
   );
+
+  await onProgress?.(88, "更新考核状态…");
+  await recomputeXlvQualificationForDevices([...allSns], {
+    onProgress: async (done, total) => {
+      const pct = 88 + Math.round((done / Math.max(total, 1)) * 10);
+      await onProgress?.(
+        pct,
+        `考核状态 ${done.toLocaleString()} / ${total.toLocaleString()} 台…`
+      );
+    },
+  });
 
   return {
     snapshotRows: snapshotRowCount,
@@ -371,6 +383,9 @@ async function importAssignmentRows(
     await upsertSnapshotsBulk(snapshotsToWrite, importBatchId);
     snapshotRows = snapshotsToWrite.length;
   }
+
+  const affectedSns = [...new Set(rows.map((r) => r.deviceSn))];
+  await recomputeXlvQualificationForDevices(affectedSns);
 
   return {
     snapshotRows,

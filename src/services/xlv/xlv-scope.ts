@@ -5,6 +5,7 @@ import { PermissionError } from "@/lib/permissions";
 import { canAccessBusinessLine } from "@/lib/business-lines";
 import {
   type XlvAlertKind,
+  type XlvQualificationStatus,
   XLV_INVENTORY_MANAGER_KEY,
   XLV_INVENTORY_MANAGER_LABEL,
   XLV_SLEEP_THRESHOLD_DAYS,
@@ -141,6 +142,7 @@ export function buildXlvDeviceWhere(
     managerName?: string | null;
     operatorName?: string | null;
     search?: string | null;
+    qualificationStatus?: XlvQualificationStatus | null;
   }
 ): Prisma.XlvDeviceRecordWhereInput {
   assertCanViewXlv(user);
@@ -181,6 +183,14 @@ export function buildXlvDeviceWhere(
         { managerName: { contains: q, mode: "insensitive" } },
       ],
     });
+  }
+
+  if (opts?.qualificationStatus) {
+    parts.push({ qualificationStatus: opts.qualificationStatus });
+  }
+
+  if (opts?.alert === "active") {
+    parts.push({ qualificationStatus: { not: "qualified" } });
   }
 
   return parts.length === 1 ? parts[0]! : { AND: parts };

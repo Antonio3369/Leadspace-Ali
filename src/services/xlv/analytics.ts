@@ -7,7 +7,6 @@ import {
   XLV_INVENTORY_MANAGER_LABEL,
   XLV_SLEEP_THRESHOLD_DAYS,
   isXlvUnassignedManager,
-  isXlvActiveInProgress,
   type XlvQualificationStatus,
   xlvQualificationGapLine,
   xlvManagerDisplayName,
@@ -22,8 +21,8 @@ import {
 import {
   attachXlvQualificationDetails,
   loadXlvSnapshotMap,
-  xlvQualificationOf,
 } from "@/services/xlv/assessment";
+import { countXlvQualificationSummary } from "@/services/xlv/recompute-qualification";
 import {
   resolveXlvDeviceSortMode,
   sortXlvDevices,
@@ -99,6 +98,7 @@ const LIST_DEVICE_SELECT = {
   sleepDays: true,
   lastTxnDate: true,
   firstTxnDate: true,
+  qualificationStatus: true,
 } as const;
 
 function buildXlvDeviceListItems(
@@ -117,7 +117,7 @@ function buildXlvDeviceListItems(
     lastTxnDate: isoDate(row.lastTxnDate),
     firstTxnDate: isoDate(row.firstTxnDate),
     alertKind: classifyXlvAlert(row),
-    qualificationStatus: row.qualificationStatus,
+    qualificationStatus: row.qualificationStatus as XlvQualificationStatus,
     qualificationGapLine: xlvQualificationGapLine(row.qualificationDetail),
   }));
 }
@@ -218,36 +218,7 @@ export async function getXlvDashboardQualSummary(
     "active" | "qualifiedCount" | "inProgressCount" | "invalidCount"
   >
 > {
-  assertCanViewXlv(user);
-  const baseWhere = buildXlvRoleWhere(user);
-
-  const assignedRows = await db.xlvDeviceRecord.findMany({
-    where: { AND: [baseWhere, buildXlvAssignedDeviceWhere()] },
-    select: {
-      deviceSn: true,
-      firstTxnDate: true,
-      cumulativeUsers: true,
-      cumulativeTxns: true,
-      sleepDays: true,
-    },
-  });
-  const snapshotMap = await loadXlvSnapshotMap(assignedRows.map((d) => d.deviceSn));
-  let qualifiedCount = 0;
-  let inProgressCount = 0;
-  let invalidCount = 0;
-  let active = 0;
-  for (const row of assignedRows) {
-    const snapshots = snapshotMap.get(row.deviceSn) ?? [];
-    const status = xlvQualificationOf(row, snapshots);
-    if (status === "qualified") qualifiedCount += 1;
-    else if (status === "in_progress") inProgressCount += 1;
-    else if (status === "invalid") invalidCount += 1;
-    if (isXlvActiveInProgress({ ...row, qualificationStatus: status })) {
-      active += 1;
-    }
-  }
-
-  return { active, qualifiedCount, inProgressCount, invalidCount };
+  return countXlvQualificationSummary(user);
 }
 
 type XlvDashboardListOpts = {
@@ -257,10 +228,6 @@ type XlvDashboardListOpts = {
   search?: string | null;
   qualificationStatus?: XlvQualificationStatus | null;
 };
-
-function needsPostQualFilter(opts: XlvDashboardListOpts) {
-  return Boolean(opts.qualificationStatus) || opts.alert === "active";
-}
 
 /** 看板设备列表（分页）：默认先 enrich 当前页，减轻首屏内存 */
 export async function getXlvDashboardDevicesPage(
@@ -277,47 +244,19 @@ export async function getXlvDashboardDevicesPage(
   assertCanViewXlv(user);
   const offset = Math.max(0, opts.offset ?? 0);
   const limit = opts.limit ?? XLV_DASHBOARD_PAGE_SIZE;
-  const listWhere = buildXlvDeviceWhere(user, opts);
+  const listWhere = buildXlvDeviceWhere(user, {
+    alert: opts.alert,
+    managerName: opts.managerName,
+    operatorName: opts.operatorName,
+    search: opts.search,
+    qualificationStatus: opts.qualificationStatus,
+  });
 
   const sortMode = resolveXlvDeviceSortMode({
     alert: opts.alert,
     qualificationStatus: opts.qualificationStatus,
     search: opts.search,
   });
-
-  if (needsPostQualFilter(opts)) {
-    const rows = await db.xlvDeviceRecord.findMany({
-      where: listWhere,
-      select: LIST_DEVICE_SELECT,
-    });
-    const snapshotMap = await loadXlvSnapshotMap(rows.map((r) => r.deviceSn));
-    let enriched = attachXlvQualificationDetails(rows, snapshotMap);
-    if (opts.qualificationStatus) {
-      enriched = enriched.filter(
-        (d) => d.qualificationStatus === opts.qualificationStatus
-      );
-    } else if (opts.alert === "active") {
-      enriched = enriched.filter((d) =>
-        isXlvActiveInProgress({
-          sleepDays: d.sleepDays,
-          cumulativeTxns: d.cumulativeTxns,
-          qualificationStatus: d.qualificationStatus,
-        })
-      );
-    }
-    const sorted = sortXlvDevices(
-      enriched,
-      sortMode,
-      opts.qualificationStatus
-    );
-    const total = sorted.length;
-    const page = sorted.slice(offset, offset + limit);
-    return {
-      total,
-      devices: buildXlvDeviceListItems(page),
-      hasMore: offset + page.length < total,
-    };
-  }
 
   const [total, pageRows] = await Promise.all([
     db.xlvDeviceRecord.count({ where: listWhere }),
