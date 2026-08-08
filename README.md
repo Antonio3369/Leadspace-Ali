@@ -2,7 +2,7 @@
 
 支付宝业务数据统计、展示与管理系统（Leadspace.Alipay）。
 
-登录入口分两路：**支付宝业务**（小蓝环 + N7，共用 `User`，`/login` → `/alipay`）与 **微信小绿盒**（独立 `XlvMemberAccount`，`/login/xlv`）。未登录访问 `/` 先选平台。产品约定与路由详见 [Leadspace.Ali.md](./Leadspace.Ali.md)（**最后更新 2026-08-08 · 小绿盒关单回告经理**）。
+登录入口分两路：**支付宝业务**（小蓝环 + N7，共用 `User`，`/login` → `/alipay`）与 **微信小绿盒**（独立 `XlvMemberAccount`，`/login/xlv`）。未登录访问 `/` 先选平台。产品约定与路由详见 [Leadspace.Ali.md](./Leadspace.Ali.md)（**最后更新 2026-08-09**）。
 
 ## 技术栈
 
@@ -156,8 +156,8 @@ npx tsx scripts/enable-manager.ts <登录名> [密码]
 - 未登录 `/` 选 **微信业务** → `/login/xlv`；组织名册导入后自动开通 `XlvMemberAccount`（拼音 + `123456` + 首登改密）
 - 三表 Excel 导入（`/xlv/admin/import`）：**① 运营原始表 → ② 组织名册 → ③ SN 归属**；导入完成展示摘要
 - **今日待办** `/xlv`：P0/P1/P2 分区；经理顶栏「队员已处理」→ `/xlv/notifications`
-- **设备** `/xlv/alerts`：沉睡预警 + 考核状态分卡；单笔沉默 / 沉睡筛选
-- **沉睡回访** `/xlv/follow-up`（无侧栏入口）：跟进需跟进图（至少一张）；关单后通知所属经理（站内，`XlvMemberAccount`）
+- **设备** `/xlv/alerts`：沉睡预警 + 考核状态分卡；负责人选经理后队员下拉仅该团队
+- **沉睡回访** `/xlv/follow-up`（无侧栏入口）：跟进需跟进图；关单通知经理 + 抄送 `admin`
 - **回访情况** `/xlv/daily`：回访跟进 / 已唤醒 / 仍沉睡；按**跟进日**筛选
 - **团队看板** `/xlv/board`：经理 → 队员 → 设备；排行行纯文字彩色指标
 - **队员月绩效** `/xlv/managers/.../performance`

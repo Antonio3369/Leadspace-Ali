@@ -21,7 +21,7 @@ export default async function XlvAlertsPage() {
     return (
       <PageShell>
         <PageHeader
-          title="沉睡预警"
+          title="设备"
           kicker="微信小绿盒"
           meta={<p>当前账号未开通微信小绿盒，请联系管理员。</p>}
         />
