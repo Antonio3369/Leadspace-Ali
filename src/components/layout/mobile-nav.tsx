@@ -69,7 +69,7 @@ export function buildXlvMobileTabs(role: UserRole, pathname: string): MobileTabI
     {
       href: xlvPath("/alerts"),
       label: "沉睡预警",
-      tabLabel: "预警",
+      tabLabel: "设备",
       match: "prefix",
       icon: "follow",
     },
