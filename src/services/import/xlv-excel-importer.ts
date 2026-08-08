@@ -1,4 +1,5 @@
 import { randomBytes } from "crypto";
+import fs from "fs";
 import { db } from "@/lib/db";
 import {
   parseXlvExcelBuffer,
@@ -108,24 +109,30 @@ async function importRawRows(
   await onProgress?.(18, `整理 ${rows.length.toLocaleString()} 行数据…`);
 
   const dedupedSnapshots = uniqueSnapshots(rows);
+  const snapshotRowCount = dedupedSnapshots.length;
   await onProgress?.(
     19,
-    `去重后 ${dedupedSnapshots.length.toLocaleString()} 条快照，计算日增量…`
+    `去重后 ${snapshotRowCount.toLocaleString()} 条快照，按设备分批写入…`
   );
 
   const latestBySn = pickLatestRawBySn(rows);
-  const sortedForEnrich = [...dedupedSnapshots].sort(
-    (a, b) =>
-      a.deviceSn.localeCompare(b.deviceSn) ||
-      a.statDate.getTime() - b.statDate.getTime()
+  const statDateRange = statDateRangeFromRows(rows);
+  const fileDuplicateRowsCollapsed = Math.max(
+    0,
+    rows.length - dedupedSnapshots.length
   );
-  const snapshots = enrichXlvSnapshotDailyMetrics(sortedForEnrich);
-  for (const s of snapshots) s.importBatchId = importBatchId;
 
-  const allSns = new Set([
-    ...snapshots.map((s) => s.deviceSn),
-    ...latestBySn.keys(),
-  ]);
+  const byDevice = new Map<string, SnapshotWrite[]>();
+  for (const snap of dedupedSnapshots) {
+    const list = byDevice.get(snap.deviceSn) ?? [];
+    list.push(snap);
+    byDevice.set(snap.deviceSn, list);
+  }
+  for (const list of byDevice.values()) {
+    list.sort((a, b) => a.statDate.getTime() - b.statDate.getTime());
+  }
+
+  const allSns = new Set([...byDevice.keys(), ...latestBySn.keys()]);
 
   await onProgress?.(20, `确保设备记录 ${allSns.size.toLocaleString()} 台…`);
   const CREATE_CHUNK = 500;
@@ -140,11 +147,49 @@ async function importRawRows(
     });
   }
 
-  const snapshotStats = await upsertSnapshotsBulk(
-    snapshots,
-    importBatchId,
-    onProgress
-  );
+  const deviceSns = [...byDevice.keys()].sort();
+  const snapshotStats = {
+    created: 0,
+    updated: 0,
+    duplicatesRemoved: 0,
+  };
+  let writeBatch: SnapshotWrite[] = [];
+
+  const flushWriteBatch = async () => {
+    if (writeBatch.length === 0) return;
+    const stats = await upsertSnapshotsBulk(
+      writeBatch,
+      importBatchId,
+      onProgress
+    );
+    snapshotStats.created += stats.created;
+    snapshotStats.updated += stats.updated;
+    snapshotStats.duplicatesRemoved += stats.duplicatesRemoved;
+    writeBatch = [];
+  };
+
+  for (let i = 0; i < deviceSns.length; i++) {
+    const deviceSn = deviceSns[i]!;
+    const deviceSnaps = byDevice.get(deviceSn) ?? [];
+    const enriched = enrichXlvSnapshotDailyMetrics(
+      deviceSnaps.map((snap) => ({ ...snap, importBatchId }))
+    );
+    writeBatch.push(...enriched);
+
+    if (writeBatch.length >= 500) {
+      await flushWriteBatch();
+    }
+
+    if (i > 0 && i % 80 === 0) {
+      const pct = 20 + Math.round((i / deviceSns.length) * 55);
+      await onProgress?.(
+        pct,
+        `写入快照 ${i.toLocaleString()} / ${deviceSns.length.toLocaleString()} 台…`
+      );
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }
+  await flushWriteBatch();
 
   const { createdDevices, updatedDevices } = await bulkUpdateDevicesFromRaw(
     latestBySn,
@@ -153,13 +198,13 @@ async function importRawRows(
   );
 
   return {
-    snapshotRows: snapshots.length,
+    snapshotRows: snapshotRowCount,
     createdDevices,
     updatedDevices,
     snapshotStats,
-    fileDuplicateRowsCollapsed: Math.max(0, rows.length - dedupedSnapshots.length),
+    fileDuplicateRowsCollapsed,
     uniqueDevices: allSns.size,
-    statDateRange: statDateRangeFromRows(rows),
+    statDateRange,
   };
 }
 
@@ -344,6 +389,29 @@ async function importAssignmentRows(
 }
 
 export async function importXlvExcelFile(
+  buffer: Buffer,
+  fileName: string,
+  uploadedById: string,
+  opts?: { onProgress?: XlvImportProgress }
+): Promise<XlvImportResult> {
+  return importXlvExcelBuffer(buffer, fileName, uploadedById, opts);
+}
+
+export async function importXlvExcelFileFromPath(
+  filePath: string,
+  fileName: string,
+  uploadedById: string,
+  opts?: { onProgress?: XlvImportProgress }
+): Promise<XlvImportResult> {
+  const buffer = fs.readFileSync(filePath);
+  try {
+    return await importXlvExcelBuffer(buffer, fileName, uploadedById, opts);
+  } finally {
+    // 解析后释放文件缓冲引用，降低大表导入峰值内存
+  }
+}
+
+async function importXlvExcelBuffer(
   buffer: Buffer,
   fileName: string,
   uploadedById: string,

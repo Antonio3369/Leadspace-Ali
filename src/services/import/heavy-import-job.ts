@@ -9,13 +9,18 @@ import {
 } from "@/lib/import-lock";
 import { importPersonnelFromBuffer } from "@/services/import/personnel-importer";
 import { importN7ExcelFile } from "@/services/import/n7-excel-importer";
-import { importXlvExcelFile } from "@/services/import/xlv-excel-importer";
+import { importXlvExcelFileFromPath } from "@/services/import/xlv-excel-importer";
 import { importExcelFile } from "@/services/import/excel-importer";
 
 export type HeavyImportKind = "personnel" | "n7" | "xlh-excel" | "xlv";
 
-/** 应用启动时：释放内存锁，并将孤儿导入任务标为失败 */
+/** 应用启动时：释放内存锁，并将孤儿导入任务标为失败（每进程仅执行一次） */
+const RECOVERED_KEY = Symbol.for("leadspace.heavyImport.recovered");
+
 export async function recoverOrphanedHeavyImportJobs() {
+  if ((globalThis as Record<symbol, boolean>)[RECOVERED_KEY]) return;
+  (globalThis as Record<symbol, boolean>)[RECOVERED_KEY] = true;
+
   resetImportLock();
   const result = await db.heavyImportJob
     .updateMany({
@@ -138,22 +143,24 @@ async function runHeavyImportJob(jobId: string) {
       },
     });
 
-    buffer = fs.readFileSync(filePath);
     let result: unknown;
     let finalStatus: "SUCCESS" | "PARTIAL" | "FAILED" = "SUCCESS";
 
     if (job.kind === "personnel") {
+      buffer = fs.readFileSync(filePath);
       result = {
         type: "personnel",
         status: "SUCCESS",
         ...(await importPersonnelFromBuffer(buffer)),
       };
     } else if (job.kind === "n7") {
+      buffer = fs.readFileSync(filePath);
       const n7 = await importN7ExcelFile(buffer, job.fileName, job.uploadedById);
       result = n7;
       if (n7.status === "FAILED") finalStatus = "FAILED";
       else if (n7.status === "PARTIAL") finalStatus = "PARTIAL";
     } else if (job.kind === "xlh-excel") {
+      buffer = fs.readFileSync(filePath);
       result = await importExcelFile(buffer, job.fileName, job.uploadedById);
     } else if (job.kind === "xlv") {
       let lastWrittenProgress = -1;
@@ -167,10 +174,12 @@ async function runHeavyImportJob(jobId: string) {
           })
           .catch(() => undefined);
       };
-      const xlv = await importXlvExcelFile(buffer, job.fileName, job.uploadedById, {
-        onProgress: reportProgress,
-      });
-      buffer = null;
+      const xlv = await importXlvExcelFileFromPath(
+        filePath,
+        job.fileName,
+        job.uploadedById,
+        { onProgress: reportProgress }
+      );
       result = xlv;
       if (xlv.status === "FAILED") finalStatus = "FAILED";
       else if (xlv.status === "PARTIAL") finalStatus = "PARTIAL";
