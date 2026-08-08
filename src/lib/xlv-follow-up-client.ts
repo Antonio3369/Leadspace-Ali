@@ -1,3 +1,4 @@
+import { readResponseJson } from "@/lib/fetch-json";
 import { followUpPhotoPublicUrl } from "@/lib/xlv-follow-up";
 
 export type XlvFollowUpPatchResult = {
@@ -24,7 +25,10 @@ export async function patchXlvDeviceFollowUp(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const json = await res.json();
+  const json = await readResponseJson<{ error?: string } & XlvFollowUpPatchResult>(
+    res,
+    "保存回访"
+  );
   if (!res.ok) throw new Error(json.error || "保存失败");
   return {
     followUpDone: json.followUpDone,
@@ -47,8 +51,15 @@ export async function uploadXlvFollowUpPhoto(
     method: "POST",
     body: form,
   });
-  const json = await res.json();
+  const json = await readResponseJson<{
+    error?: string;
+    relativePath?: string;
+    url?: string;
+  }>(res, "上传图片");
   if (!res.ok) throw new Error(json.error || "上传失败");
+  if (!json.relativePath || !json.url) {
+    throw new Error("上传失败：服务器未返回文件地址");
+  }
   return {
     relativePath: json.relativePath,
     url: json.url,

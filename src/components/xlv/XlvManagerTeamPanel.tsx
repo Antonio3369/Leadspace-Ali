@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { readResponseJson } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import { EnableSuccessModal } from "@/components/admin/EnableSuccessModal";
 import {
@@ -72,7 +73,12 @@ export function XlvManagerTeamPanel({ backHref }: { backHref?: string }) {
     setError("");
     try {
       const res = await fetch("/api/xlv/team");
-      const json = await res.json();
+      const json = await readResponseJson<{
+        error?: string;
+        accounts?: MemberAccountRow[];
+        rosterRows?: number;
+        backfillHint?: string;
+      }>(res, "加载队员");
       if (!res.ok) throw new Error(json.error || "加载失败");
       setAccounts(json.accounts ?? []);
       setRosterRows(Number(json.rosterRows) || 0);
@@ -102,9 +108,16 @@ export function XlvManagerTeamPanel({ backHref }: { backHref?: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "reset", accountId: account.id }),
     });
-    const data = await res.json();
+    const data = await readResponseJson<{
+      error?: string;
+      user?: { name: string; username: string; password: string };
+    }>(res, enabling ? "开通登录" : "重置密码");
     if (!res.ok) {
       setError(data.error ?? (enabling ? "开通失败" : "重置失败"));
+      return;
+    }
+    if (!data.user) {
+      setError(enabling ? "开通失败" : "重置失败");
       return;
     }
     setCredSuccess({
@@ -127,7 +140,7 @@ export function XlvManagerTeamPanel({ backHref }: { backHref?: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "status", accountId: account.id, status }),
     });
-    const data = await res.json();
+    const data = await readResponseJson<{ error?: string }>(res, `${label}账号`);
     if (!res.ok) {
       setError(data.error ?? `${label}失败`);
       return;

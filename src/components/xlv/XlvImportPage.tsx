@@ -83,7 +83,6 @@ export function XlvImportPage() {
 
     let cancelled = false;
     void (async () => {
-      setUploading(true);
       setError("");
       setMessage("");
       setResult(null);
@@ -92,6 +91,7 @@ export function XlvImportPage() {
           "/api/import/xlv",
           (value, label) => {
             if (!cancelled) {
+              setUploading(true);
               setProgress(value);
               setProgressLabel(label);
             }

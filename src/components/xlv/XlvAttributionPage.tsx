@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { readResponseJson } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import {
   NotionAlert,
@@ -76,7 +77,10 @@ export function XlvAttributionPage() {
 
   const loadReport = useCallback(async () => {
     const res = await fetch("/api/xlv/admin/attribution");
-    const json = await res.json();
+    const json = await readResponseJson<{ error?: string } & AttributionReport>(
+      res,
+      "加载归属"
+    );
     if (!res.ok) throw new Error(json.error || "加载失败");
     setReport(json);
   }, []);
@@ -92,7 +96,11 @@ export function XlvAttributionPage() {
       });
       if (search) params.set("q", search);
       const res = await fetch(`/api/xlv/admin/attribution?${params}`);
-      const json = await res.json();
+      const json = await readResponseJson<{
+        error?: string;
+        devices?: UnattachedDevice[];
+        total?: number;
+      }>(res, "加载设备");
       if (!res.ok) throw new Error(json.error || "加载失败");
       setDevices(json.devices ?? []);
       setDeviceTotal(json.total ?? 0);
@@ -103,7 +111,10 @@ export function XlvAttributionPage() {
 
   const loadLookup = useCallback(async () => {
     const res = await fetch("/api/xlv/admin/attribution?view=lookup");
-    const json = await res.json();
+    const json = await readResponseJson<{ error?: string } & RosterLookup>(
+      res,
+      "加载名册"
+    );
     if (!res.ok) throw new Error(json.error || "加载失败");
     setLookup(json);
   }, []);
@@ -161,12 +172,18 @@ export function XlvAttributionPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "relink" }),
       });
-      const json = await res.json();
+      const json = await readResponseJson<{
+        error?: string;
+        report?: AttributionReport;
+        result?: { devicesUpdated?: number; userIdsCleared?: number };
+        accountBackfill?: { created?: number; updated?: number };
+      }>(res, "同步归属");
       if (!res.ok) throw new Error(json.error || "同步失败");
-      setReport(json.report);
+      if (json.report) setReport(json.report);
+      const result = json.result ?? {};
       setMessage(
         [
-          `已从组织名册同步 ${json.result.devicesUpdated ?? 0} 台设备；清除历史系统账号关联 ${json.result.userIdsCleared ?? 0} 条`,
+          `已从组织名册同步 ${result.devicesUpdated ?? 0} 台设备；清除历史系统账号关联 ${result.userIdsCleared ?? 0} 条`,
           json.accountBackfill?.created
             ? `新开登录账号 ${json.accountBackfill.created} 个`
             : null,
@@ -205,7 +222,7 @@ export function XlvAttributionPage() {
           operatorName: editOperatorName,
         }),
       });
-      const json = await res.json();
+      const json = await readResponseJson<{ error?: string }>(res, "保存归属");
       if (!res.ok) throw new Error(json.error || "保存失败");
       setEditing(null);
       setMessage(`已更新 ${editing.deviceSn} 的归属姓名`);

@@ -13,6 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { readResponseJson } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import {
   applyN7DateRangeToParams,
@@ -75,7 +76,10 @@ export function XlvDailyView({
     setError("");
     fetch(`/api/xlv/daily?${rangeQs}`)
       .then(async (res) => {
-        const json = await res.json();
+        const json = await readResponseJson<ApiResponse & { error?: string }>(
+          res,
+          "加载日报"
+        );
         if (!res.ok) throw new Error(json.error || "加载失败");
         if (!cancelled) {
           setData(json);

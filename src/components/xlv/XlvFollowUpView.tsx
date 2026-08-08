@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { readResponseJson } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
@@ -95,7 +96,10 @@ export function XlvFollowUpView({ role }: { role: string }) {
 
     fetch(`/api/xlv/follow-up?${params.toString()}`)
       .then(async (res) => {
-        const json = await res.json();
+        const json = await readResponseJson<ApiResponse & { error?: string }>(
+          res,
+          "加载回访"
+        );
         if (!res.ok) throw new Error(json.error || "加载失败");
         if (!cancelled) setData(json);
       })
@@ -114,7 +118,10 @@ export function XlvFollowUpView({ role }: { role: string }) {
   useEffect(() => {
     fetch("/api/xlv/dashboard")
       .then(async (res) => {
-        const json = await res.json();
+        const json = await readResponseJson<{
+          error?: string;
+          filters?: { managers?: string[]; operators?: string[] };
+        }>(res, "加载筛选");
         if (!res.ok) return;
         setManagers(json.filters?.managers ?? []);
         setOperators(json.filters?.operators ?? []);
@@ -144,7 +151,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
 
       const res = await fetch(`/api/xlv/follow-up/export?${params}`);
       if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
+        const json = await readResponseJson<{ error?: string }>(res, "导出");
         throw new Error(json.error ?? "导出失败");
       }
       const blob = await res.blob();

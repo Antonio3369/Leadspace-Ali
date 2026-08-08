@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { readResponseJson } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
@@ -110,7 +111,10 @@ export function XlvTodayView({ role }: { role: string }) {
 
     fetch(`/api/xlv/today?${params}`)
       .then(async (res) => {
-        const json = await res.json();
+        const json = await readResponseJson<ApiResponse & { error?: string }>(
+          res,
+          "加载今日"
+        );
         if (!res.ok) throw new Error(json.error || "加载失败");
         if (!cancelled) setData(json);
       })
@@ -132,7 +136,10 @@ export function XlvTodayView({ role }: { role: string }) {
   useEffect(() => {
     fetch("/api/xlv/dashboard")
       .then(async (res) => {
-        const json = await res.json();
+        const json = await readResponseJson<{
+          error?: string;
+          filters?: { managers?: string[]; operators?: string[] };
+        }>(res, "加载筛选");
         if (!res.ok) return;
         setManagers(json.filters?.managers ?? []);
         setOperators(json.filters?.operators ?? []);

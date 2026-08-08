@@ -114,9 +114,17 @@ export async function resumeImportJobPoll<T>(
   }
   if (!jobId) return null;
 
-  const probe = await fetch(`/api/import/jobs/${encodeURIComponent(jobId)}`, {
-    credentials: "same-origin",
-  });
+  let probe: Response;
+  try {
+    probe = await fetch(`/api/import/jobs/${encodeURIComponent(jobId)}`, {
+      credentials: "same-origin",
+    });
+  } catch {
+    return null;
+  }
+  if (isTransientHttpStatus(probe.status)) {
+    return null;
+  }
   const probeJob = (await readJsonBody(probe, "查询导入进度")) as {
     status?: string;
     errorMessage?: string | null;

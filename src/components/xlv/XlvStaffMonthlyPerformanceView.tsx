@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { readResponseJson } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import {
   applyN7DateRangeToParams,
@@ -64,7 +65,10 @@ export function XlvStaffMonthlyPerformanceView({
       `/api/xlv/managers/${encodeURIComponent(managerKey)}/staff/${encodeURIComponent(staffKey)}/performance?${rangeQs}`
     )
       .then(async (res) => {
-        const json = await res.json();
+        const json = await readResponseJson<ApiResponse & { error?: string }>(
+          res,
+          "加载绩效"
+        );
         if (!res.ok) throw new Error(json.error || "加载失败");
         if (!cancelled) setData(json);
       })

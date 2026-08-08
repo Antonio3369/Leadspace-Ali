@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { readResponseJson } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
@@ -99,7 +100,10 @@ export function XlvDashboardView({ role }: { role: string }) {
 
     fetch(`/api/xlv/dashboard?${params.toString()}`)
       .then(async (res) => {
-        const json = await res.json();
+        const json = await readResponseJson<ApiResponse & { error?: string }>(
+          res,
+          "加载看板"
+        );
         if (!res.ok) throw new Error(json.error || "加载失败");
         if (!cancelled) setData(json);
       })
