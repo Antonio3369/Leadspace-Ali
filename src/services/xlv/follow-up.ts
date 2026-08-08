@@ -205,7 +205,7 @@ export async function updateXlvDeviceFollowUp(
     followUpPhotoUrls?: string[];
   }
 ) {
-  return db.xlvDeviceRecord.update({
+  const updated = await db.xlvDeviceRecord.update({
     where: { deviceSn },
     data: {
       followUpDone: input.followUpDone,
@@ -227,12 +227,59 @@ export async function updateXlvDeviceFollowUp(
           }),
     },
     select: {
+      deviceSn: true,
+      merchantName: true,
+      activationMerchantName: true,
+      operatorName: true,
+      managerName: true,
+      managerUserId: true,
       followUpDone: true,
       followUpNote: true,
       followUpAt: true,
+      followUpById: true,
       followUpConnectStatus: true,
       followUpFlags: true,
       followUpPhotoUrls: true,
     },
   });
+
+  if (updated.followUpDone && updated.followUpAt) {
+    const {
+      notifyManagerFollowUpDone,
+      recipientMatchesActor,
+      resolveXlvDeviceManagerRecipient,
+    } = await import("@/services/xlv/notifications");
+    const recipient = await resolveXlvDeviceManagerRecipient(updated);
+    if (
+      recipient &&
+      !recipientMatchesActor(recipient, input.followUpById)
+    ) {
+      const [xlvActor, userActor] = await Promise.all([
+        db.xlvMemberAccount.findUnique({
+          where: { id: input.followUpById },
+          select: { name: true },
+        }),
+        db.user.findUnique({
+          where: { id: input.followUpById },
+          select: { name: true },
+        }),
+      ]);
+      const followUpByName =
+        xlvActor?.name ?? userActor?.name ?? updated.operatorName;
+      await notifyManagerFollowUpDone({
+        recipient,
+        deviceSn: updated.deviceSn,
+        merchantName: updated.merchantName,
+        activationMerchantName: updated.activationMerchantName,
+        operatorName: updated.operatorName,
+        connectStatus: updated.followUpConnectStatus,
+        flags: updated.followUpFlags,
+        photoUrls: updated.followUpPhotoUrls,
+        followUpByName,
+        followUpAt: updated.followUpAt,
+      });
+    }
+  }
+
+  return updated;
 }

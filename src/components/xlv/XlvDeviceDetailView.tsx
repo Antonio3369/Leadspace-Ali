@@ -27,6 +27,7 @@ import { XlvTxnActivityChart } from "@/components/xlv/XlvTxnActivityChart";
 import type { XlvTxnActivityPoint } from "@/services/xlv/snapshot-daily";
 import type { XlvQualificationDetail } from "@/lib/xlv-rules";
 import { readResponseJson } from "@/lib/fetch-json";
+import { emitXlvNotificationsChanged } from "@/lib/xlv-notifications-client";
 
 interface Device {
   deviceSn: string;
@@ -104,6 +105,7 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
             photoUrls: d.followUpPhotoUrls ?? [],
             at: d.followUpAt ? String(d.followUpAt) : null,
           });
+          emitXlvNotificationsChanged();
         }
       })
       .catch((err) => {
@@ -175,7 +177,7 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
 
       {device ? (
         <div className="flex flex-col gap-4">
-          <div className="order-1 rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm space-y-3">
+          <div className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               {xlvShouldShowSleepAlertBadge(displayInput) && sleepLabel ? (
                 <span
@@ -234,10 +236,17 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
             </dl>
           </div>
 
+          {qualificationDetail ? (
+            <XlvAssessmentPanel
+              detail={qualificationDetail}
+              firstTxnDate={device.firstTxnDate}
+            />
+          ) : null}
+
           {showFollowUp ? (
             <section
               id="xlv-follow-up"
-              className="order-2 md:order-3 rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm scroll-mt-4"
+              className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm scroll-mt-4"
             >
               <h2 className="text-sm font-semibold text-[#111827] mb-3">
                 沉睡回访
@@ -255,16 +264,7 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
             </section>
           ) : null}
 
-          {qualificationDetail ? (
-            <div className="order-3 md:order-2">
-              <XlvAssessmentPanel
-                detail={qualificationDetail}
-                firstTxnDate={device.firstTxnDate}
-              />
-            </div>
-          ) : null}
-
-          <section className="order-4 rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm">
+          <section className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-[#111827] mb-3">
               交易趋势
               {device.lastTxnDate ? (

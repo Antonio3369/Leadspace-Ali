@@ -6,6 +6,8 @@ export type XlvFollowUpConnectStatus = (typeof XLV_FOLLOW_UP_CONNECT)[number];
 export const XLV_FOLLOW_UP_FLAGS = ["unwilling", "promised_use"] as const;
 export type XlvFollowUpFlag = (typeof XLV_FOLLOW_UP_FLAGS)[number];
 
+export const XLV_NOTIFICATION_TYPE_FOLLOW_UP_DONE = "sales_follow_up_done";
+
 export function connectStatusLabel(status: string | null | undefined): string {
   if (status === "connected") return "已接通";
   if (status === "not_connected") return "未接通";

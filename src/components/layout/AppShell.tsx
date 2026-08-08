@@ -17,10 +17,12 @@ import {
   BUSINESS_LINES,
   currentBusinessLine,
   isN7Path,
+  isXlvPath,
   showBusinessShell,
 } from "@/lib/business-lines";
 import { markSidebarNavTop } from "@/lib/mainScroll";
 import { N7_NOTIFICATIONS_CHANGED } from "@/lib/n7-notifications-client";
+import { XLV_NOTIFICATIONS_CHANGED } from "@/lib/xlv-notifications-client";
 
 interface AppShellProps {
   user: {
@@ -66,13 +68,25 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
   }, [showBottomTabs]);
 
   useEffect(() => {
-    if (user.role !== "MANAGER" || !isN7Path(pathname)) {
+    if (user.role !== "MANAGER") {
+      setNotifUnread(0);
+      return;
+    }
+    const onN7 = isN7Path(pathname);
+    const onXlv = isXlvPath(pathname);
+    if (!onN7 && !onXlv) {
       setNotifUnread(0);
       return;
     }
     let cancelled = false;
+    const endpoint = onXlv
+      ? "/api/xlv/notifications?countOnly=1"
+      : "/api/n7/notifications?countOnly=1";
+    const changedEvent = onXlv
+      ? XLV_NOTIFICATIONS_CHANGED
+      : N7_NOTIFICATIONS_CHANGED;
     const load = () => {
-      fetch("/api/n7/notifications?countOnly=1")
+      fetch(endpoint)
         .then(async (res) => {
           if (!res.ok) return;
           const json = await res.json();
@@ -82,11 +96,11 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
     };
     load();
     const t = window.setInterval(load, 60_000);
-    window.addEventListener(N7_NOTIFICATIONS_CHANGED, load);
+    window.addEventListener(changedEvent, load);
     return () => {
       cancelled = true;
       window.clearInterval(t);
-      window.removeEventListener(N7_NOTIFICATIONS_CHANGED, load);
+      window.removeEventListener(changedEvent, load);
     };
   }, [user.role, pathname]);
 

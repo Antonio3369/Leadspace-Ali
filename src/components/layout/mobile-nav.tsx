@@ -58,7 +58,7 @@ export function buildXlvMobileTabs(role: UserRole, pathname: string): MobileTabI
   if (!isXlvPath(pathname)) return null;
   if (role !== "MANAGER" && role !== "SALES") return null;
 
-  return [
+  const tabs: MobileTabItem[] = [
     {
       href: xlvPath(),
       label: "今日待办",
@@ -68,18 +68,24 @@ export function buildXlvMobileTabs(role: UserRole, pathname: string): MobileTabI
     },
     {
       href: xlvPath("/alerts"),
-      label: "沉睡预警",
+      label: "设备",
       tabLabel: "设备",
       match: "prefix",
       icon: "follow",
     },
-    {
+  ];
+
+  if (role === "MANAGER") {
+    tabs.push({
       href: xlvPath("/board"),
-      label: role === "MANAGER" ? "团队看板" : "设备看板",
+      label: "团队看板",
       tabLabel: "团队",
       match: "prefix",
       icon: "board",
-    },
+    });
+  }
+
+  tabs.push(
     {
       href: xlvPath("/daily"),
       label: "回访情况",
@@ -93,8 +99,10 @@ export function buildXlvMobileTabs(role: UserRole, pathname: string): MobileTabI
       tabLabel: "我的",
       match: "prefix",
       icon: "me",
-    },
-  ];
+    }
+  );
+
+  return tabs;
 }
 
 export function buildMobileTabs(role: UserRole, pathname: string): MobileTabItem[] | null {

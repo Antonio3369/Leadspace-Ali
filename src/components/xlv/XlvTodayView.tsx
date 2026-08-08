@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/notion";
 import { XlvDeviceCardList } from "@/components/xlv/XlvDeviceCardList";
 import { XLV_ASSESSMENT_EXPIRING_DAYS } from "@/lib/xlv-rules";
+import { XLV_NOTIFICATIONS_CHANGED } from "@/lib/xlv-notifications-client";
 import type { XlvTodayDeviceItem } from "@/services/xlv/today";
 
 interface ApiResponse {
@@ -76,6 +77,7 @@ export function XlvTodayView({
   const [refreshKey, setRefreshKey] = useState(0);
   const [retryLabel, setRetryLabel] = useState("");
   const [loadedFilterKey, setLoadedFilterKey] = useState("");
+  const [mgrUnread, setMgrUnread] = useState<number | null>(null);
 
   const filterKey = `${manager}|${operator}`;
 
@@ -102,6 +104,34 @@ export function XlvTodayView({
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
+
+  useEffect(() => {
+    if (!active || role !== "MANAGER") {
+      setMgrUnread(null);
+      return;
+    }
+    let cancelled = false;
+    const load = () => {
+      fetch("/api/xlv/notifications?countOnly=1")
+        .then(async (res) => {
+          if (!res.ok) {
+            if (!cancelled) setMgrUnread(null);
+            return;
+          }
+          const json = await res.json();
+          if (!cancelled) setMgrUnread(Number(json.unread) || 0);
+        })
+        .catch(() => {
+          if (!cancelled) setMgrUnread(null);
+        });
+    };
+    load();
+    window.addEventListener(XLV_NOTIFICATIONS_CHANGED, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(XLV_NOTIFICATIONS_CHANGED, load);
+    };
+  }, [active, role, refreshKey]);
 
   useEffect(() => {
     if (!active) return;
@@ -311,6 +341,31 @@ export function XlvTodayView({
 
       {data ? (
         <div className="space-y-6">
+          {role === "MANAGER" && mgrUnread != null ? (
+            <Link
+              href={xlvPath("/notifications")}
+              className={`flex items-center justify-between rounded-[14px] border px-3.5 py-3 text-sm font-medium transition-colors ${
+                mgrUnread > 0
+                  ? "border-[#14532d] bg-[#166534] text-white hover:bg-[#15803d]"
+                  : "border-[#166534]/35 bg-[#ecfdf5] text-[#14532d] hover:bg-[#d1fae5]"
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                队员已处理
+                {mgrUnread > 0 ? (
+                  <span className="inline-flex min-w-[1.35rem] items-center justify-center rounded-full bg-[#ef4444] px-1.5 py-0.5 text-center text-xs font-semibold leading-none text-white tabular-nums">
+                    {mgrUnread > 99 ? "99+" : mgrUnread}
+                  </span>
+                ) : null}
+              </span>
+              <span
+                className={mgrUnread > 0 ? "text-white/85" : "text-[#166534]"}
+              >
+                查看 →
+              </span>
+            </Link>
+          ) : null}
+
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {shortcuts.map((card) => (
                 <Link
@@ -366,7 +421,7 @@ export function XlvTodayView({
             <p className="text-sm text-[#94a3b8] text-center py-6">
               今日暂无待办，可去
               <Link href={xlvPath("/alerts")} className="text-[#2563eb] hover:underline mx-1">
-                沉睡预警
+                设备
               </Link>
               查看全局概况。
             </p>

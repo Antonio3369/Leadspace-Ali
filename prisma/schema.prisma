@@ -138,6 +138,7 @@ model User {
   xlvDevicesAsManager XlvDeviceRecord[] @relation("XlvDeviceManager")
   xlvRosterAsSales    XlvTeamRoster[]   @relation("XlvRosterSales")
   xlvRosterAsManager  XlvTeamRoster[]   @relation("XlvRosterManager")
+  xlvNotifications    XlvNotification[]
   teamHistory      UserTeamHistory[]
   importLogs       ImportLog[]
   heavyImportJobs  HeavyImportJob[]
@@ -429,6 +430,29 @@ model N7Notification {
   @@index([createdAt])
 }
 
+/** 微信小绿盒提醒通知（如队员关单 → 所属经理） */
+model XlvNotification {
+  id                 String            @id @default(cuid())
+  userId             String?
+  user               User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xlvMemberAccountId String?
+  xlvMemberAccount   XlvMemberAccount? @relation(fields: [xlvMemberAccountId], references: [id], onDelete: Cascade)
+  /** sales_follow_up_done */
+  type               String
+  deviceSn           String
+  title              String
+  body               String
+  meta               Json?
+  read               Boolean           @default(false)
+  readAt             DateTime?
+  createdAt          DateTime          @default(now())
+
+  @@index([userId, read, createdAt])
+  @@index([xlvMemberAccountId, read, createdAt])
+  @@index([deviceSn])
+  @@index([createdAt])
+}
+
 // ─── 微信小绿盒（按设备 SN + 日快照）────────────────────────────────────────
 
 /** 微信小绿盒：设备最新状态（导入快照中 statDate 最大的一行） */
@@ -521,6 +545,7 @@ model XlvMemberAccount {
   mustChangePassword Boolean          @default(false)
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
+  notifications      XlvNotification[]
 
   @@unique([memberRole, managerName, operatorName])
   @@index([managerName])

@@ -8,6 +8,7 @@ import {
 } from "@/lib/xlv-follow-up";
 import { getXlvDeviceDetail } from "@/services/xlv/board";
 import { updateXlvDeviceFollowUp } from "@/services/xlv/follow-up";
+import { markXlvNotificationsReadByDevice } from "@/services/xlv/notifications";
 import { assertCanViewXlvDevice } from "@/services/xlv/xlv-scope";
 
 const followUpSchema = z.object({
@@ -24,7 +25,13 @@ export async function GET(_req: Request, { params }: Params) {
   try {
     const user = await requireSessionUser();
     const { sn } = await params;
-    const data = await getXlvDeviceDetail(user, decodeURIComponent(sn));
+    const deviceSn = decodeURIComponent(sn);
+    const data = await getXlvDeviceDetail(user, deviceSn);
+
+    if (user.role === "MANAGER") {
+      await markXlvNotificationsReadByDevice(user, deviceSn);
+    }
+
     return NextResponse.json(data);
   } catch (err) {
     if (err instanceof PermissionError) {
