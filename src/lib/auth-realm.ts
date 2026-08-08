@@ -71,3 +71,11 @@ export function defaultHomeForRealm(realm: AuthRealm): string {
 export function loginPathForRealm(realm: AuthRealm): string {
   return realm === "xlv" ? "/login/xlv" : "/login";
 }
+
+export function isApiPath(pathname: string): boolean {
+  return pathname.startsWith("/api/");
+}
+
+export function apiJsonError(status: number, error: string): Response {
+  return Response.json({ error }, { status });
+}

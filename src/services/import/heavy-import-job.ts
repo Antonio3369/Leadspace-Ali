@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getPgPool } from "@/lib/pg-pool";
 import {
   releaseImportLock,
+  resetImportLock,
   tryAcquireImportLock,
 } from "@/lib/import-lock";
 import { importPersonnelFromBuffer } from "@/services/import/personnel-importer";
@@ -12,6 +13,28 @@ import { importXlvExcelFile } from "@/services/import/xlv-excel-importer";
 import { importExcelFile } from "@/services/import/excel-importer";
 
 export type HeavyImportKind = "personnel" | "n7" | "xlh-excel" | "xlv";
+
+/** 应用启动时：释放内存锁，并将孤儿导入任务标为失败 */
+export async function recoverOrphanedHeavyImportJobs() {
+  resetImportLock();
+  const result = await db.heavyImportJob
+    .updateMany({
+      where: { status: { in: ["PROCESSING", "PENDING"] } },
+      data: {
+        status: "FAILED",
+        progress: 100,
+        message: "导入已中断",
+        errorMessage: "服务重启导致导入中断，请重新上传。",
+        completedAt: new Date(),
+      },
+    })
+    .catch(() => ({ count: 0 }));
+  if (result.count > 0) {
+    console.info(
+      `[import] marked ${result.count} orphaned heavy import job(s) as FAILED`
+    );
+  }
+}
 
 const IMPORT_DIR =
   process.env.IMPORT_JOB_DIR || path.join("/tmp", "leadspace-import-jobs");
@@ -37,6 +60,22 @@ export async function enqueueHeavyImport(opts: {
         "当前已有导入任务在执行，请等完成后再试。正常看数、登录不受影响。",
     };
   }
+
+  // 清理因部署/重启卡住的僵尸任务，避免占着「进行中」状态
+  await db.heavyImportJob
+    .updateMany({
+      where: {
+        kind: opts.kind,
+        status: { in: ["PROCESSING", "PENDING"] },
+        updatedAt: { lt: new Date(Date.now() - 20 * 60 * 1000) },
+      },
+      data: {
+        status: "FAILED",
+        errorMessage: "导入超时或服务重启导致中断，请重新上传。",
+        completedAt: new Date(),
+      },
+    })
+    .catch(() => undefined);
 
   let jobId: string | null = null;
   try {
@@ -85,6 +124,7 @@ export async function enqueueHeavyImport(opts: {
 
 async function runHeavyImportJob(jobId: string) {
   const filePath = filePathFor(jobId);
+  let buffer: Buffer | null = null;
   try {
     const job = await db.heavyImportJob.findUnique({ where: { id: jobId } });
     if (!job) return;
@@ -98,7 +138,7 @@ async function runHeavyImportJob(jobId: string) {
       },
     });
 
-    const buffer = fs.readFileSync(filePath);
+    buffer = fs.readFileSync(filePath);
     let result: unknown;
     let finalStatus: "SUCCESS" | "PARTIAL" | "FAILED" = "SUCCESS";
 
@@ -116,7 +156,21 @@ async function runHeavyImportJob(jobId: string) {
     } else if (job.kind === "xlh-excel") {
       result = await importExcelFile(buffer, job.fileName, job.uploadedById);
     } else if (job.kind === "xlv") {
-      const xlv = await importXlvExcelFile(buffer, job.fileName, job.uploadedById);
+      let lastWrittenProgress = -1;
+      const reportProgress = async (progress: number, message: string) => {
+        if (progress < 100 && progress === lastWrittenProgress) return;
+        lastWrittenProgress = progress;
+        await db.heavyImportJob
+          .update({
+            where: { id: jobId },
+            data: { progress, message },
+          })
+          .catch(() => undefined);
+      };
+      const xlv = await importXlvExcelFile(buffer, job.fileName, job.uploadedById, {
+        onProgress: reportProgress,
+      });
+      buffer = null;
       result = xlv;
       if (xlv.status === "FAILED") finalStatus = "FAILED";
       else if (xlv.status === "PARTIAL") finalStatus = "PARTIAL";
@@ -155,6 +209,7 @@ async function runHeavyImportJob(jobId: string) {
       })
       .catch(() => undefined);
   } finally {
+    buffer = null;
     try {
       fs.unlinkSync(filePath);
     } catch {

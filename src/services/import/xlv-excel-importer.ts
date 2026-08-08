@@ -21,6 +21,12 @@ import {
   resolveXlvManagerFromRoster,
 } from "@/services/xlv/roster";
 import { provisionXlvAccountsFromRoster } from "@/services/xlv/member-accounts";
+import {
+  bulkUpdateDevicesFromRaw,
+  upsertSnapshotsBulk,
+  type SnapshotWrite,
+  type XlvImportProgress,
+} from "@/services/import/xlv-raw-bulk";
 
 function createId() {
   return `c${randomBytes(12).toString("hex")}`;
@@ -40,22 +46,6 @@ export interface XlvImportResult {
   errors: string[];
   summary?: XlvImportSummary;
 }
-
-type SnapshotWrite = {
-  deviceSn: string;
-  statDate: Date;
-  cumulativeUsers: number;
-  cumulativeTxns: number;
-  cumulativeAmount: number;
-  lastTxnDate: Date | null;
-  sleepDays: number;
-  isActivated: boolean;
-  firstTxnDate: Date | null;
-  dailyUsers: number;
-  dailyTxns: number;
-  dailyAmount: number;
-  importBatchId: string;
-};
 
 function pickLatestRawBySn(rows: ParsedXlvRawRow[]) {
   const map = new Map<string, ParsedXlvRawRow>();
@@ -101,71 +91,6 @@ function uniqueSnapshots(rows: ParsedXlvRawRow[]): SnapshotWrite[] {
   return [...seen.values()];
 }
 
-async function upsertSnapshots(
-  snapshots: SnapshotWrite[],
-  importBatchId: string
-) {
-  const stats = {
-    created: 0,
-    updated: 0,
-    duplicatesRemoved: 0,
-  };
-
-  const CHUNK = 100;
-  for (let i = 0; i < snapshots.length; i += CHUNK) {
-    const slice = snapshots.slice(i, i + CHUNK);
-    for (const snap of slice) {
-      const statDate = normalizeXlvStatDate(snap.statDate);
-      const dateKey = xlvStatDateKey(statDate);
-      const existingRows = await db.xlvDeviceSnapshot.findMany({
-        where: { deviceSn: snap.deviceSn },
-        select: { id: true, statDate: true },
-      });
-      const sameCalendarDay = existingRows.filter(
-        (row) => xlvStatDateKey(row.statDate) === dateKey
-      );
-
-      const data = {
-        cumulativeUsers: snap.cumulativeUsers,
-        cumulativeTxns: snap.cumulativeTxns,
-        cumulativeAmount: snap.cumulativeAmount,
-        lastTxnDate: snap.lastTxnDate,
-        sleepDays: snap.sleepDays,
-        isActivated: snap.isActivated,
-        firstTxnDate: snap.firstTxnDate,
-        dailyUsers: snap.dailyUsers,
-        dailyTxns: snap.dailyTxns,
-        dailyAmount: snap.dailyAmount,
-        importBatchId,
-      };
-
-      if (sameCalendarDay.length > 1) {
-        stats.duplicatesRemoved += sameCalendarDay.length - 1;
-      }
-      for (const row of sameCalendarDay) {
-        await db.xlvDeviceSnapshot.delete({ where: { id: row.id } });
-      }
-
-      await db.xlvDeviceSnapshot.create({
-        data: {
-          id: createId(),
-          deviceSn: snap.deviceSn,
-          statDate,
-          ...data,
-        },
-      });
-      if (sameCalendarDay.length > 0) {
-        stats.updated += 1;
-      } else {
-        stats.created += 1;
-      }
-    }
-    await new Promise<void>((resolve) => setImmediate(resolve));
-  }
-
-  return stats;
-}
-
 function statDateRangeFromRows(rows: ParsedXlvRawRow[]) {
   const keys = rows
     .map((row) => xlvStatDateKey(row.statDate))
@@ -175,68 +100,57 @@ function statDateRangeFromRows(rows: ParsedXlvRawRow[]) {
   return { min: keys[0]!, max: keys[keys.length - 1]! };
 }
 
-async function importRawRows(rows: ParsedXlvRawRow[], importBatchId: string) {
+async function importRawRows(
+  rows: ParsedXlvRawRow[],
+  importBatchId: string,
+  onProgress?: XlvImportProgress
+) {
+  await onProgress?.(18, `整理 ${rows.length.toLocaleString()} 行数据…`);
+
   const dedupedSnapshots = uniqueSnapshots(rows);
-  const snapshots = enrichXlvSnapshotDailyMetrics(dedupedSnapshots);
-  for (const s of snapshots) s.importBatchId = importBatchId;
+  await onProgress?.(
+    19,
+    `去重后 ${dedupedSnapshots.length.toLocaleString()} 条快照，计算日增量…`
+  );
 
   const latestBySn = pickLatestRawBySn(rows);
+  const sortedForEnrich = [...dedupedSnapshots].sort(
+    (a, b) =>
+      a.deviceSn.localeCompare(b.deviceSn) ||
+      a.statDate.getTime() - b.statDate.getTime()
+  );
+  const snapshots = enrichXlvSnapshotDailyMetrics(sortedForEnrich);
+  for (const s of snapshots) s.importBatchId = importBatchId;
+
   const allSns = new Set([
     ...snapshots.map((s) => s.deviceSn),
     ...latestBySn.keys(),
   ]);
 
-  await db.xlvDeviceRecord.createMany({
-    data: [...allSns].map((deviceSn) => ({ id: createId(), deviceSn })),
-    skipDuplicates: true,
-  });
-
-  const snapshotStats = await upsertSnapshots(snapshots, importBatchId);
-
-  let createdDevices = 0;
-  let updatedDevices = 0;
-
-  for (const row of latestBySn.values()) {
-    const existing = await db.xlvDeviceRecord.findUnique({
-      where: { deviceSn: row.deviceSn },
+  await onProgress?.(20, `确保设备记录 ${allSns.size.toLocaleString()} 台…`);
+  const CREATE_CHUNK = 500;
+  const snsList = [...allSns];
+  for (let i = 0; i < snsList.length; i += CREATE_CHUNK) {
+    await db.xlvDeviceRecord.createMany({
+      data: snsList.slice(i, i + CREATE_CHUNK).map((deviceSn) => ({
+        id: createId(),
+        deviceSn,
+      })),
+      skipDuplicates: true,
     });
-    const hadMetrics = Boolean(existing?.statDate);
-
-    const merchantName =
-      existing?.merchantName ||
-      row.activationMerchantName ||
-      null;
-    const companyName = existing?.companyName || row.agentName || null;
-
-    const data = {
-      statDate: normalizeXlvStatDate(row.statDate),
-      agentId: row.agentId,
-      agentName: row.agentName,
-      activationMerchantName: row.activationMerchantName,
-      cumulativeUsers: row.cumulativeUsers,
-      cumulativeTxns: row.cumulativeTxns,
-      cumulativeAmount: row.cumulativeAmount,
-      lastTxnDate: row.lastTxnDate,
-      sleepDays: row.sleepDays,
-      isActivated: row.isActivated,
-      firstTxnDate: row.firstTxnDate,
-      dailyUsers: row.dailyUsers,
-      dailyTxns: row.dailyTxns,
-      dailyAmount: row.dailyAmount,
-      merchantName,
-      companyName,
-      operatorName: existing?.operatorName ?? "",
-      managerName: existing?.managerName ?? "",
-      importBatchId,
-    };
-
-    await db.xlvDeviceRecord.update({
-      where: { deviceSn: row.deviceSn },
-      data,
-    });
-    if (hadMetrics) updatedDevices++;
-    else createdDevices++;
   }
+
+  const snapshotStats = await upsertSnapshotsBulk(
+    snapshots,
+    importBatchId,
+    onProgress
+  );
+
+  const { createdDevices, updatedDevices } = await bulkUpdateDevicesFromRaw(
+    latestBySn,
+    importBatchId,
+    onProgress
+  );
 
   return {
     snapshotRows: snapshots.length,
@@ -407,8 +321,12 @@ async function importAssignmentRows(
 export async function importXlvExcelFile(
   buffer: Buffer,
   fileName: string,
-  uploadedById: string
+  uploadedById: string,
+  opts?: { onProgress?: XlvImportProgress }
 ): Promise<XlvImportResult> {
+  const onProgress = opts?.onProgress;
+  await onProgress?.(16, "正在解析 Excel…");
+
   const parsed = parseXlvExcelBuffer(buffer);
   if (parsed.errors.length && parsed.rows.length === 0) {
     return {
@@ -446,7 +364,7 @@ export async function importXlvExcelFile(
   let importSummary: Partial<XlvImportSummary> = {};
 
   if (parsed.format === "raw") {
-    const result = await importRawRows(rawRows, importLog.id);
+    const result = await importRawRows(rawRows, importLog.id, onProgress);
     snapshotRows = result.snapshotRows;
     createdDevices = result.createdDevices;
     updatedDevices = result.updatedDevices;

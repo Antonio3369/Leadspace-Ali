@@ -141,7 +141,16 @@ function detectFormat(headers: string[]): XlvImportFormat {
 }
 
 export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+  const workbook = XLSX.read(buffer, {
+    type: "buffer",
+    cellDates: true,
+    cellNF: false,
+    cellStyles: false,
+    sheetStubs: false,
+    bookVBA: false,
+    bookDeps: false,
+    dense: true,
+  });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
     return { format: "raw", sheetName: "", rows: [], errors: ["Excel 无工作表"] };

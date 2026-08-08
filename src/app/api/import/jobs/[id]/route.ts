@@ -25,6 +25,25 @@ export const GET = auth(async (request, context) => {
       return NextResponse.json({ error: "无权查看该任务" }, { status: 403 });
     }
 
+    const staleMs = 3 * 60 * 1000;
+    const isStale =
+      !job.completedAt &&
+      (job.status === "PROCESSING" || job.status === "PENDING") &&
+      Date.now() - job.updatedAt.getTime() > staleMs;
+    if (isStale) {
+      return NextResponse.json({
+        id: job.id,
+        kind: job.kind,
+        fileName: job.fileName,
+        status: "FAILED",
+        progress: job.progress,
+        message: "导入任务已中断",
+        errorMessage: "导入超时或服务重启导致中断，请重新上传。",
+        result: null,
+        completedAt: job.completedAt,
+      });
+    }
+
     return NextResponse.json({
       id: job.id,
       kind: job.kind,
@@ -35,6 +54,7 @@ export const GET = auth(async (request, context) => {
       errorMessage: job.errorMessage,
       result: job.resultJson,
       completedAt: job.completedAt,
+      updatedAt: job.updatedAt,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "查询失败";

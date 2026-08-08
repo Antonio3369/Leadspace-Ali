@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { xlvPath } from "@/lib/business-lines";
-import { uploadImportWithJobPoll } from "@/lib/import-upload-client";
+import {
+  resumeImportJobPoll,
+  uploadImportWithJobPoll,
+} from "@/lib/import-upload-client";
 import {
   NotionAlert,
   NotionButton,
@@ -40,7 +43,7 @@ const TAB_CONFIG: Record<
   raw: {
     title: "运营原始表",
     description:
-      "上传微信侧导出的原始表（含「统计日期」等列）。按 SN + 统计日期写入快照与最新指标。大表需等待 1–3 分钟，请勿关闭页面。",
+      "上传微信侧导出的原始表（含「统计日期」等列）。按 SN + 统计日期写入快照与最新指标。大表约需 3–8 分钟，上传后请勿关闭页面、勿重复点击。",
     endpoint: "/api/import/xlv",
     buttonLabel: "导入原始表",
   },
@@ -72,6 +75,48 @@ export function XlvImportPage() {
   const [fileInputKey, setFileInputKey] = useState(0);
 
   const config = TAB_CONFIG[tab];
+  const resumeCheckedRef = useRef(false);
+
+  useEffect(() => {
+    if (resumeCheckedRef.current) return;
+    resumeCheckedRef.current = true;
+
+    let cancelled = false;
+    void (async () => {
+      setUploading(true);
+      setError("");
+      setMessage("");
+      setResult(null);
+      try {
+        const res = await resumeImportJobPoll<XlvImportResult>(
+          "/api/import/xlv",
+          (value, label) => {
+            if (!cancelled) {
+              setProgress(value);
+              setProgressLabel(label);
+            }
+          }
+        );
+        if (cancelled || !res) return;
+        setResult(res);
+        setMessage("导入完成");
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "导入失败");
+        }
+      } finally {
+        if (!cancelled) {
+          setUploading(false);
+          setProgress(0);
+          setProgressLabel("");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleImport() {
     if (!file) {

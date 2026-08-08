@@ -17,6 +17,11 @@ export function releaseImportLock(): void {
   holder = null;
 }
 
+/** 进程启动时重置锁（上次 OOM/重启可能未释放） */
+export function resetImportLock(): void {
+  releaseImportLock();
+}
+
 export function getImportLockHolder(): string | null {
   return holder;
 }

@@ -6,6 +6,8 @@ import {
   defaultHomeForRealm,
   isPublicPath,
   sessionAuthRealm,
+  isApiPath,
+  apiJsonError,
 } from "@/lib/auth-realm";
 import type { AuthRealm } from "@/lib/permissions";
 import type { BusinessLineId } from "@/lib/business-lines";
@@ -72,6 +74,9 @@ export const authConfig = {
 
       const isLoggedIn = !!auth?.user;
       if (!isLoggedIn) {
+        if (isApiPath(pathname)) {
+          return apiJsonError(401, "未登录");
+        }
         if (isXlvScopePath(pathname)) {
           return Response.redirect(new URL("/login/xlv", request.nextUrl));
         }
@@ -79,6 +84,9 @@ export const authConfig = {
       }
 
       if (auth.user.status !== "ACTIVE") {
+        if (isApiPath(pathname)) {
+          return apiJsonError(403, "账号不可用");
+        }
         return Response.redirect(new URL("/login?disabled=1", request.nextUrl));
       }
 
@@ -91,6 +99,9 @@ export const authConfig = {
 
       if (mustChangePassword) {
         if (!onChangePassword) {
+          if (isApiPath(pathname)) {
+            return apiJsonError(403, "请先修改密码");
+          }
           return Response.redirect(new URL("/settings/password", request.nextUrl));
         }
         return true;
@@ -106,6 +117,9 @@ export const authConfig = {
         const onOnboarding =
           pathname.startsWith("/onboarding") || pathname.startsWith("/api/onboarding");
         if (!onOnboarding) {
+          if (isApiPath(pathname)) {
+            return apiJsonError(403, "请先完成实名认证");
+          }
           return Response.redirect(new URL("/onboarding", request.nextUrl));
         }
         return true;
@@ -127,6 +141,9 @@ export const authConfig = {
 
       const access = canAccessPathWithSession(pathname, auth.user);
       if (access === false) {
+        if (isApiPath(pathname)) {
+          return apiJsonError(403, "无权访问");
+        }
         return Response.redirect(
           new URL(defaultHomeForRealm(realm), request.nextUrl)
         );

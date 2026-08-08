@@ -618,6 +618,8 @@ N7 考核表走独立入口 `/n7/admin/import`（`n7-excel-importer.ts`），与
 
 导入完成后展示**摘要**；未匹配姓名见 `/xlv/admin/attribution`。
 
+**大表（运营原始表）**：与 N7 / 小蓝环一致走 **后台任务**（`enqueueHeavyImport` → `HeavyImportJob`），上传返回 `202 + jobId`，前端轮询 `/api/import/jobs/[id]`。十万行约 **3～8 分钟**；勿关页、勿重复上传。批量写入见 `xlv-raw-bulk.ts`；故障复盘见 **§15.7**。
+
 ### 10.2 导出
 
 | 模块 | 文件 |
@@ -695,6 +697,8 @@ src/
     ├── xlv/analytics.ts          # ★ 小绿盒沉睡预警 / 看板 / 设备列表
     ├── xlv/assessment.ts         # 考核状态与快照加载
     ├── import/xlv-excel-*.ts     # 小绿盒 Excel 解析与导入
+    ├── import/xlv-raw-bulk.ts    # 小绿盒原始表批量快照/设备写入
+    ├── import/heavy-import-job.ts
     ├── n7/notifications.ts       # 关单回告经理提醒通知
     ├── n7/follow-up-photos.ts    # 关单现场图落盘
     ├── stats/analytics.ts
@@ -704,6 +708,15 @@ src/
 ---
 
 ## 13. 近期已完成
+
+### 2026-08-08（XLV 大表导入稳定性 · 已部署生产）
+
+- [x] **异步导入**：`/api/import/xlv` → `HeavyImportJob` + 前端轮询（修复同步超时）
+- [x] **API 鉴权 JSON 化**：避免 `Unexpected token '<'`（`auth.config.ts` / `auth-realm.ts`）
+- [x] **批量写入**：`xlv-raw-bulk.ts`（快照 + 设备更新）；导入进度分阶段上报
+- [x] **任务恢复**：`instrumentation.ts` 启动清理孤儿任务；3 分钟无进展判失败；轮询 502 重试
+- [x] **生产内存**：app 1.5G、Node 堆 1280MB
+- [x] 运维文档：**§15.7 运维备忘 — XLV 大表导入**
 
 ### 2026-08-08（阶段 4 · 已推 GitHub）
 
@@ -917,10 +930,12 @@ ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/setup-ssl.sh'
 | 措施 | 说明 |
 |---|---|
 | Swap 2G | 主机已挂载 `/swapfile`，开机自动启用 |
-| 容器内存上限 | `docker-compose.prod.yml`：app 1G、postgres 768M；超限只重启该容器 |
-| Node 堆上限 | `NODE_OPTIONS=--max-old-space-size=768` |
+| 容器内存上限 | `docker-compose.prod.yml`：app **1.5G**、postgres 768M；超限只重启该容器 |
+| Node 堆上限 | `NODE_OPTIONS=--max-old-space-size=1280`（须小于 app 容器上限） |
 | 导入互斥 | 同时只允许一个重导入；看数/登录不限 |
 | 后台导入 | 上传后返回 `jobId`，后台处理，前端轮询 `/api/import/jobs/[id]` |
+| 启动恢复 | `instrumentation.ts` → `recoverOrphanedHeavyImportJobs`：重启后将孤儿 `PROCESSING/PENDING` 标为 `FAILED` |
+| API 鉴权 | `/api/*` 鉴权失败返回 JSON（非 HTML 重定向），避免前端 `res.json()` 解析失败 |
 
 **升配建议（F，需在腾讯云控制台操作）**
 
@@ -943,7 +958,69 @@ docker-compose.prod.yml
 Dockerfile
 ```
 
-### 15.6 部署后检查
+### 15.7 运维备忘 — XLV 大表导入（2026-08-08）
+
+本节记录微信小绿盒**运营原始表**导入曾出现的线上故障、根因与已落地修复，供后续排障与部署时参考。
+
+#### 现象（用户侧）
+
+| 阶段 | 表现 |
+|---|---|
+| 最初 | 上传失败 / 页面仅显示「上传失败」 |
+| 随后 | `Unexpected token '<', "<html>..." is not valid JSON` |
+| 中期 | `HTTP 502`、进度条卡在 **20%**、「网络波动，继续等待…」 |
+| 后期 | 「检测到未完成的导入」一直转；或「服务重启导致导入中断」 |
+| 最终 | 批量写入 + 内存扩容后，**导入成功**（十万行约 3～8 分钟） |
+
+#### 根因（四层叠加）
+
+1. **同步超时（已修）** — 早期 `/api/import/xlv` 同步处理整表，大文件触发网关/nginx 超时。
+2. **鉴权返回 HTML（已修）** — 轮询 `/api/import/jobs/...` 时中间件 302 到登录页，前端 `json()` 解析 HTML 报错。
+3. **性能与内存（已修）** — 原始表为「设备 SN × 统计日期」，行数可达十万级；旧逻辑逐行查库/删/插；1GB 容器 + Excel 全量解析易 OOM → 容器重启 → 任务死在 `PROCESSING`。
+4. **部署与状态不同步（已修）** — 部署重启杀死后台任务，库中仍为 `PROCESSING`；`sessionStorage` 续轮询旧 `jobId` → 页面长期 20%；短时间多次上传堆积僵尸任务。
+
+#### 已落地修复
+
+| 类别 | 内容 |
+|---|---|
+| 架构 | 上传 `202 + jobId`，`HeavyImportJob` 后台执行；`import-upload-client.ts` 轮询 + 502 自动重试 |
+| 鉴权 | `auth.config.ts`：`/api/*` 失败返回 JSON 401/403 |
+| 性能 | `xlv-raw-bulk.ts`：快照每 500 行批量查/删/插；设备最新状态批量 SQL（对齐 N7） |
+| 资源 | app 容器 **1.5G**，Node 堆 **1280MB**；Excel 解析降低内存选项 |
+| 生命周期 | 启动时 `recoverOrphanedHeavyImportJobs`；3 分钟无进展判失败；新上传前清理超时僵尸任务 |
+| 体验 | 分阶段进度文案；刷新时先探测任务状态，已失败则直接提示重传 |
+
+#### 关键文件
+
+```
+src/app/api/import/xlv/route.ts
+src/app/api/import/jobs/[id]/route.ts
+src/services/import/heavy-import-job.ts
+src/services/import/xlv-raw-bulk.ts
+src/services/import/xlv-excel-importer.ts
+src/lib/import-upload-client.ts
+src/components/xlv/XlvImportPage.tsx
+src/lib/auth.config.ts / auth-realm.ts
+src/instrumentation.ts
+docker-compose.prod.yml
+```
+
+#### 运维操作备忘
+
+| 场景 | 建议 |
+|---|---|
+| 用户报导入卡在 20% | 查 `HeavyImportJob` 是否 `PROCESSING` 且 `updatedAt` 很久未变；多为 OOM 或部署中断，让用户**重新上传一次**（勿连点） |
+| 计划部署 | **导入进行中勿部署**；部署会重启 app 并标记孤儿任务 `FAILED` |
+| 部署后 | 等约 1 分钟再让用户上传；刷新导入页若见失败提示，重新选文件上传即可 |
+| 查任务状态 | `SELECT id, status, progress, message, "errorMessage", "updatedAt" FROM "HeavyImportJob" WHERE kind='xlv' ORDER BY "createdAt" DESC LIMIT 5;` |
+| 查容器 | `sudo docker logs leadspace-alipay-app --tail 50`；`sudo docker stats leadspace-alipay-app` |
+| 仍慢或 OOM | 考虑升配（§15.6 F）；或独立 worker / 进一步流式解析（待办） |
+
+#### 业务顺序（导入成功后）
+
+① 运营原始表 → ② 组织名册 → 「人员归属核对」从名册同步 → ③ SN 归属表（按需）。
+
+### 15.8 部署后检查
 
 - [ ] https://ali.orblead.com/login 可打开
 - [ ] admin / 经理账号可登录
@@ -1068,10 +1145,10 @@ Dockerfile
 | N7 队员开号 / 去重 | `ManagerTeamPanel`, `api/admin/team`, `team-sales.ts`, `dedupe-team-sales.ts`, `backfill-sales-login.ts` |
 | N7 设备挂靠 | `findN7SalesInIndexes`, `n7-excel-importer.ts`, `relink-sales-devices.ts` |
 | 小绿盒沉睡/考核/待办 | `xlv-rules.ts`, `services/xlv/assessment.ts`, `services/xlv/analytics.ts`, `services/xlv/today.ts`, `services/xlv/follow-up.ts` |
-| 小绿盒导入 | `xlv-excel-parser.ts`, `xlv-excel-importer.ts`, `xlv-import-summary.ts`；入口 `/xlv/admin/import` |
+| 小绿盒导入 | `xlv-excel-parser.ts`, `xlv-excel-importer.ts`, `xlv-raw-bulk.ts`, `heavy-import-job.ts`, `import-upload-client.ts`；入口 `/xlv/admin/import`；**大表故障见 §15.7** |
 | 权限/越权 | `permissions.ts`, `manager-scope.ts`, `business-lines.ts`, `n7-scope.ts`, `xlv-scope.ts` |
 | 指标不对 | `business-rules.ts`, `analytics.ts`（小蓝环）/ `services/n7/analytics.ts`（N7）/ `services/xlv/analytics.ts`（小绿盒） |
-| 导入失败 | `excel-parser.ts`, `excel-importer.ts`, `n7-excel-importer.ts`, `xlv-excel-*.ts`；入口 `/xlh/admin/import`、`/n7/admin/import`、`/xlv/admin/import` |
+| 导入失败 | `excel-parser.ts`, `excel-importer.ts`, `n7-excel-importer.ts`, `xlv-excel-*.ts`, `xlv-raw-bulk.ts`；小绿盒大表见 **§15.7** |
 | 台账筛选 | `ledger-url.ts`, `LedgerView.tsx`, `buildLedgerWhere` |
 | 日期默认值 | `ledger-date.ts` → `getCurrentMonthRange()` |
 | UI 不一致 | `notion.tsx`, 对照 `/xlh` 或 `/xlh/ledger` 页面 |
