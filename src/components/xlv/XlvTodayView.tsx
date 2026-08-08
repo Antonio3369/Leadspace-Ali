@@ -9,7 +9,6 @@ import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
   NotionAlert,
-  NotionInput,
   NotionSelect,
   PageHeader,
   PageShell,
@@ -60,19 +59,17 @@ export function XlvTodayView({
   const searchParams = useSearchParams();
   const manager = searchParams.get("manager") ?? "";
   const operator = searchParams.get("operator") ?? "";
-  const search = searchParams.get("q") ?? "";
 
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [searchDraft, setSearchDraft] = useState(search);
   const [managers, setManagers] = useState<string[]>([]);
   const [operators, setOperators] = useState<string[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [retryLabel, setRetryLabel] = useState("");
   const [loadedFilterKey, setLoadedFilterKey] = useState("");
 
-  const filterKey = `${manager}|${operator}|${search}`;
+  const filterKey = `${manager}|${operator}`;
 
   useRestoreListScroll(pathname, active && !loading && !!data);
 
@@ -87,17 +84,6 @@ export function XlvTodayView({
     },
     [pathname, router, searchParams]
   );
-
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (searchDraft !== search) pushQuery({ q: searchDraft || null });
-    }, 300);
-    return () => clearTimeout(t);
-  }, [searchDraft, search, pushQuery]);
-
-  useEffect(() => {
-    setSearchDraft(search);
-  }, [search]);
 
   useEffect(() => {
     function onVisible() {
@@ -122,7 +108,6 @@ export function XlvTodayView({
     const params = new URLSearchParams();
     if (manager) params.set("manager", manager);
     if (operator) params.set("operator", operator);
-    if (search) params.set("q", search);
 
     const url = `/api/xlv/today?${params}`;
     const cached = readXlvApiCache<ApiResponse>(url);
@@ -164,7 +149,7 @@ export function XlvTodayView({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, manager, operator, search, refreshKey, filterKey, loadedFilterKey, data]);
+  }, [active, manager, operator, refreshKey, filterKey, loadedFilterKey, data]);
 
   const showManagerFilter = role === "DIRECTOR";
   const showOperatorFilter = role === "DIRECTOR" || role === "MANAGER";
@@ -210,67 +195,50 @@ export function XlvTodayView({
   }
 
   const sections = data
-    ? search
-      ? [
-          {
-            key: "search",
-            title: "搜索结果",
-            count: data.counts.total,
-            devices: [
-              ...data.queues.P0,
-              ...data.queues.P1,
-              ...data.queues.P2,
-            ],
-            empty: "未找到匹配待办",
-            showFollowUp: true,
-            showQualification: true,
-            more: null,
-          },
-        ]
-      : [
-          {
-            key: "P0",
-            title: "优先催办",
-            count: data.counts.P0,
-            devices: data.queues.P0,
-            empty: "暂无优先催办项",
-            showFollowUp: true,
-            showQualification: false,
-            more: moreLink(
-              data.counts.P0,
-              data.queues.P0.length,
-              `${xlvPath("/follow-up")}?follow=pending&priority=P0`
-            ),
-          },
-          {
-            key: "P1",
-            title: "沉睡待回访",
-            count: data.counts.P1,
-            devices: data.queues.P1,
-            empty: "暂无一般沉睡待回访",
-            showFollowUp: true,
-            showQualification: false,
-            more: moreLink(
-              data.counts.P1,
-              data.queues.P1.length,
-              `${xlvPath("/follow-up")}?follow=pending&priority=P1`
-            ),
-          },
-          {
-            key: "P2",
-            title: "考核将到期",
-            count: data.counts.P2,
-            devices: data.queues.P2,
-            empty: "暂无考核将到期设备",
-            showFollowUp: false,
-            showQualification: true,
-            more: moreLink(
-              data.counts.P2,
-              data.queues.P2.length,
-              `${xlvPath("/alerts")}?status=in_progress`
-            ),
-          },
-        ]
+    ? [
+        {
+          key: "P0",
+          title: "优先催办",
+          count: data.counts.P0,
+          devices: data.queues.P0,
+          empty: "暂无优先催办项",
+          showFollowUp: true,
+          showQualification: false,
+          more: moreLink(
+            data.counts.P0,
+            data.queues.P0.length,
+            `${xlvPath("/follow-up")}?follow=pending&priority=P0`
+          ),
+        },
+        {
+          key: "P1",
+          title: "沉睡待回访",
+          count: data.counts.P1,
+          devices: data.queues.P1,
+          empty: "暂无一般沉睡待回访",
+          showFollowUp: true,
+          showQualification: false,
+          more: moreLink(
+            data.counts.P1,
+            data.queues.P1.length,
+            `${xlvPath("/follow-up")}?follow=pending&priority=P1`
+          ),
+        },
+        {
+          key: "P2",
+          title: "考核将到期",
+          count: data.counts.P2,
+          devices: data.queues.P2,
+          empty: "暂无考核将到期设备",
+          showFollowUp: false,
+          showQualification: true,
+          more: moreLink(
+            data.counts.P2,
+            data.queues.P2.length,
+            `${xlvPath("/alerts")}?status=in_progress`
+          ),
+        },
+      ]
     : [];
 
   return (
@@ -279,47 +247,43 @@ export function XlvTodayView({
         title="今日待办"
         kicker="微信小绿盒"
         actions={
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <NotionInput
-              placeholder="搜索商户 / SN / 作业员"
-              value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
-              className="w-full sm:w-52 min-h-11"
-            />
-            {showManagerFilter ? (
-              <NotionSelect
-                value={manager}
-                onChange={(e) =>
-                  pushQuery({
-                    manager: e.target.value || null,
-                    operator: null,
-                  })
-                }
-                className="sm:w-40 min-h-11"
-              >
-                <option value="">全部经理</option>
-                {managers.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </NotionSelect>
-            ) : null}
-            {showOperatorFilter ? (
-              <NotionSelect
-                value={operator}
-                onChange={(e) => pushQuery({ operator: e.target.value || null })}
-                className="sm:w-40 min-h-11"
-              >
-                <option value="">全部作业员</option>
-                {operators.map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
-              </NotionSelect>
-            ) : null}
-          </div>
+          showManagerFilter || showOperatorFilter ? (
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              {showManagerFilter ? (
+                <NotionSelect
+                  value={manager}
+                  onChange={(e) =>
+                    pushQuery({
+                      manager: e.target.value || null,
+                      operator: null,
+                    })
+                  }
+                  className="sm:w-40 min-h-11"
+                >
+                  <option value="">全部经理</option>
+                  {managers.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </NotionSelect>
+              ) : null}
+              {showOperatorFilter ? (
+                <NotionSelect
+                  value={operator}
+                  onChange={(e) => pushQuery({ operator: e.target.value || null })}
+                  className="sm:w-40 min-h-11"
+                >
+                  <option value="">全部作业员</option>
+                  {operators.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </NotionSelect>
+              ) : null}
+            </div>
+          ) : undefined
         }
       />
 
@@ -334,8 +298,7 @@ export function XlvTodayView({
 
       {data ? (
         <div className="space-y-6">
-          {!search && (
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {shortcuts.map((card) => (
                 <Link
                   key={card.id}
@@ -356,7 +319,6 @@ export function XlvTodayView({
                 </Link>
               ))}
             </div>
-          )}
 
           {sections.map((section) => (
             <section key={section.key} className="space-y-3">
@@ -387,7 +349,7 @@ export function XlvTodayView({
             </section>
           ))}
 
-          {!search && data.counts.total === 0 ? (
+          {data.counts.total === 0 ? (
             <p className="text-sm text-[#94a3b8] text-center py-6">
               今日暂无待办，可去
               <Link href={xlvPath("/alerts")} className="text-[#2563eb] hover:underline mx-1">

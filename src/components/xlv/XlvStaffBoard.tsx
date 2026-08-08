@@ -10,7 +10,6 @@ import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 import {
   NotionAlert,
   NotionCallout,
-  NotionInput,
   PageHeader,
   PageShell,
 } from "@/components/ui/notion";
@@ -46,23 +45,17 @@ export function XlvStaffBoard({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const search = searchParams.get("search") ?? "";
   const statusFilter = parseXlvQualificationStatus(searchParams.get("status"));
   const isHome = variant === "home";
 
   const [data, setData] = useState<ApiResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [searchDraft, setSearchDraft] = useState(search);
 
   useRestoreListScroll(pathname, !loading && !!data);
 
-  function pushQuery(patch: { search?: string; status?: string | null }) {
+  function pushQuery(patch: { status?: string | null }) {
     const params = new URLSearchParams(searchParams.toString());
-    if (patch.search != null) {
-      if (patch.search) params.set("search", patch.search);
-      else params.delete("search");
-    }
     if (patch.status !== undefined) {
       if (patch.status) params.set("status", patch.status);
       else params.delete("status");
@@ -72,18 +65,6 @@ export function XlvStaffBoard({
       : xlvPath(`/managers/${encodeURIComponent(managerKey)}`);
     router.replace(`${path}?${params}`, { scroll: false });
   }
-
-  useEffect(() => {
-    setSearchDraft(search);
-  }, [search]);
-
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (searchDraft !== search) pushQuery({ search: searchDraft });
-    }, 300);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchDraft]);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,9 +101,6 @@ export function XlvStaffBoard({
 
   const filteredRows =
     data?.rows.filter((r) => {
-      if (search && !r.name.toLowerCase().includes(search.toLowerCase())) {
-        return false;
-      }
       if (statusFilter === "qualified") return r.qualifiedCount > 0;
       if (statusFilter === "in_progress") return r.inProgressCount > 0;
       if (statusFilter === "invalid") return r.invalidCount > 0;
@@ -157,15 +135,6 @@ export function XlvStaffBoard({
               />
             ) : null}
           </div>
-        }
-        actions={
-          <NotionInput
-            placeholder="搜索队员"
-            value={searchDraft}
-            onChange={(e) => setSearchDraft(e.target.value)}
-            className="w-full sm:w-52"
-            aria-label="搜索队员"
-          />
         }
       />
 
