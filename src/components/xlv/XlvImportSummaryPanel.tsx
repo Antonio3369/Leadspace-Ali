@@ -37,7 +37,7 @@ export function XlvImportSummaryPanel({ summary }: { summary: XlvImportSummary }
           </>
         ) : (
           <>
-            <Stat label="作业员" value={summary.uniqueOperators} />
+            <Stat label="队员" value={summary.uniqueOperators} />
             <Stat label="新建名册" value={summary.rosterCreated} />
             <Stat label="更新名册" value={summary.rosterUpdated} />
             {(summary.accountsCreated ?? 0) > 0 ||
@@ -111,7 +111,7 @@ export function XlvImportSummaryPanel({ summary }: { summary: XlvImportSummary }
           <p className="font-medium text-[#334155]">不在组织名册中</p>
           {summary.unmatchedOperators.length > 0 ? (
             <p className="text-[#64748b]">
-              作业员（{summary.unmatchedOperators.length}）：{" "}
+              队员（{summary.unmatchedOperators.length}）：{" "}
               {summary.unmatchedOperators.slice(0, 8).join("、")}
               {summary.unmatchedOperators.length > 8 ? "…" : ""}
             </p>

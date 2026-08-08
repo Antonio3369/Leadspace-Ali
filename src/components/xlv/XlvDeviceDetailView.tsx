@@ -186,7 +186,7 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
 
             <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
               <div>
-                <dt className="text-[#94a3b8] text-xs">作业员</dt>
+                <dt className="text-[#94a3b8] text-xs">队员</dt>
                 <dd className="font-medium">{device.operatorName || "—"}</dd>
               </div>
               <div>

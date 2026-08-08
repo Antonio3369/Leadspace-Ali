@@ -204,7 +204,7 @@ export function XlvMemberAccountsPanel() {
         kicker="微信小绿盒"
         meta={
           <p className="text-sm text-[#64748b]">
-            管理员管理各区域经理的小绿盒登录：重置密码、停用或启用。作业员账号由经理在「队员管理」维护。
+            管理员管理各区域经理的小绿盒登录：重置密码、停用或启用。队员账号由经理在「队员管理」维护。
             <Link
               href={xlvPath("/admin/attribution")}
               className="block mt-1 text-[#2563eb] hover:text-[#1d4ed8] font-medium"

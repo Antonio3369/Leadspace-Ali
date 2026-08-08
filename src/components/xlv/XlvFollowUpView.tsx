@@ -261,7 +261,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
         <NotionInput
           value={searchDraft}
           onChange={(e) => setSearchDraft(e.target.value)}
-          placeholder="搜索商户 / SN / 作业员"
+          placeholder="搜索 商户名/SN/队员"
           className="flex-1"
         />
         {showManagerFilter ? (
@@ -289,7 +289,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
             onChange={(e) => pushQuery({ operator: e.target.value || null })}
             className="sm:w-40"
           >
-            <option value="">全部作业员</option>
+            <option value="">全部队员</option>
             {operators.map((o) => (
               <option key={o} value={o}>
                 {o}

@@ -403,11 +403,11 @@ export function XlvDashboardView({
         actions={
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <NotionInput
-              placeholder="商户 / SN / 作业员"
+              placeholder="搜索 商户名/SN/队员"
               value={searchDraft}
               onChange={(e) => setSearchDraft(e.target.value)}
               className="w-full sm:w-52"
-              aria-label="搜索商户或设备"
+              aria-label="搜索商户、设备或队员"
             />
           </div>
         }
@@ -418,7 +418,7 @@ export function XlvDashboardView({
 
       {!loading && summary && summary.totalDevices === 0 ? (
         <NotionCallout>
-          暂无设备数据。请先在「数据导入」上传运营原始表，再导入人员归属表补齐作业员与经理。
+          暂无设备数据。请先在「数据导入」上传运营原始表，再导入人员归属表补齐队员与经理。
         </NotionCallout>
       ) : null}
 
@@ -486,9 +486,9 @@ export function XlvDashboardView({
                 value={operator}
                 onChange={(e) => pushQuery({ operator: e.target.value || null })}
                 className="w-full sm:max-w-[200px]"
-                aria-label={manager ? `${manager} 团队作业员` : "筛选作业员"}
+                aria-label={manager ? `${manager} 团队队员` : "筛选队员"}
               >
-                <option value="">全部作业员</option>
+                <option value="">全部队员</option>
                 {filters.operators.map((name) => (
                   <option key={name} value={name}>
                     {name}

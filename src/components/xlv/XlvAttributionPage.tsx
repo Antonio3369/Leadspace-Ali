@@ -285,7 +285,7 @@ export function XlvAttributionPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-[14px] border border-[#eef2f7] bg-white px-3 py-3 text-xs mb-4">
           <Stat label="已铺设设备" value={summary.assignedDevices} />
           <Stat label="缺经理姓名" value={summary.devicesMissingManagerId} tone="amber" />
-          <Stat label="缺/占位作业员" value={summary.devicesMissingSalesId} tone="amber" />
+          <Stat label="缺/占位队员" value={summary.devicesMissingSalesId} tone="amber" />
           <Stat
             label="待处理项"
             value={summary.unmatchedManagerNames + summary.unmatchedOperatorNames}
@@ -303,7 +303,7 @@ export function XlvAttributionPage() {
         tabs={[
           { key: "devices", label: "待完善归属" },
           { key: "managers", label: "缺经理姓名" },
-          { key: "operators", label: "缺/异常作业员" },
+          { key: "operators", label: "缺/异常队员" },
         ]}
       />
 
@@ -321,7 +321,7 @@ export function XlvAttributionPage() {
 
         {tab === "operators" ? (
           <NameTable
-            emptyText="所有作业员姓名均已填写且在组织名册中"
+            emptyText="所有队员姓名均已填写且在组织名册中"
             rows={(report?.unmatchedOperators ?? []).map((row) => ({
               primary: row.name,
               secondary: row.managerName ? `经理：${row.managerName}` : null,
@@ -351,7 +351,7 @@ export function XlvAttributionPage() {
               >
                 <option value="any">全部待完善</option>
                 <option value="manager">仅缺经理</option>
-                <option value="operator">作业员问题</option>
+                <option value="operator">队员问题</option>
               </NotionSelect>
             </div>
 
@@ -371,7 +371,7 @@ export function XlvAttributionPage() {
                       <tr className="border-b border-[#f1f5f9] text-left text-xs text-[#94a3b8]">
                         <th className="px-3 py-2.5">设备 / 商户</th>
                         <th className="px-3 py-2.5">经理</th>
-                        <th className="px-3 py-2.5">作业员</th>
+                        <th className="px-3 py-2.5">队员</th>
                         <th className="px-3 py-2.5 w-20">操作</th>
                       </tr>
                     </thead>
@@ -500,7 +500,7 @@ export function XlvAttributionPage() {
               />
             </label>
             <label className="block text-xs space-y-1">
-              <span className="text-[#64748b]">作业员姓名</span>
+              <span className="text-[#64748b]">队员姓名</span>
               <NotionSelect
                 value={editOperatorName}
                 onChange={(e) => setEditOperatorName(e.target.value)}
@@ -515,7 +515,7 @@ export function XlvAttributionPage() {
               <NotionInput
                 value={editOperatorName}
                 onChange={(e) => setEditOperatorName(e.target.value)}
-                placeholder="或直接输入作业员姓名"
+                placeholder="或直接输入队员姓名"
               />
             </label>
             <p className="text-[10px] text-[#94a3b8]">

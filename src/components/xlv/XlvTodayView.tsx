@@ -285,7 +285,7 @@ export function XlvTodayView({
                   className="sm:w-40 min-h-11"
                 >
                   <option value="">
-                    全部作业员
+                    全部队员
                     {data ? ` (${data.counts.total})` : ""}
                   </option>
                   {operators.map((o) => (

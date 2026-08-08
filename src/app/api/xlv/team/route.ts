@@ -27,7 +27,7 @@ export async function GET() {
 
     const hints: string[] = [];
     if (backfill.created > 0) {
-      hints.push(`已为本队新开 ${backfill.created} 个作业员账号`);
+      hints.push(`已为本队新开 ${backfill.created} 个队员账号`);
     }
     if (backfill.updated > 0) {
       hints.push(`已为 ${backfill.updated} 名队员补开通登录`);

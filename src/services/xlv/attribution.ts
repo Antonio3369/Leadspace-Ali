@@ -58,10 +58,10 @@ function enrichUnattachedRow(
     operatorHint = "经理自营拓展";
   } else if (missingOperator) {
     operatorHint = isXlvPlaceholderName(operatorName)
-      ? "作业员为占位或未填写（如「待定」）"
-      : "缺少作业员姓名";
+      ? "队员为占位或未填写（如「待定」）"
+      : "缺少队员姓名";
   } else if (notInRoster) {
-    operatorHint = "该作业员+经理组合不在组织名册中";
+    operatorHint = "该队员+经理组合不在组织名册中";
   }
 
   return {

@@ -168,7 +168,7 @@ export function XlvManagerTeamPanel({ backHref }: { backHref?: string }) {
         showBack={Boolean(backHref)}
         meta={
           <p className="text-sm text-[#64748b]">
-            管理本队作业员登录：重置密码、停用或启用。组织名册导入后会自动开号。
+            管理本队队员登录：重置密码、停用或启用。组织名册导入后会自动开号。
           </p>
         }
       />

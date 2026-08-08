@@ -26,7 +26,7 @@ export async function GET() {
 
     const hints: string[] = [];
     if (backfill.created > 0) {
-      hints.push(`已从组织名册新开 ${backfill.created} 个经理/作业员账号`);
+      hints.push(`已从组织名册新开 ${backfill.created} 个经理/队员账号`);
     }
     if (backfill.updated > 0) {
       hints.push(`已为 ${backfill.updated} 人补开通登录（初始密码 123456）`);

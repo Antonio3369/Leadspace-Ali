@@ -189,11 +189,11 @@ export function assertCanManageXlvMemberAccount(
 
   if (user.role === "MANAGER" && user.authRealm === "xlv") {
     if (account.memberRole !== "OPERATOR") {
-      throw new PermissionError("经理仅可管理本队作业员账号");
+      throw new PermissionError("经理仅可管理本队队员账号");
     }
     const managerName = xlvManagerNameFromSession(user);
     if (account.managerName.trim() !== managerName) {
-      throw new PermissionError("无权管理其他队伍的作业员");
+      throw new PermissionError("无权管理其他队伍的队员");
     }
     return;
   }

@@ -30,7 +30,7 @@ export const notion = {
   thead: "bg-[#f8fafc] text-[#64748b]",
   row: "border-t border-[#f1f5f9] hover:bg-[#f8fafc]/60",
   input:
-    "border border-[#e2e8f0] rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#2563eb]/20",
+    "border border-[#e2e8f0] rounded-lg px-3 py-2 text-sm bg-white text-[#111827] placeholder:text-[#94a3b8] placeholder:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#2563eb]/20",
   select:
     "border border-[#e2e8f0] rounded-lg px-3 py-2 text-sm bg-white min-w-[140px] focus:outline-none focus:ring-2 focus:ring-[#2563eb]/20",
 };

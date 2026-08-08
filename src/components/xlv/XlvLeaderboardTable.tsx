@@ -10,6 +10,13 @@ import {
   XLV_INVENTORY_MANAGER_LABEL,
   type XlvQualificationStatus,
 } from "@/lib/xlv-rules";
+import {
+  xlvAlertButtonClass,
+  xlvFilterChipBaseClass,
+  xlvNeutralChipClass,
+  xlvQualStatusButtonClass,
+  XlvFilterChipText,
+} from "@/components/xlv/xlv-filter-styles";
 
 function RankBadge({ rank }: { rank: number }) {
   if (rank === 1) return <span className="font-bold text-amber-500">🥇 {rank}</span>;
@@ -18,56 +25,29 @@ function RankBadge({ rank }: { rank: number }) {
   return <span className="text-[#94a3b8]">{rank}</span>;
 }
 
-function MetricLink({
+function BoardMetricChip({
   label,
-  value,
+  count,
   href,
-  tone = "default",
+  className,
   active = false,
 }: {
   label: string;
-  value: number;
+  count: number;
   href?: string;
-  tone?: "default" | "danger" | "amber" | "success" | "sky" | "muted";
+  className: string;
   active?: boolean;
 }) {
-  const toneClass =
-    tone === "danger"
-      ? "text-[#c41e3a]"
-      : tone === "amber"
-        ? "text-amber-800"
-        : tone === "success"
-          ? "text-emerald-700"
-          : tone === "sky"
-            ? "text-sky-700"
-            : tone === "muted"
-              ? "text-slate-500"
-              : "text-[#111827]";
-  const inner = (
-    <>
-      <span className="text-[#94a3b8]">{label}</span>
-      <span className={`font-semibold tabular-nums ${toneClass}`}>{value}</span>
-    </>
-  );
-  const activeClass = active ? "ring-2 ring-[#2563eb]/30 bg-[#eff6ff]" : "";
-  if (href && value > 0) {
+  const chipClass = `${xlvFilterChipBaseClass()} ${className}`;
+  const body = <XlvFilterChipText label={label} count={count} active={active} />;
+  if (href && count > 0) {
     return (
-      <Link
-        href={href}
-        className={`inline-flex items-baseline gap-1 rounded-md px-1.5 py-0.5 hover:bg-[#f1f5f9] ${activeClass}`}
-        title={`查看「${label}」明细`}
-      >
-        {inner}
+      <Link href={href} className={chipClass} title={`查看「${label}」明细`}>
+        {body}
       </Link>
     );
   }
-  return (
-    <span
-      className={`inline-flex items-baseline gap-1 px-1.5 py-0.5 ${activeClass}`}
-    >
-      {inner}
-    </span>
-  );
+  return <span className={chipClass}>{body}</span>;
 }
 
 export function XlvSummaryStrip({
@@ -219,7 +199,7 @@ export function XlvLeaderboardTable({
                     <RankBadge rank={rank} />
                   )}
                 </div>
-                <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="min-w-0 flex-1 space-y-2">
                   <Link
                     href={rowNameHref}
                     className={`block truncate text-base font-semibold ${
@@ -231,51 +211,72 @@ export function XlvLeaderboardTable({
                   >
                     {row.name}
                   </Link>
-                  <p className="text-sm tabular-nums text-[#64748b]">
-                    {devicesHref ? (
-                      <Link
-                        href={devicesHref}
-                        className="font-medium text-[#334155] hover:text-[#2563eb]"
-                      >
-                        设备 {row.deviceCount}
-                      </Link>
-                    ) : (
-                      <>设备 {row.deviceCount}</>
-                    )}
-                    <span className="mx-1.5 text-[#cbd5e1]">·</span>
-                    已达标 {row.qualifiedCount}
-                    <span className="mx-1.5 text-[#cbd5e1]">·</span>
-                    考核中 {row.inProgressCount}
-                  </p>
-                  <div className="-mx-1.5 flex flex-wrap gap-x-1 gap-y-1 text-sm">
-                    <MetricLink
+                  <div className="flex flex-wrap gap-1.5">
+                    <BoardMetricChip
+                      label="设备"
+                      count={row.deviceCount}
+                      href={devicesHref ?? undefined}
+                      className={xlvNeutralChipClass()}
+                    />
+                    <BoardMetricChip
+                      label="已达标"
+                      count={row.qualifiedCount}
+                      href={
+                        devicesHref
+                          ? statusHref(devicesHref, "qualified")
+                          : undefined
+                      }
+                      className={xlvQualStatusButtonClass(
+                        "qualified",
+                        statusFilter === "qualified"
+                      )}
+                      active={statusFilter === "qualified"}
+                    />
+                    <BoardMetricChip
+                      label="考核中"
+                      count={row.inProgressCount}
+                      href={
+                        devicesHref
+                          ? statusHref(devicesHref, "in_progress")
+                          : undefined
+                      }
+                      className={xlvQualStatusButtonClass(
+                        "in_progress",
+                        statusFilter === "in_progress"
+                      )}
+                      active={statusFilter === "in_progress"}
+                    />
+                    <BoardMetricChip
                       label="无效"
-                      value={row.invalidCount}
+                      count={row.invalidCount}
                       href={
                         devicesHref
                           ? statusHref(devicesHref, "invalid")
                           : undefined
                       }
-                      tone="muted"
+                      className={xlvQualStatusButtonClass(
+                        "invalid",
+                        statusFilter === "invalid"
+                      )}
                       active={statusFilter === "invalid"}
                     />
-                    <MetricLink
+                    <BoardMetricChip
                       label="单笔沉默"
-                      value={row.singleSilenceCount}
+                      count={row.singleSilenceCount}
                       href={
                         devicesHref
                           ? alertHref(devicesHref, "single_silence")
                           : undefined
                       }
-                      tone="danger"
+                      className={xlvAlertButtonClass("single_silence", false)}
                     />
-                    <MetricLink
+                    <BoardMetricChip
                       label="沉睡"
-                      value={row.dormantCount}
+                      count={row.dormantCount}
                       href={
                         devicesHref ? alertHref(devicesHref, "dormant") : undefined
                       }
-                      tone="amber"
+                      className={xlvAlertButtonClass("dormant", false)}
                     />
                   </div>
                 </div>
