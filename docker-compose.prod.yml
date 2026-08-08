@@ -34,9 +34,9 @@ services:
       dockerfile: Dockerfile
     container_name: leadspace-alipay-app
     restart: unless-stopped
-    # 超限只杀本容器并自动重启，不拖死 SSH / 同机其它站
-    mem_limit: 1536m
-    memswap_limit: 1536m
+    # 同机多服务：略提高上限，降低看板并发加载时 OOM→502 概率
+    mem_limit: 2048m
+    memswap_limit: 2048m
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,7 +48,7 @@ services:
     environment:
       NODE_ENV: production
       # 先于系统 OOM 触发 V8 回收，降低整机假死概率
-      NODE_OPTIONS: --max-old-space-size=1280
+      NODE_OPTIONS: --max-old-space-size=1536
       # 容器内 /tmp 可写；任务结束后删文件，无需持久卷
       IMPORT_JOB_DIR: /tmp/leadspace-import-jobs
       N7_FOLLOW_UP_UPLOAD_DIR: /app/data/n7-follow-up

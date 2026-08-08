@@ -3,8 +3,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { PermissionError } from "@/lib/permissions";
 import { parseXlvAlertKind, parseXlvQualificationStatus } from "@/lib/xlv-rules";
 import {
-  getXlvDashboardSummary,
-  getXlvDeviceList,
+  getXlvDashboardPageData,
   getXlvFilterOptions,
   getXlvManagerStats,
 } from "@/services/xlv/analytics";
@@ -22,9 +21,8 @@ export async function GET(request: Request) {
         ? null
         : parseXlvQualificationStatus(searchParams.get("status"));
 
-    const [summary, list, managers, filters] = await Promise.all([
-      getXlvDashboardSummary(user),
-      getXlvDeviceList(user, {
+    const [page, managers, filters] = await Promise.all([
+      getXlvDashboardPageData(user, {
         alert,
         managerName,
         operatorName,
@@ -36,9 +34,9 @@ export async function GET(request: Request) {
     ]);
 
     return NextResponse.json({
-      summary,
-      devices: list.devices,
-      matchedCount: list.total,
+      summary: page.summary,
+      devices: page.list.devices,
+      matchedCount: page.list.total,
       managers,
       filters,
     });

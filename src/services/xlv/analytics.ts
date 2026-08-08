@@ -8,7 +8,6 @@ import {
   isXlvUnassignedManager,
   isXlvActiveInProgress,
   type XlvQualificationStatus,
-  getXlvQualificationDetail,
   xlvQualificationGapLine,
   xlvManagerDisplayName,
 } from "@/lib/xlv-rules";
@@ -68,6 +67,218 @@ export interface XlvManagerStat {
 
 function isoDate(d: Date | null | undefined) {
   return d ? d.toISOString().slice(0, 10) : null;
+}
+
+type XlvListDeviceRow = {
+  deviceSn: string;
+  merchantName: string | null;
+  activationMerchantName: string | null;
+  operatorName: string;
+  managerName: string;
+  companyName: string | null;
+  cumulativeUsers: number;
+  cumulativeTxns: number;
+  sleepDays: number;
+  lastTxnDate: Date | null;
+  firstTxnDate: Date | null;
+};
+
+type XlvAssignedQualRow = {
+  deviceSn: string;
+  firstTxnDate: Date | null;
+  cumulativeUsers: number;
+  cumulativeTxns: number;
+  sleepDays: number;
+};
+
+const LIST_DEVICE_SELECT = {
+  deviceSn: true,
+  merchantName: true,
+  activationMerchantName: true,
+  operatorName: true,
+  managerName: true,
+  companyName: true,
+  cumulativeUsers: true,
+  cumulativeTxns: true,
+  sleepDays: true,
+  lastTxnDate: true,
+  firstTxnDate: true,
+} as const;
+
+const ASSIGNED_QUAL_SELECT = {
+  deviceSn: true,
+  firstTxnDate: true,
+  cumulativeUsers: true,
+  cumulativeTxns: true,
+  sleepDays: true,
+} as const;
+
+function buildXlvDeviceListItems(
+  enriched: ReturnType<typeof attachXlvQualificationDetails<XlvListDeviceRow>>
+): XlvDeviceListItem[] {
+  return enriched.map((row) => ({
+    deviceSn: row.deviceSn,
+    merchantName: row.merchantName,
+    activationMerchantName: row.activationMerchantName,
+    operatorName: row.operatorName,
+    managerName: row.managerName,
+    companyName: row.companyName,
+    cumulativeUsers: row.cumulativeUsers,
+    cumulativeTxns: row.cumulativeTxns,
+    sleepDays: row.sleepDays,
+    lastTxnDate: isoDate(row.lastTxnDate),
+    firstTxnDate: isoDate(row.firstTxnDate),
+    alertKind: classifyXlvAlert(row),
+    qualificationStatus: row.qualificationStatus,
+    qualificationGapLine: xlvQualificationGapLine(row.qualificationDetail),
+  }));
+}
+
+function summarizeAssignedQualification(
+  assignedRows: XlvAssignedQualRow[],
+  snapshotMap: Awaited<ReturnType<typeof loadXlvSnapshotMap>>
+) {
+  let qualifiedCount = 0;
+  let inProgressCount = 0;
+  let invalidCount = 0;
+  let active = 0;
+  for (const row of assignedRows) {
+    const snapshots = snapshotMap.get(row.deviceSn) ?? [];
+    const status = xlvQualificationOf(row, snapshots);
+    if (status === "qualified") qualifiedCount += 1;
+    else if (status === "in_progress") inProgressCount += 1;
+    else if (status === "invalid") invalidCount += 1;
+    if (isXlvActiveInProgress({ ...row, qualificationStatus: status })) {
+      active += 1;
+    }
+  }
+  return { qualifiedCount, inProgressCount, invalidCount, active };
+}
+
+/** 看板页：单次加载快照，避免 summary + list 并行双倍占用内存 */
+export async function getXlvDashboardPageData(
+  user: SessionUser,
+  opts: {
+    alert?: XlvAlertKind;
+    managerName?: string | null;
+    operatorName?: string | null;
+    search?: string | null;
+    qualificationStatus?: XlvQualificationStatus | null;
+    limit?: number;
+  }
+): Promise<{
+  summary: XlvDashboardSummary;
+  list: { total: number; devices: XlvDeviceListItem[] };
+}> {
+  assertCanViewXlv(user);
+  const baseWhere = buildXlvRoleWhere(user);
+  const listWhere = buildXlvDeviceWhere(user, opts);
+
+  const [
+    totalDevices,
+    inventoryCount,
+    singleSilence,
+    dormantAll,
+    latest,
+    listRows,
+    assignedRows,
+  ] = await Promise.all([
+    db.xlvDeviceRecord.count({ where: baseWhere }),
+    db.xlvDeviceRecord.count({
+      where: { AND: [baseWhere, buildXlvInventoryDeviceWhere()] },
+    }),
+    db.xlvDeviceRecord.count({
+      where: {
+        AND: [
+          baseWhere,
+          buildXlvAssignedDeviceWhere(),
+          {
+            cumulativeTxns: 1,
+            sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS },
+          },
+        ],
+      },
+    }),
+    db.xlvDeviceRecord.count({
+      where: {
+        AND: [
+          baseWhere,
+          buildXlvAssignedDeviceWhere(),
+          { sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS } },
+        ],
+      },
+    }),
+    db.xlvDeviceRecord.findFirst({
+      where: baseWhere,
+      orderBy: { statDate: "desc" },
+      select: { statDate: true },
+    }),
+    db.xlvDeviceRecord.findMany({
+      where: listWhere,
+      orderBy: { deviceSn: "asc" },
+      ...(opts.limit != null ? { take: opts.limit } : {}),
+      select: LIST_DEVICE_SELECT,
+    }),
+    db.xlvDeviceRecord.findMany({
+      where: { AND: [baseWhere, buildXlvAssignedDeviceWhere()] },
+      select: ASSIGNED_QUAL_SELECT,
+    }),
+  ]);
+
+  const dormant = Math.max(0, dormantAll - singleSilence);
+  const snapshotSns = [
+    ...new Set([
+      ...listRows.map((r) => r.deviceSn),
+      ...assignedRows.map((r) => r.deviceSn),
+    ]),
+  ];
+  const snapshotMap = await loadXlvSnapshotMap(snapshotSns);
+  const qualSummary = summarizeAssignedQualification(assignedRows, snapshotMap);
+
+  const enriched = attachXlvQualificationDetails(listRows, snapshotMap);
+  let filtered = enriched;
+  if (opts.qualificationStatus) {
+    filtered = enriched.filter(
+      (d) => d.qualificationStatus === opts.qualificationStatus
+    );
+  } else if (opts.alert === "active") {
+    filtered = enriched.filter((d) =>
+      isXlvActiveInProgress({
+        sleepDays: d.sleepDays,
+        cumulativeTxns: d.cumulativeTxns,
+        qualificationStatus: d.qualificationStatus,
+      })
+    );
+  }
+
+  const sortMode = resolveXlvDeviceSortMode({
+    alert: opts.alert,
+    qualificationStatus: opts.qualificationStatus,
+    search: opts.search,
+  });
+  const sorted = sortXlvDevices(
+    filtered,
+    sortMode,
+    opts.qualificationStatus
+  );
+  const postFiltered =
+    Boolean(opts.qualificationStatus) || opts.alert === "active";
+
+  return {
+    summary: {
+      totalDevices,
+      deployedCount: totalDevices - inventoryCount,
+      inventoryCount,
+      singleSilence,
+      dormant,
+      ...qualSummary,
+      latestStatDate: isoDate(latest?.statDate),
+    },
+    list: {
+      total: postFiltered ? sorted.length : listRows.length,
+      devices: buildXlvDeviceListItems(sorted),
+    },
+  };
 }
 
 export async function getXlvDashboardSummary(
@@ -216,17 +427,7 @@ export async function getXlvDeviceList(
 
   return {
     total: postFiltered ? sorted.length : rows.length,
-    devices: sorted.map((row) => {
-      const detail = getXlvQualificationDetail(row, snapshotMap.get(row.deviceSn) ?? []);
-      return {
-        ...row,
-        lastTxnDate: isoDate(row.lastTxnDate),
-        firstTxnDate: isoDate(row.firstTxnDate),
-        alertKind: classifyXlvAlert(row),
-        qualificationStatus: row.qualificationStatus,
-        qualificationGapLine: xlvQualificationGapLine(detail),
-      };
-    }),
+    devices: buildXlvDeviceListItems(sorted),
   };
 }
 
