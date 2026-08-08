@@ -1,5 +1,7 @@
 /** 上传大表：支持同步结果或 202 + jobId 轮询 */
 
+import { readResponseJson } from "@/lib/fetch-json";
+
 const TRANSIENT_HTTP = new Set([502, 503, 504]);
 const POLL_INTERVAL_MS = 2000;
 const MAX_WAIT_MS = 15 * 60 * 1000;
@@ -13,15 +15,7 @@ function isTransientHttpStatus(status: number): boolean {
 }
 
 async function readJsonBody(res: Response, context: string): Promise<Record<string, unknown>> {
-  const text = await res.text();
-  if (!text.trim()) return {};
-  try {
-    return JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    throw new Error(
-      `${context}失败（HTTP ${res.status}）。请重新登录后重试，若仍失败请联系管理员。`
-    );
-  }
+  return readResponseJson<Record<string, unknown>>(res, context);
 }
 
 function sleep(ms: number) {
@@ -132,8 +126,10 @@ export async function resumeImportJobPoll<T>(
   if (!probe.ok || probeJob.status === "FAILED") {
     clearJobStorage(endpoint);
     const msg = probeJob.errorMessage;
-    // 部署/重启导致的中断：清掉旧任务，让用户直接重新选文件上传
     if (typeof msg === "string" && msg.includes("服务重启")) {
+      return null;
+    }
+    if (!probe.ok && TRANSIENT_HTTP.has(probe.status)) {
       return null;
     }
     if (typeof msg === "string" && msg) {

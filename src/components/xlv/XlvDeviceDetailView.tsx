@@ -21,6 +21,7 @@ import type { XlvFollowUpPatchResult } from "@/lib/xlv-follow-up-client";
 import { XlvTxnActivityChart } from "@/components/xlv/XlvTxnActivityChart";
 import type { XlvTxnActivityPoint } from "@/services/xlv/snapshot-daily";
 import type { XlvQualificationDetail } from "@/lib/xlv-rules";
+import { readResponseJson } from "@/lib/fetch-json";
 
 interface Device {
   deviceSn: string;
@@ -72,10 +73,16 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
     setError("");
     fetch(`/api/xlv/devices/${encodeURIComponent(sn)}`)
       .then(async (res) => {
-        const json = await res.json();
+        const json = await readResponseJson<{
+          error?: string;
+          device?: Device;
+          qualificationDetail?: XlvQualificationDetail;
+          txnTrend?: XlvTxnActivityPoint[];
+        }>(res, "加载设备");
         if (!res.ok) throw new Error(json.error || "加载失败");
+        const d = json.device;
+        if (!d) throw new Error("设备数据为空");
         if (!cancelled) {
-          const d = json.device;
           setDevice({
             ...d,
             lastTxnDate: d.lastTxnDate ? String(d.lastTxnDate).slice(0, 10) : null,

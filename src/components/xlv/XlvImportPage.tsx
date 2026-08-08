@@ -97,7 +97,14 @@ export function XlvImportPage() {
             }
           }
         );
-        if (cancelled || !res) return;
+        if (cancelled || !res) {
+          if (!cancelled && !res) {
+            setMessage(
+              "若刚上传过原始表，后台可能已写入成功；请刷新本页或打开设备详情核对考核数据。"
+            );
+          }
+          return;
+        }
         setResult(res);
         setMessage("导入完成");
       } catch (err) {

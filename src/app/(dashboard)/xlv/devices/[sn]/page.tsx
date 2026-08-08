@@ -5,6 +5,7 @@ import { xlvPath } from "@/lib/business-lines";
 import { canAccessXlvWorkspace } from "@/services/xlv/xlv-scope";
 import { PageShell } from "@/components/ui/notion";
 import { XlvDeviceDetailView } from "@/components/xlv/XlvDeviceDetailView";
+import { safeDecodeURIComponent } from "@/lib/fetch-json";
 
 export default async function XlvDeviceDetailPage({
   params,
@@ -25,7 +26,7 @@ export default async function XlvDeviceDetailPage({
         </PageShell>
       }
     >
-      <XlvDeviceDetailView sn={decodeURIComponent(sn)} />
+      <XlvDeviceDetailView sn={safeDecodeURIComponent(sn)} />
     </Suspense>
   );
 }
