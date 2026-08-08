@@ -30,7 +30,7 @@ export function XlvAssessmentPanel({
       {firstTxnDate ? (
         <p className="text-xs text-[#64748b]">
           装机月（首笔）{firstTxnDate} · 最多考核两个自然月 ·
-          下表为<strong>月内累计增量</strong>（该月最后截面累计减月前基线，对齐微信表「累计*」列；交易趋势仍按收款日展示逐日笔数）
+          下表为<strong>自然月成绩</strong>（装机月取月末累计，优先次月首行「累计−当日」；次月取两月末截面差；交易趋势仍按收款日展示）
         </p>
       ) : (
         <p className="text-xs text-amber-700">暂无首笔交易，尚未进入考核窗口</p>

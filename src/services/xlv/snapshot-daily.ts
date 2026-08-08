@@ -208,12 +208,55 @@ function isSnapshotInCalendarMonth(statDate: Date, year: number, month: number) 
   return y === year && m === month;
 }
 
-function isSnapshotBeforeCalendarMonth(statDate: Date, year: number, month: number) {
-  const [y, m] = xlvStatDateKey(statDate).split("-").map(Number);
-  return y < year || (y === year && m < month);
+function nextCalendarMonth(year: number, month: number) {
+  if (month === 12) return { year: year + 1, month: 1 };
+  return { year, month: month + 1 };
 }
 
-/** 考核月成绩：月内累计增量（月末截面减月前基线），与微信表「累计*」口径一致 */
+function prevCalendarMonth(year: number, month: number) {
+  if (month === 1) return { year: year - 1, month: 12 };
+  return { year, month: month - 1 };
+}
+
+/**
+ * 自然月末累计截面（对齐微信原始表）：
+ * 1. 次月首行「累计* − 当日*」≈ 上月末累计（原始表常从 8/1 起，无 7 月 statDate）
+ * 2. 否则取该月最后一条快照的累计
+ */
+function getXlvCalendarMonthEndCumulative(
+  enriched: XlvAssessmentSnapshot[],
+  year: number,
+  month: number
+): { users: number; txns: number } | null {
+  const { year: nextY, month: nextM } = nextCalendarMonth(year, month);
+  const nextMonthSnaps = enriched
+    .filter((s) => isSnapshotInCalendarMonth(s.statDate, nextY, nextM))
+    .sort((a, b) => a.statDate.getTime() - b.statDate.getTime());
+
+  if (nextMonthSnaps.length > 0) {
+    const first = nextMonthSnaps[0]!;
+    const users = Math.max(0, first.cumulativeUsers - Math.max(0, first.dailyUsers));
+    const txns = Math.max(0, first.cumulativeTxns - Math.max(0, first.dailyTxns));
+    if (users > 0 || txns > 0) {
+      return { users, txns };
+    }
+  }
+
+  const inMonth = enriched
+    .filter((s) => isSnapshotInCalendarMonth(s.statDate, year, month))
+    .sort((a, b) => a.statDate.getTime() - b.statDate.getTime());
+
+  if (inMonth.length > 0) {
+    const last = inMonth[inMonth.length - 1]!;
+    if (last.cumulativeUsers > 0 || last.cumulativeTxns > 0) {
+      return { users: last.cumulativeUsers, txns: last.cumulativeTxns };
+    }
+  }
+
+  return null;
+}
+
+/** 考核月成绩：月末累计截面（装机月）或两月末截面差（次月），与微信表「累计*」口径一致 */
 export function computeXlvMonthAssessmentTotals(
   snapshots: Array<{
     deviceSn?: string;
@@ -238,39 +281,21 @@ export function computeXlvMonthAssessmentTotals(
     normalizeAssessmentSnapshots(snapshots)
   );
 
-  const inMonth = enriched
-    .filter((s) => isSnapshotInCalendarMonth(s.statDate, year, month))
-    .sort((a, b) => a.statDate.getTime() - b.statDate.getTime());
+  const monthEnd = getXlvCalendarMonthEndCumulative(enriched, year, month);
 
-  if (inMonth.length > 0) {
-    const lastInMonth = inMonth[inMonth.length - 1]!;
+  if (allowInstallMonthFallback) {
+    if (monthEnd) {
+      return { ...monthEnd, estimated: false };
+    }
+  } else if (monthEnd) {
+    const { year: prevY, month: prevM } = prevCalendarMonth(year, month);
+    const prevEnd = getXlvCalendarMonthEndCumulative(enriched, prevY, prevM);
 
-    // 装机月：取该月最后截面累计（设备当月从 0 起算，对齐微信表末行「累计*」）
-    if (allowInstallMonthFallback) {
-      if (lastInMonth.cumulativeUsers > 0 || lastInMonth.cumulativeTxns > 0) {
-        return {
-          users: lastInMonth.cumulativeUsers,
-          txns: lastInMonth.cumulativeTxns,
-          estimated: false,
-        };
-      }
-    } else {
-      const baseline = enriched
-        .filter((s) => isSnapshotBeforeCalendarMonth(s.statDate, year, month))
-        .sort((a, b) => b.statDate.getTime() - a.statDate.getTime())[0];
+    const users = Math.max(0, monthEnd.users - (prevEnd?.users ?? 0));
+    const txns = Math.max(0, monthEnd.txns - (prevEnd?.txns ?? 0));
 
-      const users = Math.max(
-        0,
-        lastInMonth.cumulativeUsers - (baseline?.cumulativeUsers ?? 0)
-      );
-      const txns = Math.max(
-        0,
-        lastInMonth.cumulativeTxns - (baseline?.cumulativeTxns ?? 0)
-      );
-
-      if (users > 0 || txns > 0) {
-        return { users, txns, estimated: false };
-      }
+    if (users > 0 || txns > 0) {
+      return { users, txns, estimated: false };
     }
   }
 
