@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { xlvPath } from "@/lib/business-lines";
-import { XLV_ALERT_LABELS, xlvMerchantLabel, type XlvAlertKind, type XlvQualificationStatus } from "@/lib/xlv-rules";
+import {
+  XLV_QUALIFICATION_LABELS,
+  xlvMerchantLabel,
+  type XlvAlertKind,
+  type XlvQualificationStatus,
+} from "@/lib/xlv-rules";
 import type { XlvDeviceListItem } from "@/services/xlv/analytics";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
 import { XlvFollowUpStatusCell } from "@/components/xlv/XlvFollowUpStatusCell";
@@ -31,37 +36,79 @@ function gapLine(d: XlvDeviceListItem) {
   return null;
 }
 
-function shouldHideAlertBadge(
+function alertBadgeLabel(d: XlvDeviceListItem) {
+  if (d.alertKind === "single_silence") return "单笔沉默";
+  if (d.alertKind === "dormant") return "沉睡";
+  return null;
+}
+
+function shouldShowAlertBadge(
   d: XlvDeviceListItem,
   hideAllAlertBadges: boolean
 ) {
-  if (hideAllAlertBadges) return true;
+  if (hideAllAlertBadges) return false;
   if (d.qualificationStatus === "qualified" && d.alertKind === "active") {
-    return true;
+    return false;
   }
-  return false;
+  return d.alertKind === "single_silence" || d.alertKind === "dormant";
+}
+
+function shouldShowQualificationBadge(
+  d: XlvDeviceListItem,
+  hideQualificationBadge: boolean,
+  showQualification: boolean
+) {
+  if (!showQualification || hideQualificationBadge || !d.qualificationStatus) {
+    return false;
+  }
+  if (d.alertKind === "single_silence" || d.alertKind === "dormant") {
+    return false;
+  }
+  return true;
 }
 
 function rightLabel(d: XlvDeviceListItem, qualFilterActive: boolean) {
+  if (d.alertKind === "single_silence") {
+    return { title: "单笔沉默", sub: `${d.sleepDays} 天未用` };
+  }
+  if (d.alertKind === "dormant") {
+    return { title: `${d.sleepDays} 天`, sub: "沉睡" };
+  }
   if (d.qualificationStatus === "qualified") {
-    if (d.alertKind === "single_silence") {
-      return { title: "单笔沉默", sub: `${d.sleepDays} 天未用` };
-    }
-    if (d.alertKind === "dormant") {
-      return { title: `${d.sleepDays} 天`, sub: "未收款" };
-    }
     return {
       title: qualFilterActive ? "已达标" : "",
       sub: d.sleepDays === 0 ? "近日有动" : `${d.sleepDays} 天`,
     };
   }
-  if (d.alertKind === "single_silence") {
-    return { title: "单笔沉默", sub: `${d.sleepDays} 天未用` };
+  if (d.qualificationStatus === "in_progress") {
+    return {
+      title: "考核中",
+      sub: d.sleepDays === 0 ? "近日有动" : `${d.sleepDays} 天`,
+    };
   }
-  if (d.alertKind === "dormant") {
-    return { title: `${d.sleepDays} 天`, sub: "未收款" };
+  if (d.qualificationStatus === "invalid") {
+    return {
+      title: XLV_QUALIFICATION_LABELS.invalid,
+      sub: d.sleepDays === 0 ? "近日有动" : `${d.sleepDays} 天`,
+    };
   }
-  return { title: "正常", sub: d.sleepDays === 0 ? "近日有动" : `${d.sleepDays} 天` };
+  return {
+    title: "考核中",
+    sub: d.sleepDays === 0 ? "近日有动" : `${d.sleepDays} 天`,
+  };
+}
+
+function rightTitleClass(d: XlvDeviceListItem) {
+  if (d.alertKind === "single_silence" || d.alertKind === "dormant") {
+    return "text-[#c41e3a]";
+  }
+  if (d.qualificationStatus === "qualified") {
+    return "text-emerald-700";
+  }
+  if (d.qualificationStatus === "invalid") {
+    return "text-slate-600";
+  }
+  return "text-sky-800";
 }
 
 export type XlvDashboardShortcutFilter =
@@ -134,18 +181,20 @@ export function XlvDeviceCardList({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
-                      {!shouldHideAlertBadge(d, hideAlertBadge) ? (
+                      {shouldShowAlertBadge(d, hideAlertBadge) ? (
                         <span
                           className={`inline-flex rounded-md border px-1.5 py-0.5 text-xs font-semibold ${alertBadgeClass(d.alertKind)}`}
                         >
-                          {XLV_ALERT_LABELS[d.alertKind]}
+                          {alertBadgeLabel(d)}
                         </span>
                       ) : null}
-                      {showQualification &&
-                      !hideQualificationBadge &&
-                      d.qualificationStatus ? (
+                      {shouldShowQualificationBadge(
+                        d,
+                        hideQualificationBadge,
+                        showQualification
+                      ) ? (
                         <XlvQualificationBadge
-                          status={d.qualificationStatus}
+                          status={d.qualificationStatus!}
                           compact
                         />
                       ) : null}
@@ -266,13 +315,7 @@ export function XlvDeviceCardList({
                       <>
                         {right.title ? (
                           <p
-                            className={`text-base font-semibold leading-tight ${
-                              d.qualificationStatus === "qualified"
-                                ? "text-emerald-700"
-                                : d.alertKind === "active"
-                                  ? "text-emerald-700"
-                                  : "text-[#c41e3a]"
-                            }`}
+                            className={`text-base font-semibold leading-tight ${rightTitleClass(d)}`}
                           >
                             {right.title}
                           </p>
