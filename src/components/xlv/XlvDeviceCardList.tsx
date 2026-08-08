@@ -31,7 +31,30 @@ function gapLine(d: XlvDeviceListItem) {
   return null;
 }
 
-function rightLabel(d: XlvDeviceListItem) {
+function shouldHideAlertBadge(
+  d: XlvDeviceListItem,
+  hideAllAlertBadges: boolean
+) {
+  if (hideAllAlertBadges) return true;
+  if (d.qualificationStatus === "qualified" && d.alertKind === "active") {
+    return true;
+  }
+  return false;
+}
+
+function rightLabel(d: XlvDeviceListItem, qualFilterActive: boolean) {
+  if (d.qualificationStatus === "qualified") {
+    if (d.alertKind === "single_silence") {
+      return { title: "单笔沉默", sub: `${d.sleepDays} 天未用` };
+    }
+    if (d.alertKind === "dormant") {
+      return { title: `${d.sleepDays} 天`, sub: "未收款" };
+    }
+    return {
+      title: qualFilterActive ? "已达标" : "",
+      sub: d.sleepDays === 0 ? "近日有动" : `${d.sleepDays} 天`,
+    };
+  }
   if (d.alertKind === "single_silence") {
     return { title: "单笔沉默", sub: `${d.sleepDays} 天未用` };
   }
@@ -94,7 +117,7 @@ export function XlvDeviceCardList({
         <ul className="divide-y divide-[#f1f5f9]">
           {devices.map((d) => {
             const merchant = xlvMerchantLabel(d);
-            const right = rightLabel(d);
+            const right = rightLabel(d, hideQualificationBadge);
             const gap = gapLine(d);
             const detailHref = xlvPath(
               `/devices/${encodeURIComponent(d.deviceSn)}${
@@ -111,7 +134,7 @@ export function XlvDeviceCardList({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
-                      {!hideAlertBadge ? (
+                      {!shouldHideAlertBadge(d, hideAlertBadge) ? (
                         <span
                           className={`inline-flex rounded-md border px-1.5 py-0.5 text-xs font-semibold ${alertBadgeClass(d.alertKind)}`}
                         >
@@ -151,7 +174,8 @@ export function XlvDeviceCardList({
                       <p className="tabular-nums text-[#334155]">{progressLine(d)}</p>
                       {d.qualificationGapLine &&
                       showQualification &&
-                      !hideQualificationBadge ? (
+                      !hideQualificationBadge &&
+                      d.qualificationStatus !== "qualified" ? (
                         <p
                           className={
                             d.qualificationStatus === "qualified"
@@ -242,16 +266,26 @@ export function XlvDeviceCardList({
                       />
                     ) : (
                       <>
-                        <p
-                          className={`text-base font-semibold leading-tight ${
-                            d.alertKind === "active"
-                              ? "text-emerald-700"
-                              : "text-[#c41e3a]"
-                          }`}
-                        >
-                          {right.title}
-                        </p>
-                        <p className="text-[0.7rem] text-[#94a3b8] mt-0.5">{right.sub}</p>
+                        {right.title ? (
+                          <p
+                            className={`text-base font-semibold leading-tight ${
+                              d.qualificationStatus === "qualified"
+                                ? "text-emerald-700"
+                                : d.alertKind === "active"
+                                  ? "text-emerald-700"
+                                  : "text-[#c41e3a]"
+                            }`}
+                          >
+                            {right.title}
+                          </p>
+                        ) : null}
+                        {right.sub ? (
+                          <p
+                            className={`text-[0.7rem] text-[#94a3b8] ${right.title ? "mt-0.5" : ""}`}
+                          >
+                            {right.sub}
+                          </p>
+                        ) : null}
                       </>
                     )}
                   </div>
