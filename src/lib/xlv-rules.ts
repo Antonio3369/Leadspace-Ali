@@ -602,6 +602,11 @@ export const XLV_ALERT_FILTERS: {
   { id: "active", label: XLV_ALERT_LABELS.active, hint: XLV_ALERT_HINTS.active },
 ];
 
+/** 队员设备等 UI：仅沉睡类筛选，不含「正常」 */
+export const XLV_SLEEP_ALERT_FILTERS = XLV_ALERT_FILTERS.filter(
+  (item) => item.id !== "active"
+);
+
 export function xlvMerchantLabel(row: {
   merchantName?: string | null;
   activationMerchantName?: string | null;

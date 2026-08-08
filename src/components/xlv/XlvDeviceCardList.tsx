@@ -3,24 +3,18 @@
 import Link from "next/link";
 import { xlvPath } from "@/lib/business-lines";
 import {
-  XLV_QUALIFICATION_LABELS,
-  xlvMerchantLabel,
-  type XlvAlertKind,
-  type XlvQualificationStatus,
-} from "@/lib/xlv-rules";
+  xlvDeviceCardRightLabel,
+  xlvDeviceCardRightTitleClass,
+  xlvShouldShowQualificationBadge,
+  xlvShouldShowSleepAlertBadge,
+  xlvSleepAlertBadgeClass,
+  xlvSleepAlertBadgeLabel,
+} from "@/lib/xlv-device-display";
+import type { XlvAlertKind, XlvQualificationStatus } from "@/lib/xlv-rules";
+import { xlvMerchantLabel } from "@/lib/xlv-rules";
 import type { XlvDeviceListItem } from "@/services/xlv/analytics";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
 import { XlvFollowUpStatusCell } from "@/components/xlv/XlvFollowUpStatusCell";
-
-function alertBadgeClass(kind: XlvDeviceListItem["alertKind"]) {
-  if (kind === "single_silence") {
-    return "bg-[#fef2f2] text-[#b91c1c] border-[#fecaca]";
-  }
-  if (kind === "dormant") {
-    return "bg-[#fff7ed] text-[#c2410c] border-[#fed7aa]";
-  }
-  return "bg-[#f0fdf4] text-[#15803d] border-[#bbf7d0]";
-}
 
 function progressLine(d: XlvDeviceListItem) {
   return `至今累计 ${d.cumulativeUsers} 用户 · ${d.cumulativeTxns} 笔`;
@@ -36,12 +30,6 @@ function gapLine(d: XlvDeviceListItem) {
   return null;
 }
 
-function alertBadgeLabel(d: XlvDeviceListItem) {
-  if (d.alertKind === "single_silence") return "单笔沉默";
-  if (d.alertKind === "dormant") return "沉睡";
-  return null;
-}
-
 function shouldShowAlertBadge(
   d: XlvDeviceListItem,
   hideAllAlertBadges: boolean
@@ -50,65 +38,7 @@ function shouldShowAlertBadge(
   if (d.qualificationStatus === "qualified" && d.alertKind === "active") {
     return false;
   }
-  return d.alertKind === "single_silence" || d.alertKind === "dormant";
-}
-
-function shouldShowQualificationBadge(
-  d: XlvDeviceListItem,
-  hideQualificationBadge: boolean,
-  showQualification: boolean
-) {
-  if (!showQualification || hideQualificationBadge || !d.qualificationStatus) {
-    return false;
-  }
-  if (d.alertKind === "single_silence" || d.alertKind === "dormant") {
-    return false;
-  }
-  return true;
-}
-
-function rightLabel(d: XlvDeviceListItem, qualFilterActive: boolean) {
-  if (d.alertKind === "single_silence") {
-    return { title: "单笔沉默", sub: `${d.sleepDays} 天未用` };
-  }
-  if (d.alertKind === "dormant") {
-    return { title: `${d.sleepDays} 天`, sub: "沉睡" };
-  }
-  if (d.qualificationStatus === "qualified") {
-    return {
-      title: qualFilterActive ? "已达标" : "",
-      sub: d.sleepDays === 0 ? "近日有动" : `${d.sleepDays} 天`,
-    };
-  }
-  if (d.qualificationStatus === "in_progress") {
-    return {
-      title: "考核中",
-      sub: d.sleepDays === 0 ? "近日有动" : `${d.sleepDays} 天`,
-    };
-  }
-  if (d.qualificationStatus === "invalid") {
-    return {
-      title: XLV_QUALIFICATION_LABELS.invalid,
-      sub: d.sleepDays === 0 ? "近日有动" : `${d.sleepDays} 天`,
-    };
-  }
-  return {
-    title: "考核中",
-    sub: d.sleepDays === 0 ? "近日有动" : `${d.sleepDays} 天`,
-  };
-}
-
-function rightTitleClass(d: XlvDeviceListItem) {
-  if (d.alertKind === "single_silence" || d.alertKind === "dormant") {
-    return "text-[#c41e3a]";
-  }
-  if (d.qualificationStatus === "qualified") {
-    return "text-emerald-700";
-  }
-  if (d.qualificationStatus === "invalid") {
-    return "text-slate-600";
-  }
-  return "text-sky-800";
+  return xlvShouldShowSleepAlertBadge(d);
 }
 
 export type XlvDashboardShortcutFilter =
@@ -164,7 +94,12 @@ export function XlvDeviceCardList({
         <ul className="divide-y divide-[#f1f5f9]">
           {devices.map((d) => {
             const merchant = xlvMerchantLabel(d);
-            const right = rightLabel(d, hideQualificationBadge);
+            const display = {
+              alertKind: d.alertKind,
+              qualificationStatus: d.qualificationStatus,
+              sleepDays: d.sleepDays,
+            };
+            const right = xlvDeviceCardRightLabel(display, hideQualificationBadge);
             const gap = gapLine(d);
             const detailHref = xlvPath(
               `/devices/${encodeURIComponent(d.deviceSn)}${
@@ -175,24 +110,24 @@ export function XlvDeviceCardList({
                   : ""
               }`
             );
+            const sleepLabel = xlvSleepAlertBadgeLabel(d.alertKind);
 
             const rowBody = (
               <>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
-                      {shouldShowAlertBadge(d, hideAlertBadge) ? (
+                      {shouldShowAlertBadge(d, hideAlertBadge) && sleepLabel ? (
                         <span
-                          className={`inline-flex rounded-md border px-1.5 py-0.5 text-xs font-semibold ${alertBadgeClass(d.alertKind)}`}
+                          className={`inline-flex rounded-md border px-1.5 py-0.5 text-xs font-semibold ${xlvSleepAlertBadgeClass(d.alertKind)}`}
                         >
-                          {alertBadgeLabel(d)}
+                          {sleepLabel}
                         </span>
                       ) : null}
-                      {shouldShowQualificationBadge(
-                        d,
+                      {xlvShouldShowQualificationBadge(display, {
+                        showQualification,
                         hideQualificationBadge,
-                        showQualification
-                      ) ? (
+                      }) ? (
                         <XlvQualificationBadge
                           status={d.qualificationStatus!}
                           compact
@@ -315,7 +250,7 @@ export function XlvDeviceCardList({
                       <>
                         {right.title ? (
                           <p
-                            className={`text-base font-semibold leading-tight ${rightTitleClass(d)}`}
+                            className={`text-base font-semibold leading-tight ${xlvDeviceCardRightTitleClass(display)}`}
                           >
                             {right.title}
                           </p>

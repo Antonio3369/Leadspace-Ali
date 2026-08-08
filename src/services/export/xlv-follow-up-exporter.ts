@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import type { SessionUser } from "@/lib/permissions";
 import { canExport } from "@/lib/permissions";
-import { XLV_ALERT_LABELS } from "@/lib/xlv-rules";
+import { xlvDeviceUserStatusLabel } from "@/lib/xlv-device-display";
 import {
   connectStatusLabel,
   summarizeFollowUpResult,
@@ -89,7 +89,11 @@ export async function exportXlvFollowUpExcel(
       operatorName: d.operatorName,
       merchantName: d.merchantName || d.activationMerchantName || "未命名商户",
       deviceSn: d.deviceSn,
-      alertKind: XLV_ALERT_LABELS[d.alertKind],
+      alertKind: xlvDeviceUserStatusLabel({
+        alertKind: d.alertKind,
+        qualificationStatus: d.qualificationStatus,
+        sleepDays: d.sleepDays,
+      }),
       followUpStatus: d.followUpDone ? "已回访" : "待回访",
       followUpResult: d.followUpDone
         ? summarizeFollowUpResult({

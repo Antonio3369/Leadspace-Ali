@@ -20,7 +20,7 @@ import {
 } from "@/components/xlv/xlv-filter-styles";
 import type { XlvDeviceListItem } from "@/services/xlv/analytics";
 import {
-  XLV_ALERT_FILTERS,
+  XLV_SLEEP_ALERT_FILTERS,
   parseXlvAlertKind,
   parseXlvQualificationStatus,
   classifyXlvAlert,
@@ -226,7 +226,7 @@ export function XlvStaffDevicesView({
             active={status === "invalid"}
           />
         </button>
-        {XLV_ALERT_FILTERS.map((item) => (
+        {XLV_SLEEP_ALERT_FILTERS.map((item) => (
           <button
             key={item.id}
             type="button"

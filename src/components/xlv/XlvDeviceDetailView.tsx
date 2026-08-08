@@ -3,10 +3,15 @@
 import { useEffect, useState } from "react";
 import { xlvPath } from "@/lib/business-lines";
 import {
-  XLV_ALERT_LABELS,
   classifyXlvAlert,
   xlvMerchantLabel,
 } from "@/lib/xlv-rules";
+import {
+  xlvShouldShowQualificationBadge,
+  xlvShouldShowSleepAlertBadge,
+  xlvSleepAlertBadgeClass,
+  xlvSleepAlertBadgeLabel,
+} from "@/lib/xlv-device-display";
 import {
   NotionAlert,
   PageHeader,
@@ -128,6 +133,12 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
 
   const showFollowUp =
     alertKind === "single_silence" || alertKind === "dormant";
+  const displayInput = {
+    alertKind,
+    qualificationStatus: qualificationDetail?.status,
+    sleepDays: device?.sleepDays ?? 0,
+  };
+  const sleepLabel = xlvSleepAlertBadgeLabel(alertKind);
 
   function onFollowUpChanged(next: XlvFollowUpPatchResult) {
     setFollowUp({
@@ -166,18 +177,15 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
         <div className="flex flex-col gap-4">
           <div className="order-1 rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${
-                  alertKind === "single_silence"
-                    ? "bg-[#fef2f2] text-[#b91c1c] border-[#fecaca]"
-                    : alertKind === "dormant"
-                      ? "bg-[#fff7ed] text-[#c2410c] border-[#fed7aa]"
-                      : "bg-[#f0fdf4] text-[#15803d] border-[#bbf7d0]"
-                }`}
-              >
-                {XLV_ALERT_LABELS[alertKind]}
-              </span>
-              {qualificationDetail ? (
+              {xlvShouldShowSleepAlertBadge(displayInput) && sleepLabel ? (
+                <span
+                  className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${xlvSleepAlertBadgeClass(alertKind)}`}
+                >
+                  {sleepLabel}
+                </span>
+              ) : null}
+              {qualificationDetail &&
+              xlvShouldShowQualificationBadge(displayInput) ? (
                 <XlvQualificationBadge status={qualificationDetail.status} />
               ) : null}
               <span className="text-xs font-mono text-[#94a3b8]">{device.deviceSn}</span>
