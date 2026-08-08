@@ -314,7 +314,7 @@ export function getXlvQualificationDetail(
     (a, b) => a.statDate.getTime() - b.statDate.getTime()
   );
   const reference = qualificationAsOf(asOf);
-  const status = assessXlvQualification(
+  let status = assessXlvQualification(
     device,
     snapshots,
     reference,
