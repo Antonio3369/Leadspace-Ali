@@ -50,7 +50,9 @@ export function XlvAssessmentPanel({
               {detail.months.map((row) => {
                 const result = xlvQualificationMonthResultLabel(row);
                 const isFocus =
-                  detail.focusMonth != null && detail.focusMonth.period === row.period;
+                  detail.focusMonth != null &&
+                  detail.focusMonth.period === row.period &&
+                  !row.met;
                 return (
                   <tr
                     key={row.period}

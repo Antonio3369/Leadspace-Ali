@@ -13,6 +13,7 @@ import {
   loadXlvSnapshotMap,
   attachXlvQualificationDetails,
 } from "@/services/xlv/assessment";
+import { syncXlvQualificationStatus } from "@/services/xlv/recompute-qualification";
 import {
   assertCanViewXlvDevice,
   assertCanViewXlvStaffScope,
@@ -310,7 +311,7 @@ export async function getXlvStaffDevices(
 export async function getXlvDeviceDetail(user: SessionUser, deviceSn: string) {
   await assertCanViewXlvDevice(user, deviceSn);
 
-  const device = await db.xlvDeviceRecord.findUnique({
+  let device = await db.xlvDeviceRecord.findUnique({
     where: { deviceSn },
   });
   if (!device) {
@@ -329,6 +330,10 @@ export async function getXlvDeviceDetail(user: SessionUser, deviceSn: string) {
 
   const snapshots = enrichXlvSnapshotDailyMetrics(rawSnapshots);
   const qualificationDetail = buildXlvQualificationDetail(device, snapshots);
+  if (device.qualificationStatus !== qualificationDetail.status) {
+    await syncXlvQualificationStatus(deviceSn, qualificationDetail.status);
+    device = { ...device, qualificationStatus: qualificationDetail.status };
+  }
   const txnTrend = buildXlvTxnActivityTrend(snapshots, { skipEnrich: true }).map(
     (p) => ({
       ...p,

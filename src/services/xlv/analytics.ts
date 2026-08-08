@@ -22,6 +22,7 @@ import {
   attachXlvQualificationDetails,
   loadXlvSnapshotMap,
 } from "@/services/xlv/assessment";
+import { syncXlvQualificationStatuses } from "@/services/xlv/recompute-qualification";
 import { countXlvQualificationSummary } from "@/services/xlv/recompute-qualification";
 import {
   resolveXlvDeviceSortMode,
@@ -271,9 +272,27 @@ export async function getXlvDashboardDevicesPage(
   const snapshotMap = await loadXlvSnapshotMap(pageRows.map((r) => r.deviceSn));
   const enriched = attachXlvQualificationDetails(pageRows, snapshotMap);
 
+  const heals = pageRows.flatMap((row) => {
+    const computed = enriched.find((e) => e.deviceSn === row.deviceSn);
+    if (!computed || row.qualificationStatus === computed.qualificationStatus) {
+      return [];
+    }
+    return [{ deviceSn: row.deviceSn, status: computed.qualificationStatus }];
+  });
+  if (heals.length > 0) {
+    void syncXlvQualificationStatuses(heals).catch(() => undefined);
+  }
+
+  let devices = buildXlvDeviceListItems(enriched);
+  if (opts.qualificationStatus) {
+    devices = devices.filter(
+      (d) => d.qualificationStatus === opts.qualificationStatus
+    );
+  }
+
   return {
     total,
-    devices: buildXlvDeviceListItems(enriched),
+    devices,
     hasMore: offset + pageRows.length < total,
   };
 }

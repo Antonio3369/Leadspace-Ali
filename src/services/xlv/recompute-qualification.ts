@@ -22,6 +22,35 @@ const DEVICE_QUAL_SELECT = {
 } as const;
 
 /** 单台设备：读快照算考核并写回设备表 */
+export async function syncXlvQualificationStatus(
+  deviceSn: string,
+  status: XlvQualificationStatus
+) {
+  await db.xlvDeviceRecord.update({
+    where: { deviceSn },
+    data: {
+      qualificationStatus: status,
+      qualificationAssessedAt: new Date(),
+    },
+  });
+}
+
+/** 列表/详情发现与库内状态不一致时写回 */
+export async function syncXlvQualificationStatuses(
+  updates: { deviceSn: string; status: XlvQualificationStatus }[]
+) {
+  const unique = new Map<string, XlvQualificationStatus>();
+  for (const row of updates) {
+    unique.set(row.deviceSn, row.status);
+  }
+  await Promise.all(
+    [...unique.entries()].map(([deviceSn, status]) =>
+      syncXlvQualificationStatus(deviceSn, status)
+    )
+  );
+}
+
+/** 单台设备：读快照算考核并写回设备表 */
 export async function recomputeXlvQualificationForDevice(
   deviceSn: string
 ): Promise<XlvQualificationStatus> {

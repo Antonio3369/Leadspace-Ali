@@ -121,8 +121,7 @@ export function attachXlvQualificationDetails<
     const qualificationDetail = buildXlvQualificationDetail(device, snapshots);
     return {
       ...device,
-      qualificationStatus:
-        device.qualificationStatus ?? qualificationDetail.status,
+      qualificationStatus: qualificationDetail.status,
       qualificationDetail,
     };
   });

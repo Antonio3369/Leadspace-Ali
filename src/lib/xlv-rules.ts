@@ -359,6 +359,10 @@ export function getXlvQualificationDetail(
     };
   });
 
+  if (months.some((row) => row.met)) {
+    status = "qualified";
+  }
+
   let focusMonth: XlvQualificationMonthRow | null = null;
   if (status === "qualified") {
     focusMonth = months.find((row) => row.met) ?? months[0] ?? null;
@@ -366,6 +370,9 @@ export function getXlvQualificationDetail(
     focusMonth = months[1] ?? months[0] ?? null;
   } else {
     focusMonth = pickAssessmentFocusMonth(reference, months, y1, m1);
+    if (focusMonth?.met) {
+      focusMonth = months.find((row) => !row.met) ?? null;
+    }
   }
 
   const focusUsers = focusMonth?.users ?? 0;
