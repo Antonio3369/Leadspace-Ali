@@ -40,6 +40,13 @@ interface DevicesResponse {
   hasMore: boolean;
 }
 
+interface QualSummaryResponse {
+  active: number;
+  qualifiedCount: number;
+  inProgressCount: number;
+  invalidCount: number;
+}
+
 function buildListQuery(
   alert: XlvAlertKind,
   status: XlvQualificationStatus | null,
@@ -58,7 +65,13 @@ function buildListQuery(
   return params;
 }
 
-export function XlvDashboardView({ role }: { role: string }) {
+export function XlvDashboardView({
+  role,
+  active = true,
+}: {
+  role: string;
+  active?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -88,11 +101,15 @@ export function XlvDashboardView({ role }: { role: string }) {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [qualLoaded, setQualLoaded] = useState(false);
+  const [loadedFilterKey, setLoadedFilterKey] = useState("");
   const [error, setError] = useState("");
   const [retryLabel, setRetryLabel] = useState("");
   const [searchDraft, setSearchDraft] = useState(search);
 
-  useRestoreListScroll(pathname, !loading && devices.length > 0);
+  useRestoreListScroll(pathname, active && !loading && devices.length > 0);
+
+  const filterKey = `${alert}|${status}|${manager}|${operator}|${search}`;
 
   const pushQuery = useCallback(
     (patch: Record<string, string | null>) => {
@@ -124,10 +141,15 @@ export function XlvDashboardView({ role }: { role: string }) {
   }, [search]);
 
   useEffect(() => {
+    if (!active) return;
     let cancelled = false;
     const listParams = buildListQuery(alert, status, manager, operator, search, 0);
     const summaryUrl = "/api/xlv/dashboard/summary";
     const devicesUrl = `/api/xlv/dashboard/devices?${listParams.toString()}`;
+
+    if (loadedFilterKey === filterKey) {
+      return;
+    }
 
     const cachedSummary = readXlvApiCache<SummaryResponse>(summaryUrl);
     const cachedDevices = readXlvApiCache<DevicesResponse>(devicesUrl);
@@ -140,6 +162,7 @@ export function XlvDashboardView({ role }: { role: string }) {
       setMatchedCount(cachedDevices!.matchedCount);
       setHasMore(cachedDevices!.hasMore);
       setLoading(false);
+      setLoadedFilterKey(filterKey);
     } else {
       setLoading(true);
       setError("");
@@ -149,48 +172,65 @@ export function XlvDashboardView({ role }: { role: string }) {
       setHasMore(false);
     }
 
-    Promise.all([
-      fetchXlvJson<SummaryResponse>(summaryUrl, {
-        context: "加载看板统计",
-        onRetry: (attempt) => {
-          if (!cancelled && !hasCached) {
-            setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
-          }
-        },
-      }),
-      fetchXlvJson<DevicesResponse>(devicesUrl, {
-        context: "加载商户列表",
-        onRetry: (attempt) => {
-          if (!cancelled && !hasCached) {
-            setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
-          }
-        },
-      }),
-    ])
-      .then(([summaryJson, devicesJson]) => {
+    fetchXlvJson<DevicesResponse>(devicesUrl, {
+      context: "加载商户列表",
+      onRetry: (attempt) => {
+        if (!cancelled && !hasCached) {
+          setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
+        }
+      },
+    })
+      .then((devicesJson) => {
         if (!cancelled) {
-          setSummary(summaryJson.summary);
-          setFilters(summaryJson.filters);
           setDevices(devicesJson.devices);
           setMatchedCount(devicesJson.matchedCount);
           setHasMore(devicesJson.hasMore);
           setRetryLabel("");
+          setLoading(false);
+          setLoadedFilterKey(filterKey);
         }
       })
       .catch((err) => {
         if (!cancelled && !hasCached) {
           setError(err instanceof Error ? err.message : "加载失败");
           setRetryLabel("");
+          setLoading(false);
+        }
+      });
+
+    void fetchXlvJson<SummaryResponse>(summaryUrl, {
+      context: "加载看板统计",
+    })
+      .then((summaryJson) => {
+        if (!cancelled) {
+          setSummary(summaryJson.summary);
+          setFilters(summaryJson.filters);
         }
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .catch(() => undefined);
 
     return () => {
       cancelled = true;
     };
-  }, [alert, status, manager, operator, search]);
+  }, [active, alert, status, manager, operator, search, filterKey, loadedFilterKey]);
+
+  useEffect(() => {
+    if (!active || qualLoaded) return;
+    let cancelled = false;
+    void fetchXlvJson<QualSummaryResponse>("/api/xlv/dashboard/qual-summary", {
+      context: "加载考核统计",
+    })
+      .then((qual) => {
+        if (!cancelled) {
+          setSummary((prev) => (prev ? { ...prev, ...qual } : prev));
+          setQualLoaded(true);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [active, qualLoaded]);
 
   useEffect(() => {
     if (!filters.operators.length || !operator) return;
@@ -259,7 +299,7 @@ export function XlvDashboardView({ role }: { role: string }) {
         {
           id: "active" as const,
           label: XLV_ACTIVE_IN_PROGRESS_LABEL,
-          value: summary.active,
+          value: qualLoaded ? summary.active : null,
           hint: "未达标且近期有收款",
           tone: "green" as const,
         },
@@ -305,14 +345,14 @@ export function XlvDashboardView({ role }: { role: string }) {
         {
           id: "qualified" as const,
           label: XLV_QUALIFICATION_LABELS.qualified,
-          value: summary.qualifiedCount,
+          value: qualLoaded ? summary.qualifiedCount : null,
           hint: "自然月达标",
           tone: "green" as const,
         },
         {
           id: "invalid" as const,
           label: XLV_QUALIFICATION_LABELS.invalid,
-          value: summary.invalidCount,
+          value: qualLoaded ? summary.invalidCount : null,
           hint: "两月未达标",
           tone: "muted" as const,
         },
@@ -417,7 +457,7 @@ export function XlvDashboardView({ role }: { role: string }) {
               >
                 <p className="text-xs text-[#64748b]">{item.hint}</p>
                 <p className={`mt-1 text-2xl font-bold tabular-nums ${valueClass[item.tone]}`}>
-                  {item.value}
+                  {item.value == null ? "…" : item.value}
                 </p>
                 <p className="text-sm font-medium text-[#334155]">{item.label}</p>
               </button>
@@ -433,7 +473,7 @@ export function XlvDashboardView({ role }: { role: string }) {
               >
                 <p className="text-xs text-[#64748b]">{item.hint}</p>
                 <p className={`mt-1 text-2xl font-bold tabular-nums ${valueClass[item.tone]}`}>
-                  {item.value}
+                  {item.value == null ? "…" : item.value}
                 </p>
                 <p className="text-sm font-medium text-[#334155]">{item.label}</p>
               </button>

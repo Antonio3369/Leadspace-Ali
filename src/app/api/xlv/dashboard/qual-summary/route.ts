@@ -1,23 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
 import { PermissionError } from "@/lib/permissions";
-import {
-  getXlvDashboardSummaryFast,
-  getXlvFilterOptions,
-} from "@/services/xlv/analytics";
+import { getXlvDashboardQualSummary } from "@/services/xlv/analytics";
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const user = await requireSessionUser();
-    const { searchParams } = new URL(request.url);
-    const managerName = searchParams.get("manager");
-
-    const [summary, filters] = await Promise.all([
-      getXlvDashboardSummaryFast(user),
-      getXlvFilterOptions(user, { managerName }),
-    ]);
-
-    return NextResponse.json({ summary, filters });
+    const qual = await getXlvDashboardQualSummary(user);
+    return NextResponse.json(qual);
   } catch (err) {
     if (err instanceof PermissionError) {
       return NextResponse.json({ error: err.message }, { status: 403 });

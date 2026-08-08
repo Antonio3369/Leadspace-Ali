@@ -8,7 +8,6 @@ import {
 } from "@/services/xlv/xlv-scope";
 import { PageHeader, PageShell } from "@/components/ui/notion";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
-import { XlvDashboardView } from "@/components/xlv/XlvDashboardView";
 
 export default async function XlvAlertsPage() {
   const user = await getSessionUser();
@@ -46,7 +45,7 @@ export default async function XlvAlertsPage() {
         </PageShell>
       }
     >
-      <XlvDashboardView role={user.role} />
+      {null}
     </Suspense>
   );
 }

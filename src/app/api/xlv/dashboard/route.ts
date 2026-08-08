@@ -4,7 +4,7 @@ import { PermissionError } from "@/lib/permissions";
 import { parseXlvAlertKind, parseXlvQualificationStatus } from "@/lib/xlv-rules";
 import {
   getXlvDashboardDevicesPage,
-  getXlvDashboardSummary,
+  getXlvDashboardSummaryFast,
   getXlvFilterOptions,
   XLV_DASHBOARD_PAGE_SIZE,
 } from "@/services/xlv/analytics";
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     };
 
     const [summary, page, filters] = await Promise.all([
-      getXlvDashboardSummary(user),
+      getXlvDashboardSummaryFast(user),
       getXlvDashboardDevicesPage(user, {
         ...listOpts,
         offset: 0,

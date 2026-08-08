@@ -1,14 +1,19 @@
+import { getSessionUser } from "@/lib/auth";
 import { XlvWorkspacePrefetch } from "@/components/xlv/XlvWorkspacePrefetch";
+import { XlvWorkspaceShell } from "@/components/xlv/XlvWorkspaceShell";
 
-export default function XlvLayout({
+export default async function XlvLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const user = await getSessionUser();
+  const role = user?.role ?? "SALES";
+
   return (
     <>
       <XlvWorkspacePrefetch />
-      {children}
+      <XlvWorkspaceShell role={role}>{children}</XlvWorkspaceShell>
     </>
   );
 }

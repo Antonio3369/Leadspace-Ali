@@ -8,7 +8,6 @@ import {
 } from "@/services/xlv/xlv-scope";
 import { PageHeader, PageShell } from "@/components/ui/notion";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
-import { XlvTodayView } from "@/components/xlv/XlvTodayView";
 
 export default async function XlvHomePage() {
   const user = await getSessionUser();
@@ -46,7 +45,7 @@ export default async function XlvHomePage() {
         </PageShell>
       }
     >
-      <XlvTodayView role={user.role} />
+      {null}
     </Suspense>
   );
 }

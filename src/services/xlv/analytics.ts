@@ -27,6 +27,7 @@ import {
 import {
   resolveXlvDeviceSortMode,
   sortXlvDevices,
+  xlvDeviceListSqlOrderBy,
 } from "@/services/xlv/sort-devices";
 
 export interface XlvDashboardSummary {
@@ -146,6 +147,15 @@ export async function getXlvDashboardPageData(
 export async function getXlvDashboardSummary(
   user: SessionUser
 ): Promise<XlvDashboardSummary> {
+  const fast = await getXlvDashboardSummaryFast(user);
+  const qual = await getXlvDashboardQualSummary(user);
+  return { ...fast, ...qual };
+}
+
+/** 顶部卡片：沉睡/单笔等用 SQL 计数，毫秒级 */
+export async function getXlvDashboardSummaryFast(
+  user: SessionUser
+): Promise<XlvDashboardSummary> {
   assertCanViewXlv(user);
   const baseWhere = buildXlvRoleWhere(user);
 
@@ -185,6 +195,32 @@ export async function getXlvDashboardSummary(
 
   const dormant = Math.max(0, dormantAll - singleSilence);
 
+  return {
+    totalDevices,
+    deployedCount: totalDevices - inventoryCount,
+    inventoryCount,
+    singleSilence,
+    dormant,
+    active: 0,
+    qualifiedCount: 0,
+    inProgressCount: 0,
+    invalidCount: 0,
+    latestStatDate: isoDate(latest?.statDate),
+  };
+}
+
+/** 达标/无效/活跃：需快照，单独延迟加载 */
+export async function getXlvDashboardQualSummary(
+  user: SessionUser
+): Promise<
+  Pick<
+    XlvDashboardSummary,
+    "active" | "qualifiedCount" | "inProgressCount" | "invalidCount"
+  >
+> {
+  assertCanViewXlv(user);
+  const baseWhere = buildXlvRoleWhere(user);
+
   const assignedRows = await db.xlvDeviceRecord.findMany({
     where: { AND: [baseWhere, buildXlvAssignedDeviceWhere()] },
     select: {
@@ -211,18 +247,7 @@ export async function getXlvDashboardSummary(
     }
   }
 
-  return {
-    totalDevices,
-    deployedCount: totalDevices - inventoryCount,
-    inventoryCount,
-    singleSilence,
-    dormant,
-    active,
-    qualifiedCount,
-    inProgressCount,
-    invalidCount,
-    latestStatDate: isoDate(latest?.statDate),
-  };
+  return { active, qualifiedCount, inProgressCount, invalidCount };
 }
 
 type XlvDashboardListOpts = {
@@ -254,11 +279,6 @@ export async function getXlvDashboardDevicesPage(
   const limit = opts.limit ?? XLV_DASHBOARD_PAGE_SIZE;
   const listWhere = buildXlvDeviceWhere(user, opts);
 
-  const rows = await db.xlvDeviceRecord.findMany({
-    where: listWhere,
-    select: LIST_DEVICE_SELECT,
-  });
-
   const sortMode = resolveXlvDeviceSortMode({
     alert: opts.alert,
     qualificationStatus: opts.qualificationStatus,
@@ -266,6 +286,10 @@ export async function getXlvDashboardDevicesPage(
   });
 
   if (needsPostQualFilter(opts)) {
+    const rows = await db.xlvDeviceRecord.findMany({
+      where: listWhere,
+      select: LIST_DEVICE_SELECT,
+    });
     const snapshotMap = await loadXlvSnapshotMap(rows.map((r) => r.deviceSn));
     let enriched = attachXlvQualificationDetails(rows, snapshotMap);
     if (opts.qualificationStatus) {
@@ -295,9 +319,16 @@ export async function getXlvDashboardDevicesPage(
     };
   }
 
-  const sorted = sortXlvDevices(rows, sortMode, opts.qualificationStatus);
-  const total = sorted.length;
-  const pageRows = sorted.slice(offset, offset + limit);
+  const [total, pageRows] = await Promise.all([
+    db.xlvDeviceRecord.count({ where: listWhere }),
+    db.xlvDeviceRecord.findMany({
+      where: listWhere,
+      orderBy: xlvDeviceListSqlOrderBy(sortMode),
+      skip: offset,
+      take: limit,
+      select: LIST_DEVICE_SELECT,
+    }),
+  ]);
   const snapshotMap = await loadXlvSnapshotMap(pageRows.map((r) => r.deviceSn));
   const enriched = attachXlvQualificationDetails(pageRows, snapshotMap);
 

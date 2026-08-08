@@ -48,7 +48,13 @@ const VALUE_CLASS = {
   sky: "text-sky-800",
 } as const;
 
-export function XlvTodayView({ role }: { role: string }) {
+export function XlvTodayView({
+  role,
+  active = true,
+}: {
+  role: string;
+  active?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -64,8 +70,11 @@ export function XlvTodayView({ role }: { role: string }) {
   const [operators, setOperators] = useState<string[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [retryLabel, setRetryLabel] = useState("");
+  const [loadedFilterKey, setLoadedFilterKey] = useState("");
 
-  useRestoreListScroll(pathname, !loading && !!data);
+  const filterKey = `${manager}|${operator}|${search}`;
+
+  useRestoreListScroll(pathname, active && !loading && !!data);
 
   const pushQuery = useCallback(
     (patch: Record<string, string | null>) => {
@@ -101,6 +110,8 @@ export function XlvTodayView({ role }: { role: string }) {
   }, []);
 
   useEffect(() => {
+    if (!active) return;
+    if (loadedFilterKey === filterKey && data) return;
     let cancelled = false;
     const silent = refreshKey > 0 && data != null;
     if (!silent) {
@@ -136,6 +147,7 @@ export function XlvTodayView({ role }: { role: string }) {
           setManagers(json.filters?.managers ?? []);
           setOperators(json.filters?.operators ?? []);
           setRetryLabel("");
+          setLoadedFilterKey(filterKey);
         }
       })
       .catch((err) => {
@@ -152,7 +164,7 @@ export function XlvTodayView({ role }: { role: string }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manager, operator, search, refreshKey]);
+  }, [active, manager, operator, search, refreshKey, filterKey, loadedFilterKey, data]);
 
   const showManagerFilter = role === "DIRECTOR";
   const showOperatorFilter = role === "DIRECTOR" || role === "MANAGER";

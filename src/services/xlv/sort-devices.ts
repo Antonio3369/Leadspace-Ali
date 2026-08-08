@@ -2,6 +2,7 @@ import type {
   XlvAlertKind,
   XlvQualificationStatus,
 } from "@/lib/xlv-rules";
+import type { Prisma } from "@/generated/prisma/client";
 
 export type XlvDeviceSortMode = "risk" | "active" | "qualification" | "browse";
 
@@ -45,6 +46,37 @@ export function resolveXlvDeviceSortMode(opts: {
   }
   if (opts.search?.trim()) return "browse";
   return "browse";
+}
+
+/** 与 sortXlvDevices 一致，供数据库 skip/take 分页 */
+export function xlvDeviceListSqlOrderBy(
+  mode: XlvDeviceSortMode
+): Prisma.XlvDeviceRecordOrderByWithRelationInput[] {
+  switch (mode) {
+    case "risk":
+      return [
+        { sleepDays: "desc" },
+        { cumulativeTxns: "asc" },
+        { deviceSn: "asc" },
+      ];
+    case "active":
+      return [
+        { sleepDays: "asc" },
+        { cumulativeTxns: "desc" },
+        { lastTxnDate: "desc" },
+        { deviceSn: "asc" },
+      ];
+    case "browse":
+      return [
+        { lastTxnDate: "desc" },
+        { firstTxnDate: "desc" },
+        { deviceSn: "asc" },
+      ];
+    case "qualification":
+      return [{ deviceSn: "asc" }];
+    default:
+      return [{ deviceSn: "asc" }];
+  }
 }
 
 export function sortXlvDevices<T extends SortableXlvDevice>(
