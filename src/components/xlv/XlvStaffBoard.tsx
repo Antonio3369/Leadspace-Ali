@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { readResponseJson } from "@/lib/fetch-json";
+import { readXlvApiCache } from "@/lib/xlv-api-cache";
+import { fetchXlvJson } from "@/lib/xlv-fetch";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
@@ -86,15 +87,24 @@ export function XlvStaffBoard({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError("");
-    fetch(`/api/xlv/managers/${encodeURIComponent(managerKey)}/staff`)
-      .then(async (res) => {
-        const json = await readResponseJson<ApiResponse & { error?: string }>(
-          res,
-          "加载队员"
-        );
-        if (!res.ok) throw new Error(json.error || "加载失败");
+    const url = `/api/xlv/managers/${encodeURIComponent(managerKey)}/staff`;
+
+    const cached = readXlvApiCache<ApiResponse>(url);
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+      setError("");
+    } else {
+      setLoading(true);
+      setError("");
+    }
+
+    fetchXlvJson<ApiResponse>(url, {
+      context: "加载队员",
+      maxAttempts: 3,
+      retryDelayMs: 800,
+    })
+      .then((json) => {
         if (!cancelled) setData(json);
       })
       .catch((err) => {

@@ -9,9 +9,9 @@ import {
   xlvQualificationGapLine,
 } from "@/lib/xlv-rules";
 import {
-  attachXlvQualificationDetails,
   buildXlvQualificationDetail,
   loadXlvSnapshotMap,
+  attachXlvQualificationDetails,
 } from "@/services/xlv/assessment";
 import {
   assertCanViewXlvDevice,
@@ -103,19 +103,6 @@ function tallyDevices(
   });
 }
 
-async function enrichDevicesForBoard<
-  T extends {
-    deviceSn: string;
-    sleepDays: number;
-    cumulativeTxns: number;
-    cumulativeUsers: number;
-    firstTxnDate: Date | null;
-  },
->(devices: T[]) {
-  const snapshotMap = await loadXlvSnapshotMap(devices.map((d) => d.deviceSn));
-  return attachXlvQualificationDetails(devices, snapshotMap);
-}
-
 function boardSummaryStats(
   devices: {
     managerUserId: string | null;
@@ -123,22 +110,27 @@ function boardSummaryStats(
     qualificationStatus: XlvQualificationStatus;
   }[]
 ) {
-  const inventoryCount = devices.filter((d) => isXlvUnassignedManager(d)).length;
+  let inventoryCount = 0;
+  let qualifiedCount = 0;
+  let inProgressCount = 0;
+  let invalidCount = 0;
+
+  for (const d of devices) {
+    if (isXlvUnassignedManager(d)) {
+      inventoryCount += 1;
+      continue;
+    }
+    if (d.qualificationStatus === "qualified") qualifiedCount += 1;
+    else if (d.qualificationStatus === "in_progress") inProgressCount += 1;
+    else if (d.qualificationStatus === "invalid") invalidCount += 1;
+  }
+
   const deployedCount = devices.length - inventoryCount;
-  const assigned = devices.filter((d) => !isXlvUnassignedManager(d));
-  const qualifiedCount = assigned.filter(
-    (d) => d.qualificationStatus === "qualified"
-  ).length;
-  const inProgressCount = assigned.filter(
-    (d) => d.qualificationStatus === "in_progress"
-  ).length;
-  const invalidCount = assigned.filter(
-    (d) => d.qualificationStatus === "invalid"
-  ).length;
   const qualifyRate =
     deployedCount > 0
       ? Math.round((qualifiedCount / deployedCount) * 1000) / 10
       : 0;
+
   return {
     deviceCount: devices.length,
     deployedCount,
@@ -164,18 +156,18 @@ export async function getXlvManagerBoard(user: SessionUser) {
       cumulativeTxns: true,
       cumulativeUsers: true,
       firstTxnDate: true,
+      qualificationStatus: true,
     },
   });
 
-  const enriched = await enrichDevicesForBoard(devices);
   const rows = tallyDevices(
-    enriched,
+    devices,
     (d) => xlvManagerKeyOf(d),
     (d) => xlvManagerDisplayName(d.managerName),
     (d) => d.managerUserId
   ).filter((r) => !isXlvInventoryManagerKey(r.key));
 
-  const stats = boardSummaryStats(enriched);
+  const stats = boardSummaryStats(devices);
 
   return {
     rows,
@@ -206,12 +198,12 @@ export async function getXlvStaffBoard(
       cumulativeTxns: true,
       cumulativeUsers: true,
       firstTxnDate: true,
+      qualificationStatus: true,
     },
   });
 
-  const enriched = await enrichDevicesForBoard(devices);
   const rows = tallyDevices(
-    enriched,
+    devices,
     (d) => xlvStaffKeyOf(d),
     (d) => d.operatorName || "未分配",
     (d) => d.salesUserId
@@ -230,7 +222,7 @@ export async function getXlvStaffBoard(
       managerUser?.name ||
       opts.managerKey.slice(5);
 
-  const stats = boardSummaryStats(enriched);
+  const stats = boardSummaryStats(devices);
 
   return {
     manager: {

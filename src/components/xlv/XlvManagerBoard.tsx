@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { readResponseJson } from "@/lib/fetch-json";
+import { readXlvApiCache } from "@/lib/xlv-api-cache";
+import { fetchXlvJson } from "@/lib/xlv-fetch";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
@@ -74,17 +75,26 @@ export function XlvManagerBoard() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError("");
     const params = new URLSearchParams();
     if (search) params.set("search", search);
-    fetch(`/api/xlv/board?${params}`)
-      .then(async (res) => {
-        const json = await readResponseJson<ApiResponse & { error?: string }>(
-          res,
-          "加载经理榜"
-        );
-        if (!res.ok) throw new Error(json.error || "加载失败");
+    const url = `/api/xlv/board?${params}`;
+
+    const cached = readXlvApiCache<ApiResponse>(url);
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+      setError("");
+    } else {
+      setLoading(true);
+      setError("");
+    }
+
+    fetchXlvJson<ApiResponse>(url, {
+      context: "加载经理榜",
+      maxAttempts: 3,
+      retryDelayMs: 800,
+    })
+      .then((json) => {
         if (!cancelled) setData(json);
       })
       .catch((err) => {
