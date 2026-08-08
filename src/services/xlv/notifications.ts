@@ -41,13 +41,13 @@ export async function resolveXlvDeviceManagerRecipient(device: {
   return account?.id ?? null;
 }
 
-/** 小绿盒管理员端（全局 DIRECTOR 账号，如 admin） */
-export async function listXlvAdminDirectorUserIds(): Promise<string[]> {
-  const rows = await db.user.findMany({
-    where: { role: "DIRECTOR", status: "ACTIVE" },
+/** 小绿盒管理员端：全局 admin 账号（`/login/xlv`） */
+export async function resolveXlvAdminUserId(): Promise<string | null> {
+  const admin = await db.user.findFirst({
+    where: { username: "admin", role: "DIRECTOR", status: "ACTIVE" },
     select: { id: true },
   });
-  return rows.map((r) => r.id);
+  return admin?.id ?? null;
 }
 
 function recipientMatchesActor(
@@ -105,7 +105,7 @@ async function createXlvFollowUpNotification(
   });
 }
 
-/** 关单回告：所属经理 + 全部管理员（DIRECTOR）各一份 */
+/** 关单回告：所属经理 + admin 管理员各一份 */
 export async function notifyFollowUpDoneRecipients(opts: {
   managerXlvMemberAccountId: string | null;
   followUpById: string;
@@ -125,10 +125,9 @@ export async function notifyFollowUpDoneRecipients(opts: {
     );
   }
 
-  const directorIds = await listXlvAdminDirectorUserIds();
-  for (const userId of directorIds) {
-    if (userId === opts.followUpById) continue;
-    tasks.push(createXlvFollowUpNotification({ userId }, opts.payload));
+  const adminUserId = await resolveXlvAdminUserId();
+  if (adminUserId && adminUserId !== opts.followUpById) {
+    tasks.push(createXlvFollowUpNotification({ userId: adminUserId }, opts.payload));
   }
 
   await Promise.all(tasks);
