@@ -7,6 +7,7 @@ import {
   getXlvAssessmentDaysRemaining,
   type XlvAlertKind,
   type XlvTodayPriority,
+  xlvEffectiveAlertKind,
   xlvQualificationGapLine,
 } from "@/lib/xlv-rules";
 import {
@@ -170,9 +171,10 @@ export async function getXlvFollowUpDevices(
       sleepDays: row.sleepDays,
       lastTxnDate: isoDate(row.lastTxnDate),
       firstTxnDate: isoDate(row.firstTxnDate),
-      alertKind: classifyXlvAlert({
+      alertKind: xlvEffectiveAlertKind({
         sleepDays: row.sleepDays,
         cumulativeTxns: row.cumulativeTxns,
+        qualificationStatus: row.qualificationStatus,
       }),
       qualificationStatus: row.qualificationStatus,
       qualificationGapLine: xlvQualificationGapLine(detail),

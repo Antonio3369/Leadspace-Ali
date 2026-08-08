@@ -92,6 +92,12 @@ export function buildXlvSleepAlertWhere(): Prisma.XlvDeviceRecordWhereInput {
     AND: [
       buildXlvAssignedDeviceWhere(),
       { sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS } },
+      {
+        OR: [
+          { cumulativeTxns: 1 },
+          { NOT: { qualificationStatus: "qualified" } },
+        ],
+      },
     ],
   };
 }
@@ -117,10 +123,9 @@ export function buildXlvAlertWhere(
     return {
       AND: [
         buildXlvAssignedDeviceWhere(),
-        {
-          sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS },
-          NOT: { cumulativeTxns: 1 },
-        },
+        { sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS } },
+        { NOT: { cumulativeTxns: 1 } },
+        { NOT: { qualificationStatus: "qualified" } },
       ],
     };
   }

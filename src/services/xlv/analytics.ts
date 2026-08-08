@@ -8,6 +8,7 @@ import {
   XLV_SLEEP_THRESHOLD_DAYS,
   isXlvUnassignedManager,
   type XlvQualificationStatus,
+  xlvEffectiveAlertKind,
   xlvQualificationGapLine,
   xlvManagerDisplayName,
 } from "@/lib/xlv-rules";
@@ -117,7 +118,7 @@ function buildXlvDeviceListItems(
     sleepDays: row.sleepDays,
     lastTxnDate: isoDate(row.lastTxnDate),
     firstTxnDate: isoDate(row.firstTxnDate),
-    alertKind: classifyXlvAlert(row),
+    alertKind: xlvEffectiveAlertKind(row),
     qualificationStatus: row.qualificationStatus as XlvQualificationStatus,
     qualificationGapLine: xlvQualificationGapLine(row.qualificationDetail),
   }));
@@ -184,6 +185,8 @@ export async function getXlvDashboardSummaryFast(
             baseWhere,
             buildXlvAssignedDeviceWhere(),
             { sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS } },
+            { NOT: { cumulativeTxns: 1 } },
+            { NOT: { qualificationStatus: "qualified" } },
           ],
         },
       }),
@@ -194,7 +197,7 @@ export async function getXlvDashboardSummaryFast(
       }),
     ]);
 
-  const dormant = Math.max(0, dormantAll - singleSilence);
+  const dormant = dormantAll;
 
   return {
     totalDevices,

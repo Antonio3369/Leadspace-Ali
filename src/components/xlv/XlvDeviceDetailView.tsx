@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { xlvPath } from "@/lib/business-lines";
 import {
-  classifyXlvAlert,
   xlvMerchantLabel,
+  xlvEffectiveAlertKind,
 } from "@/lib/xlv-rules";
 import {
   xlvShouldShowQualificationBadge,
@@ -127,9 +127,10 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
   }
 
   const alertKind = device
-    ? classifyXlvAlert({
+    ? xlvEffectiveAlertKind({
         sleepDays: device.sleepDays,
         cumulativeTxns: device.cumulativeTxns,
+        qualificationStatus: qualificationDetail?.status,
       })
     : "active";
 
@@ -139,6 +140,7 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
     alertKind,
     qualificationStatus: qualificationDetail?.status,
     sleepDays: device?.sleepDays ?? 0,
+    cumulativeTxns: device?.cumulativeTxns,
   };
   const sleepLabel = xlvSleepAlertBadgeLabel(alertKind);
 

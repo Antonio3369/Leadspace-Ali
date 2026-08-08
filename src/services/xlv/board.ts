@@ -5,6 +5,7 @@ import {
   isXlvInventoryManagerKey,
   isXlvUnassignedManager,
   type XlvQualificationStatus,
+  xlvEffectiveAlertKind,
   xlvManagerDisplayName,
   xlvQualificationGapLine,
 } from "@/lib/xlv-rules";
@@ -86,7 +87,7 @@ function tallyDevices(
       if (d.qualificationStatus === "in_progress") row.inProgressCount += 1;
       if (d.qualificationStatus === "invalid") row.invalidCount += 1;
     }
-    const alert = classifyXlvAlert(d);
+    const alert = xlvEffectiveAlertKind(d);
     if (alert === "dormant") row.dormantCount += 1;
     if (alert === "single_silence") row.singleSilenceCount += 1;
   }

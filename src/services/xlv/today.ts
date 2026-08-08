@@ -9,6 +9,7 @@ import {
   XLV_MONTHLY_USER_TARGET,
   XLV_SLEEP_THRESHOLD_DAYS,
   type XlvTodayPriority,
+  xlvEffectiveAlertKind,
   xlvQualificationGapLine,
   xlvTodayReason,
 } from "@/lib/xlv-rules";
@@ -59,9 +60,10 @@ function mapTodayDevice(
   priority: XlvTodayPriority,
   assessmentDaysLeft: number | null
 ): XlvTodayDeviceItem {
-  const alertKind = classifyXlvAlert({
+  const alertKind = xlvEffectiveAlertKind({
     sleepDays: row.sleepDays,
     cumulativeTxns: row.cumulativeTxns,
+    qualificationStatus: row.qualificationStatus,
   });
 
   return {

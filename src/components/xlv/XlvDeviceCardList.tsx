@@ -10,8 +10,12 @@ import {
   xlvSleepAlertBadgeClass,
   xlvSleepAlertBadgeLabel,
 } from "@/lib/xlv-device-display";
-import type { XlvAlertKind, XlvQualificationStatus } from "@/lib/xlv-rules";
-import { xlvMerchantLabel } from "@/lib/xlv-rules";
+import {
+  xlvEffectiveAlertKind,
+  xlvMerchantLabel,
+  type XlvAlertKind,
+  type XlvQualificationStatus,
+} from "@/lib/xlv-rules";
 import type { XlvDeviceListItem } from "@/services/xlv/analytics";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
 import { XlvFollowUpStatusCell } from "@/components/xlv/XlvFollowUpStatusCell";
@@ -21,10 +25,11 @@ function progressLine(d: XlvDeviceListItem) {
 }
 
 function gapLine(d: XlvDeviceListItem) {
-  if (d.alertKind === "single_silence") {
+  const kind = xlvEffectiveAlertKind(d);
+  if (kind === "single_silence") {
     return `仅 1 笔 · 已沉睡 ${d.sleepDays} 天`;
   }
-  if (d.alertKind === "dormant") {
+  if (kind === "dormant") {
     return `沉睡 ${d.sleepDays} 天`;
   }
   return null;
@@ -78,9 +83,11 @@ export function XlvDeviceCardList({
   const hideQualificationBadge = Boolean(
     activeShortcut && !isAlertShortcut(activeShortcut)
   );
-  const borderTone = devices.some((d) => d.alertKind === "single_silence")
+  const borderTone = devices.some(
+    (d) => xlvEffectiveAlertKind(d) === "single_silence"
+  )
     ? "border-[#fecaca]"
-    : devices.some((d) => d.alertKind === "dormant")
+    : devices.some((d) => xlvEffectiveAlertKind(d) === "dormant")
       ? "border-amber-100"
       : "border-[#eef2f7]";
 
@@ -95,9 +102,10 @@ export function XlvDeviceCardList({
           {devices.map((d) => {
             const merchant = xlvMerchantLabel(d);
             const display = {
-              alertKind: d.alertKind,
+              alertKind: xlvEffectiveAlertKind(d),
               qualificationStatus: d.qualificationStatus,
               sleepDays: d.sleepDays,
+              cumulativeTxns: d.cumulativeTxns,
             };
             const right = xlvDeviceCardRightLabel(display, hideQualificationBadge);
             const gap = gapLine(d);
@@ -110,7 +118,7 @@ export function XlvDeviceCardList({
                   : ""
               }`
             );
-            const sleepLabel = xlvSleepAlertBadgeLabel(d.alertKind);
+            const sleepLabel = xlvSleepAlertBadgeLabel(display.alertKind);
 
             const rowBody = (
               <>
@@ -119,7 +127,7 @@ export function XlvDeviceCardList({
                     <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
                       {shouldShowAlertBadge(d, hideAlertBadge) && sleepLabel ? (
                         <span
-                          className={`inline-flex rounded-md border px-1.5 py-0.5 text-xs font-semibold ${xlvSleepAlertBadgeClass(d.alertKind)}`}
+                          className={`inline-flex rounded-md border px-1.5 py-0.5 text-xs font-semibold ${xlvSleepAlertBadgeClass(display.alertKind)}`}
                         >
                           {sleepLabel}
                         </span>

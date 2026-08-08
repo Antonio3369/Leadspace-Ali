@@ -191,7 +191,9 @@ export function classifyXlvTodayPriority(input: {
     sleepDays: input.sleepDays,
     cumulativeTxns: input.cumulativeTxns,
   });
-  const isSleep = alert === "single_silence" || alert === "dormant";
+  const isSleep =
+    alert === "single_silence" ||
+    (alert === "dormant" && input.qualificationStatus !== "qualified");
 
   if (!input.followUpDone && isSleep) {
     if (
@@ -564,6 +566,19 @@ export function classifyXlvAlert(device: {
     return "dormant";
   }
   return "active";
+}
+
+/** 用户可见预警类型：已达标设备不再标沉睡 */
+export function xlvEffectiveAlertKind(device: {
+  sleepDays: number;
+  cumulativeTxns: number;
+  qualificationStatus?: XlvQualificationStatus | null;
+}): XlvDeviceAlertKind {
+  const kind = classifyXlvAlert(device);
+  if (kind === "dormant" && device.qualificationStatus === "qualified") {
+    return "active";
+  }
+  return kind;
 }
 
 /** 近期有收款且尚未考核达标（不含已达标） */

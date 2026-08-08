@@ -23,7 +23,7 @@ import {
   XLV_SLEEP_ALERT_FILTERS,
   parseXlvAlertKind,
   parseXlvQualificationStatus,
-  classifyXlvAlert,
+  xlvEffectiveAlertKind,
   type XlvAlertKind,
   type XlvQualificationStatus,
 } from "@/lib/xlv-rules";
@@ -57,7 +57,7 @@ interface ApiResponse {
 function mapDevice(d: ApiDevice): XlvDeviceListItem {
   return {
     ...d,
-    alertKind: classifyXlvAlert(d),
+    alertKind: xlvEffectiveAlertKind(d),
     qualificationGapLine: d.qualificationGap?.line,
   };
 }
@@ -134,7 +134,7 @@ export function XlvStaffDevicesView({
     if (status === "qualified") return d.qualificationStatus === "qualified";
     if (status === "invalid") return d.qualificationStatus === "invalid";
     if (status === "in_progress") return d.qualificationStatus === "in_progress";
-    if (alert !== "all") return classifyXlvAlert(d) === alert;
+    if (alert !== "all") return xlvEffectiveAlertKind(d) === alert;
     return true;
   });
   const devices = sortXlvDevices(

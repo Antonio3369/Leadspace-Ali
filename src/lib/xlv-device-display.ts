@@ -2,13 +2,29 @@ import {
   XLV_QUALIFICATION_LABELS,
   type XlvDeviceAlertKind,
   type XlvQualificationStatus,
+  xlvEffectiveAlertKind,
 } from "@/lib/xlv-rules";
 
 export type XlvDeviceDisplayInput = {
   alertKind: XlvDeviceAlertKind;
   qualificationStatus?: XlvQualificationStatus | null;
   sleepDays: number;
+  cumulativeTxns?: number;
 };
+
+function effectiveAlertKind(d: XlvDeviceDisplayInput): XlvDeviceAlertKind {
+  if (d.cumulativeTxns != null) {
+    return xlvEffectiveAlertKind({
+      sleepDays: d.sleepDays,
+      cumulativeTxns: d.cumulativeTxns,
+      qualificationStatus: d.qualificationStatus,
+    });
+  }
+  if (d.alertKind === "dormant" && d.qualificationStatus === "qualified") {
+    return "active";
+  }
+  return d.alertKind;
+}
 
 export function xlvSleepAlertBadgeLabel(
   alertKind: XlvDeviceAlertKind
@@ -19,7 +35,8 @@ export function xlvSleepAlertBadgeLabel(
 }
 
 export function xlvShouldShowSleepAlertBadge(d: XlvDeviceDisplayInput) {
-  return d.alertKind === "single_silence" || d.alertKind === "dormant";
+  const kind = effectiveAlertKind(d);
+  return kind === "single_silence" || kind === "dormant";
 }
 
 export function xlvShouldShowQualificationBadge(
@@ -37,10 +54,11 @@ export function xlvDeviceCardRightLabel(
   d: XlvDeviceDisplayInput,
   qualFilterActive: boolean
 ) {
-  if (d.alertKind === "single_silence") {
+  const kind = effectiveAlertKind(d);
+  if (kind === "single_silence") {
     return { title: "单笔沉默", sub: `${d.sleepDays} 天未用` };
   }
-  if (d.alertKind === "dormant") {
+  if (kind === "dormant") {
     return { title: `${d.sleepDays} 天`, sub: "沉睡" };
   }
   if (d.qualificationStatus === "qualified") {
@@ -68,7 +86,8 @@ export function xlvDeviceCardRightLabel(
 }
 
 export function xlvDeviceCardRightTitleClass(d: XlvDeviceDisplayInput) {
-  if (d.alertKind === "single_silence" || d.alertKind === "dormant") {
+  const kind = effectiveAlertKind(d);
+  if (kind === "single_silence" || kind === "dormant") {
     return "text-[#c41e3a]";
   }
   if (d.qualificationStatus === "qualified") {
@@ -82,7 +101,8 @@ export function xlvDeviceCardRightTitleClass(d: XlvDeviceDisplayInput) {
 
 /** 列表/详情/导出：用户可见状态（不含「正常」） */
 export function xlvDeviceUserStatusLabel(d: XlvDeviceDisplayInput): string {
-  const sleep = xlvSleepAlertBadgeLabel(d.alertKind);
+  const kind = effectiveAlertKind(d);
+  const sleep = xlvSleepAlertBadgeLabel(kind);
   if (sleep) return sleep;
   if (d.qualificationStatus) {
     return XLV_QUALIFICATION_LABELS[d.qualificationStatus];
