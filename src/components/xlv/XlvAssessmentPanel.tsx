@@ -5,7 +5,6 @@ import {
   XLV_MONTHLY_TXN_TARGET,
   XLV_MONTHLY_USER_TARGET,
   XLV_QUALIFICATION_HINTS,
-  xlvQualificationGapLine,
   xlvQualificationMonthResultLabel,
 } from "@/lib/xlv-rules";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
@@ -29,26 +28,12 @@ export function XlvAssessmentPanel({
 
       {firstTxnDate ? (
         <p className="text-xs text-[#64748b]">
-          装机月（首笔）{firstTxnDate} · 最多考核两个自然月 ·
-          下表为<strong>自然月成绩</strong>（装机月取月末累计，优先次月首行「累计−当日」；次月取两月末截面差；交易趋势仍按收款日展示）
+          装机月 {firstTxnDate} · 最多两个自然月达标（每月 {XLV_MONTHLY_USER_TARGET}{" "}
+          用户 + {XLV_MONTHLY_TXN_TARGET} 笔）
         </p>
       ) : (
         <p className="text-xs text-amber-700">暂无首笔交易，尚未进入考核窗口</p>
       )}
-
-      {detail.status !== "qualified" && detail.focusMonth ? (
-        <div className="rounded-lg bg-[#f8fafc] border border-[#eef2f7] px-3 py-2.5 text-sm">
-          <p className="text-xs text-[#94a3b8]">
-            当前关注 · {detail.focusMonth.label}（{detail.focusMonth.period}）
-          </p>
-          <p className="mt-1 font-medium text-[#334155] tabular-nums">
-            {detail.focusMonth.users == null && detail.focusMonth.txns == null
-              ? "本月暂无收款"
-              : `${detail.focusMonth.users ?? 0} 用户 · ${detail.focusMonth.txns ?? 0} 笔`}
-          </p>
-          <p className="mt-1 text-xs text-[#c41e3a]">{xlvQualificationGapLine(detail)}</p>
-        </div>
-      ) : null}
 
       {detail.months.length > 0 ? (
         <div className="overflow-x-auto">
@@ -64,28 +49,40 @@ export function XlvAssessmentPanel({
             <tbody>
               {detail.months.map((row) => {
                 const result = xlvQualificationMonthResultLabel(row);
+                const isFocus =
+                  detail.focusMonth != null && detail.focusMonth.period === row.period;
                 return (
-                <tr key={row.period} className="border-b border-[#f8fafc]">
-                  <td className="py-2 pr-2">
-                    <span className="text-[#64748b]">{row.label}</span>
-                    <span className="ml-1 tabular-nums">{row.period}</span>
-                  </td>
-                  <td className="py-2 pr-2 tabular-nums">{row.users ?? "—"}</td>
-                  <td className="py-2 pr-2 tabular-nums">{row.txns ?? "—"}</td>
-                  <td className="py-2">
-                    <span
-                      className={
-                        result.tone === "success"
-                          ? "text-emerald-700 font-medium"
-                          : result.tone === "warn"
-                            ? "text-amber-800"
-                            : "text-[#cbd5e1]"
-                      }
-                    >
-                      {result.text}
-                    </span>
-                  </td>
-                </tr>
+                  <tr
+                    key={row.period}
+                    className={`border-b border-[#f8fafc] ${
+                      isFocus ? "bg-[#f8fafc]" : ""
+                    }`}
+                  >
+                    <td className="py-2 pr-2">
+                      <span className="text-[#64748b]">{row.label}</span>
+                      <span className="ml-1 tabular-nums">{row.period}</span>
+                      {isFocus && detail.status !== "qualified" ? (
+                        <span className="ml-1.5 text-[10px] font-medium text-[#2563eb]">
+                          当前
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="py-2 pr-2 tabular-nums">{row.users ?? "—"}</td>
+                    <td className="py-2 pr-2 tabular-nums">{row.txns ?? "—"}</td>
+                    <td className="py-2">
+                      <span
+                        className={
+                          result.tone === "success"
+                            ? "text-emerald-700 font-medium"
+                            : result.tone === "warn"
+                              ? "text-amber-800"
+                              : "text-[#cbd5e1]"
+                        }
+                      >
+                        {result.text}
+                      </span>
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>

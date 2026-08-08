@@ -11,11 +11,10 @@ import {
   type XlvQualificationStatus,
 } from "@/lib/xlv-rules";
 import {
-  xlvAlertButtonClass,
-  xlvFilterChipBaseClass,
-  xlvNeutralChipClass,
-  xlvQualStatusButtonClass,
-  XlvFilterChipText,
+  xlvAlertTextClass,
+  xlvBoardMetricBaseClass,
+  xlvBoardMetricNeutralClass,
+  xlvQualStatusTextClass,
 } from "@/components/xlv/xlv-filter-styles";
 
 function RankBadge({ rank }: { rank: number }) {
@@ -30,19 +29,26 @@ function BoardMetricChip({
   count,
   href,
   className,
-  active = false,
 }: {
   label: string;
   count: number;
   href?: string;
   className: string;
-  active?: boolean;
 }) {
-  const chipClass = `${xlvFilterChipBaseClass()} ${className}`;
-  const body = <XlvFilterChipText label={label} count={count} active={active} />;
+  const chipClass = `${xlvBoardMetricBaseClass()} ${className}`;
+  const body = (
+    <>
+      <span>{label}</span>
+      <span className="tabular-nums font-semibold">{count}</span>
+    </>
+  );
   if (href && count > 0) {
     return (
-      <Link href={href} className={chipClass} title={`查看「${label}」明细`}>
+      <Link
+        href={href}
+        className={`${chipClass} hover:underline underline-offset-2`}
+        title={`查看「${label}」明细`}
+      >
         {body}
       </Link>
     );
@@ -211,12 +217,12 @@ export function XlvLeaderboardTable({
                   >
                     {row.name}
                   </Link>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
                     <BoardMetricChip
                       label="设备"
                       count={row.deviceCount}
                       href={devicesHref ?? undefined}
-                      className={xlvNeutralChipClass()}
+                      className={xlvBoardMetricNeutralClass()}
                     />
                     <BoardMetricChip
                       label="已达标"
@@ -226,11 +232,10 @@ export function XlvLeaderboardTable({
                           ? statusHref(devicesHref, "qualified")
                           : undefined
                       }
-                      className={xlvQualStatusButtonClass(
+                      className={xlvQualStatusTextClass(
                         "qualified",
                         statusFilter === "qualified"
                       )}
-                      active={statusFilter === "qualified"}
                     />
                     <BoardMetricChip
                       label="考核中"
@@ -240,11 +245,10 @@ export function XlvLeaderboardTable({
                           ? statusHref(devicesHref, "in_progress")
                           : undefined
                       }
-                      className={xlvQualStatusButtonClass(
+                      className={xlvQualStatusTextClass(
                         "in_progress",
                         statusFilter === "in_progress"
                       )}
-                      active={statusFilter === "in_progress"}
                     />
                     <BoardMetricChip
                       label="无效"
@@ -254,11 +258,10 @@ export function XlvLeaderboardTable({
                           ? statusHref(devicesHref, "invalid")
                           : undefined
                       }
-                      className={xlvQualStatusButtonClass(
+                      className={xlvQualStatusTextClass(
                         "invalid",
                         statusFilter === "invalid"
                       )}
-                      active={statusFilter === "invalid"}
                     />
                     <BoardMetricChip
                       label="单笔沉默"
@@ -268,7 +271,7 @@ export function XlvLeaderboardTable({
                           ? alertHref(devicesHref, "single_silence")
                           : undefined
                       }
-                      className={xlvAlertButtonClass("single_silence", false)}
+                      className={xlvAlertTextClass("single_silence", false)}
                     />
                     <BoardMetricChip
                       label="沉睡"
@@ -276,7 +279,7 @@ export function XlvLeaderboardTable({
                       href={
                         devicesHref ? alertHref(devicesHref, "dormant") : undefined
                       }
-                      className={xlvAlertButtonClass("dormant", false)}
+                      className={xlvAlertTextClass("dormant", false)}
                     />
                   </div>
                 </div>

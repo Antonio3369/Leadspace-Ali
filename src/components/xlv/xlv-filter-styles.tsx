@@ -66,6 +66,67 @@ export function xlvNeutralChipClass(active = false) {
     : "bg-white text-[#64748b] border-[#eef2f7] hover:bg-[#f8fafc]";
 }
 
+/** 团队看板排行：纯文字指标，无底色/边框 */
+export function xlvBoardMetricBaseClass() {
+  return "inline-flex items-baseline gap-1 text-xs leading-snug transition-colors";
+}
+
+export function xlvBoardMetricNeutralClass(active = false) {
+  return active
+    ? "text-[#334155] font-semibold"
+    : "text-[#94a3b8] hover:text-[#64748b]";
+}
+
+export function xlvQualStatusTextClass(
+  status: "qualified" | "in_progress" | "invalid",
+  active: boolean
+): string {
+  if (active) {
+    switch (status) {
+      case "qualified":
+        return "text-emerald-800 font-semibold";
+      case "in_progress":
+        return "text-sky-800 font-semibold";
+      case "invalid":
+        return "text-slate-700 font-semibold";
+    }
+  }
+  switch (status) {
+    case "qualified":
+      return "text-emerald-700 hover:text-emerald-800";
+    case "in_progress":
+      return "text-sky-700 hover:text-sky-800";
+    case "invalid":
+      return "text-slate-500 hover:text-slate-600";
+  }
+  return "";
+}
+
+export function xlvAlertTextClass(
+  alert: XlvDeviceAlertKind,
+  active: boolean
+): string {
+  if (active) {
+    switch (alert) {
+      case "single_silence":
+        return "text-red-800 font-semibold";
+      case "dormant":
+        return "text-amber-800 font-semibold";
+      case "active":
+        return "text-emerald-800 font-semibold";
+    }
+  }
+  switch (alert) {
+    case "single_silence":
+      return "text-red-600 hover:text-red-700";
+    case "dormant":
+      return "text-amber-700 hover:text-amber-800";
+    case "active":
+      return "text-emerald-700 hover:text-emerald-800";
+  }
+  return "";
+}
+
 export function XlvFilterChipText({
   label,
   count,
