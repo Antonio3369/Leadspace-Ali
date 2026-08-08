@@ -476,7 +476,7 @@ export async function getXlvFilterOptions(
   const where = buildXlvRoleWhere(user);
   const rows = await db.xlvDeviceRecord.findMany({
     where,
-    select: { managerUserId: true, managerName: true, operatorName: true },
+    select: { managerName: true, operatorName: true, managerUserId: true },
   });
   const managers = [
     ...new Set(

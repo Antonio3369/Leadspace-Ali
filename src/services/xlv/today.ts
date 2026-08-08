@@ -1,9 +1,13 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import type { SessionUser } from "@/lib/permissions";
 import {
   classifyXlvAlert,
   classifyXlvTodayPriority,
   getXlvAssessmentDaysRemaining,
+  XLV_MONTHLY_TXN_TARGET,
+  XLV_MONTHLY_USER_TARGET,
+  XLV_SLEEP_THRESHOLD_DAYS,
   type XlvTodayPriority,
   xlvQualificationGapLine,
   xlvTodayReason,
@@ -102,6 +106,54 @@ function sortTodayQueue(items: XlvTodayDeviceItem[], priority: XlvTodayPriority)
   return sortXlvDevices(items, "risk") as XlvTodayDeviceItem[];
 }
 
+const TODAY_DEVICE_SELECT = {
+  deviceSn: true,
+  merchantName: true,
+  activationMerchantName: true,
+  operatorName: true,
+  managerName: true,
+  companyName: true,
+  cumulativeUsers: true,
+  cumulativeTxns: true,
+  sleepDays: true,
+  lastTxnDate: true,
+  firstTxnDate: true,
+  statDate: true,
+  followUpDone: true,
+  followUpNote: true,
+  followUpAt: true,
+  followUpConnectStatus: true,
+  followUpFlags: true,
+} as const;
+
+/** 非搜索模式：只拉可能进 P0/P1/P2 的设备，避免全量 1000 台 + 快照 */
+function buildTodayCandidateWhere(
+  scopeWhere: Prisma.XlvDeviceRecordWhereInput,
+  search?: string | null
+): Prisma.XlvDeviceRecordWhereInput {
+  if (search?.trim()) return scopeWhere;
+  return {
+    AND: [
+      scopeWhere,
+      {
+        OR: [
+          {
+            followUpDone: false,
+            sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS },
+          },
+          {
+            firstTxnDate: { not: null },
+            OR: [
+              { cumulativeUsers: { lt: XLV_MONTHLY_USER_TARGET } },
+              { cumulativeTxns: { lt: XLV_MONTHLY_TXN_TARGET } },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export async function getXlvTodayQueues(
   user: SessionUser,
   opts?: {
@@ -118,27 +170,11 @@ export async function getXlvTodayQueues(
     search: opts?.search,
   });
 
+  const deviceWhere = buildTodayCandidateWhere(scopeWhere, opts?.search);
+
   const rows = await db.xlvDeviceRecord.findMany({
-    where: scopeWhere,
-    select: {
-      deviceSn: true,
-      merchantName: true,
-      activationMerchantName: true,
-      operatorName: true,
-      managerName: true,
-      companyName: true,
-      cumulativeUsers: true,
-      cumulativeTxns: true,
-      sleepDays: true,
-      lastTxnDate: true,
-      firstTxnDate: true,
-      statDate: true,
-      followUpDone: true,
-      followUpNote: true,
-      followUpAt: true,
-      followUpConnectStatus: true,
-      followUpFlags: true,
-    },
+    where: deviceWhere,
+    select: TODAY_DEVICE_SELECT,
   });
 
   const snapshotMap = await loadXlvSnapshotMap(rows.map((r) => r.deviceSn));
@@ -151,10 +187,7 @@ export async function getXlvTodayQueues(
   };
 
   for (const row of enriched) {
-    const snapshots = snapshotMap.get(row.deviceSn) ?? [];
-    const asOf =
-      row.statDate ??
-      (snapshots.length ? snapshots[snapshots.length - 1]!.statDate : new Date());
+    const asOf = row.statDate ?? new Date();
     const assessmentDaysLeft = getXlvAssessmentDaysRemaining(
       row.firstTxnDate,
       asOf
