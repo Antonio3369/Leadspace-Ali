@@ -2,7 +2,11 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { xlvPath } from "@/lib/business-lines";
-import { canAccessXlvWorkspace } from "@/services/xlv/xlv-scope";
+import {
+  canAccessXlvWorkspace,
+  xlvSessionManagerKey,
+  xlvSessionStaffKey,
+} from "@/services/xlv/xlv-scope";
 import { PageShell } from "@/components/ui/notion";
 import { XlvStaffDevicesView } from "@/components/xlv/XlvStaffDevicesView";
 
@@ -12,7 +16,7 @@ export default async function XlvStaffDevicesPage({
   params: Promise<{ managerKey: string; staffKey: string }>;
 }) {
   const user = await getSessionUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/login/xlv");
   if (!canAccessXlvWorkspace(user)) redirect("/");
 
   const { managerKey: rawManager, staffKey: rawStaff } = await params;
@@ -20,14 +24,24 @@ export default async function XlvStaffDevicesPage({
   const staffKey = decodeURIComponent(rawStaff);
 
   if (user.role === "MANAGER") {
-    if (managerKey !== user.id && managerKey !== `name:${user.name}`) {
+    const ownManagerKey = xlvSessionManagerKey(user);
+    if (
+      managerKey !== ownManagerKey &&
+      managerKey !== user.id &&
+      managerKey !== `name:${user.name}`
+    ) {
       redirect(xlvPath());
     }
-    managerKey = user.id;
+    managerKey = ownManagerKey;
   }
 
   if (user.role === "SALES") {
-    if (staffKey !== user.id && staffKey !== `name:${user.name}`) {
+    const ownStaffKey = xlvSessionStaffKey(user);
+    if (
+      staffKey !== ownStaffKey &&
+      staffKey !== user.id &&
+      staffKey !== `name:${user.name}`
+    ) {
       redirect(xlvPath());
     }
   }
@@ -43,6 +57,7 @@ export default async function XlvStaffDevicesPage({
       <XlvStaffDevicesView
         managerKey={managerKey}
         staffKey={staffKey}
+        viewerRole={user.role}
         backHref={
           user.role === "MANAGER"
             ? xlvPath("/board")

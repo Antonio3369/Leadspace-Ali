@@ -12,7 +12,7 @@ export default async function XlvDeviceDetailPage({
   params: Promise<{ sn: string }>;
 }) {
   const user = await getSessionUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/login/xlv");
   if (!canAccessXlvWorkspace(user)) redirect("/");
 
   const { sn } = await params;

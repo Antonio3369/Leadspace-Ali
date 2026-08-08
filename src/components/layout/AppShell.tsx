@@ -23,7 +23,11 @@ import { markSidebarNavTop } from "@/lib/mainScroll";
 import { N7_NOTIFICATIONS_CHANGED } from "@/lib/n7-notifications-client";
 
 interface AppShellProps {
-  user: { name: string; role: UserRole };
+  user: {
+    name: string;
+    role: UserRole;
+    authRealm?: string;
+  };
   signOutMobile: React.ReactNode;
   signOutDesktop: React.ReactNode;
   children: React.ReactNode;

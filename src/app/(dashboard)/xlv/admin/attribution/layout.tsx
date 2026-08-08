@@ -9,7 +9,7 @@ export default async function XlvAttributionLayout({
   children: React.ReactNode;
 }) {
   const user = await getSessionUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/login/xlv");
   if (!canAccessXlvWorkspace(user)) redirect("/");
   if (!canImportExcel(user.role)) redirect("/xlv");
   return children;

@@ -17,9 +17,14 @@ import {
 } from "@/lib/business-lines";
 import { markSidebarNavTop } from "@/lib/mainScroll";
 import type { UserRole } from "@/generated/prisma/client";
+import { sessionAuthRealm } from "@/lib/auth-realm";
 
 interface SidebarProps {
-  user: { name: string; role: UserRole };
+  user: {
+    name: string;
+    role: UserRole;
+    authRealm?: string;
+  };
   open: boolean;
   onNavigate?: () => void;
 }
@@ -60,18 +65,28 @@ const XLV_NAV_ITEMS = [
   { href: xlvPath(), label: "今日待办", icon: "📋" },
   { href: xlvPath("/alerts"), label: "沉睡预警", icon: "😴" },
   { href: xlvPath("/board"), label: "团队看板", icon: "📊" },
+  { href: xlvPath("/daily"), label: "回访情况", icon: "📈" },
+];
+
+const XLV_MANAGER_NAV_ITEMS = [
+  ...XLV_NAV_ITEMS,
+  { href: xlvPath("/me/team"), label: "队员管理", icon: "👥" },
+  { href: xlvPath("/me"), label: "我的", icon: "👤" },
 ];
 
 const XLV_SALES_NAV_ITEMS = [
   { href: xlvPath(), label: "今日待办", icon: "📋" },
   { href: xlvPath("/alerts"), label: "沉睡预警", icon: "😴" },
   { href: xlvPath("/board"), label: "我的设备", icon: "📊" },
+  { href: xlvPath("/daily"), label: "回访情况", icon: "📈" },
+  { href: xlvPath("/me"), label: "我的", icon: "👤" },
 ];
 
 const XLV_DIRECTOR_NAV_ITEMS = [
   ...XLV_NAV_ITEMS,
   { href: xlvPath("/admin/import"), label: "数据导入", icon: "⬆️" },
   { href: xlvPath("/admin/attribution"), label: "人员归属", icon: "🔗" },
+  { href: xlvPath("/admin/accounts"), label: "经理账号", icon: "🔑" },
 ];
 
 function isActivePath(pathname: string, href: string) {
@@ -92,6 +107,9 @@ function isActivePath(pathname: string, href: string) {
     if (pathname === xlvPath("/board")) return true;
     if (pathname.startsWith(`${XLV_BASE}/managers/`)) return true;
     return false;
+  }
+  if (href === xlvPath("/me")) {
+    return pathname === xlvPath("/me") || pathname.startsWith(`${XLV_BASE}/me/`);
   }
   if (href === n7Path("/board")) {
     if (pathname === n7Path("/board")) return true;
@@ -165,11 +183,11 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
           </p>
         </div>
         <Link
-          href="/"
-          onClick={() => handleNavClick("/")}
+          href={sessionAuthRealm(user) === "xlv" ? "/" : "/alipay"}
+          onClick={() => handleNavClick(sessionAuthRealm(user) === "xlv" ? "/" : "/alipay")}
           className="block text-xs font-medium text-[#2563eb] hover:text-[#1d4ed8] transition-colors"
         >
-          ← 切换业务
+          ← {sessionAuthRealm(user) === "xlv" ? "切换平台" : "切换业务"}
         </Link>
       </div>
 
@@ -179,7 +197,7 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
             ? XLV_DIRECTOR_NAV_ITEMS
             : user.role === "SALES"
               ? XLV_SALES_NAV_ITEMS
-              : XLV_NAV_ITEMS
+              : XLV_MANAGER_NAV_ITEMS
           ).map((item) => {
               const active = isActivePath(pathname, item.href);
               return (
@@ -268,7 +286,10 @@ export function Sidebar({ user, open, onNavigate }: SidebarProps) {
         )}
 
         {/* N7 经理/队员改密进「我的」；其余角色侧栏保留 */}
-        {!(inN7 && (user.role === "MANAGER" || user.role === "SALES")) && (
+        {!(
+          (inN7 || inXlv) &&
+          (user.role === "MANAGER" || user.role === "SALES")
+        ) && (
           <div className="pt-2 mt-2 border-t border-[rgba(55,53,47,0.06)]">
             <Link
               href="/settings/password"

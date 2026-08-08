@@ -20,6 +20,7 @@ import {
   loadXlvRosterEntries,
   resolveXlvManagerFromRoster,
 } from "@/services/xlv/roster";
+import { provisionXlvAccountsFromRoster } from "@/services/xlv/member-accounts";
 
 function createId() {
   return `c${randomBytes(12).toString("hex")}`;
@@ -288,6 +289,8 @@ async function importRosterRows(rows: ParsedXlvRosterRow[], _importBatchId: stri
     else updated += 1;
   }
 
+  const accountStats = await provisionXlvAccountsFromRoster(rows);
+
   return {
     snapshotRows: 0,
     createdDevices: 0,
@@ -296,6 +299,8 @@ async function importRosterRows(rows: ParsedXlvRosterRow[], _importBatchId: stri
     rosterCreated: created,
     rosterUpdated: updated,
     uniqueOperators: seenOperators.size,
+    accountsCreated: accountStats.created,
+    accountsUpdated: accountStats.updated,
     devicesBackfilledFromRoster: 0,
     managersInferredFromRoster: 0,
     unmatchedManagers: [] as string[],
@@ -532,6 +537,8 @@ export async function importXlvExcelFile(
     rosterCreated: importSummary.rosterCreated ?? 0,
     rosterUpdated: importSummary.rosterUpdated ?? 0,
     uniqueOperators: importSummary.uniqueOperators ?? 0,
+    accountsCreated: importSummary.accountsCreated ?? 0,
+    accountsUpdated: importSummary.accountsUpdated ?? 0,
     devicesBackfilledFromRoster: importSummary.devicesBackfilledFromRoster ?? 0,
     managersInferredFromRoster: importSummary.managersInferredFromRoster ?? 0,
     unmatchedManagers: importSummary.unmatchedManagers ?? [],

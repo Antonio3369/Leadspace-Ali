@@ -6,11 +6,17 @@ import { authConfig } from "@/lib/auth.config";
 import { db } from "@/lib/db";
 import { canSignIn, needsOnboarding } from "@/lib/account-lifecycle";
 import {
+  ALL_BUSINESS_LINE_IDS,
   DEFAULT_BUSINESS_LINES,
   resolveAccessibleBusinessLines,
   type BusinessLineId,
 } from "@/lib/business-lines";
 import { canLogin, canRoleSignIn, type SessionUser } from "@/lib/permissions";
+import { findXlvMemberByUsername } from "@/services/xlv/member-accounts";
+
+function mapXlvMemberRole(memberRole: string): SessionUser["role"] {
+  return memberRole === "MANAGER" ? "MANAGER" : "SALES";
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -26,11 +32,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.accountLifecycle = user.accountLifecycle;
         token.mustChangePassword = user.mustChangePassword;
         token.businessLines = user.businessLines;
+        token.authRealm = user.authRealm ?? "alipay";
+        token.xlvManagerName = user.xlvManagerName ?? null;
+        token.xlvOperatorName = user.xlvOperatorName ?? null;
         return token;
       }
 
       if (token.id) {
-        // 不在每次请求时查库：Prisma PG adapter 在 dev 下会间歇性 bind 异常
         token.businessLines = resolveAccessibleBusinessLines(
           token.role as string,
           (token.businessLines as BusinessLineId[]) ?? DEFAULT_BUSINESS_LINES
@@ -41,6 +49,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   providers: [
     Credentials({
+      id: "alipay",
       credentials: {
         username: { label: "账号", type: "text" },
         password: { label: "密码", type: "password" },
@@ -76,6 +85,73 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           accountLifecycle: user.accountLifecycle,
           mustChangePassword: user.mustChangePassword,
           businessLines: resolveAccessibleBusinessLines(user.role, storedLines),
+          authRealm: "alipay" as const,
+          xlvManagerName: null,
+          xlvOperatorName: null,
+        };
+      },
+    }),
+    Credentials({
+      id: "xlv",
+      credentials: {
+        username: { label: "账号", type: "text" },
+        password: { label: "密码", type: "password" },
+      },
+      async authorize(credentials) {
+        const username = credentials?.username as string | undefined;
+        const password = credentials?.password as string | undefined;
+
+        if (!username || !password) return null;
+
+        const member = await findXlvMemberByUsername(username);
+        if (member) {
+          if (!canLogin(member.status)) return null;
+          if (!canSignIn(member.accountLifecycle, member.passwordHash)) {
+            return null;
+          }
+          const valid = await bcrypt.compare(password, member.passwordHash!);
+          if (!valid) return null;
+
+          const role = mapXlvMemberRole(member.memberRole);
+          return {
+            id: member.id,
+            name: member.name,
+            email: member.username,
+            role,
+            status: member.status,
+            teamId: null,
+            accountLifecycle: member.accountLifecycle,
+            mustChangePassword: member.mustChangePassword,
+            businessLines: ["xlv"] as BusinessLineId[],
+            authRealm: "xlv" as const,
+            xlvManagerName: member.managerName,
+            xlvOperatorName:
+              member.memberRole === "OPERATOR" ? member.operatorName : null,
+          };
+        }
+
+        // 全局 admin：同一套 User 登录微信侧管理导入/归属
+        const user = await db.user.findUnique({ where: { username } });
+        if (!user || user.role !== "DIRECTOR") return null;
+        if (!canLogin(user.status)) return null;
+        if (!canSignIn(user.accountLifecycle, user.passwordHash)) return null;
+
+        const valid = await bcrypt.compare(password, user.passwordHash!);
+        if (!valid) return null;
+
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.username,
+          role: user.role,
+          status: user.status,
+          teamId: user.teamId,
+          accountLifecycle: user.accountLifecycle,
+          mustChangePassword: user.mustChangePassword,
+          businessLines: [...ALL_BUSINESS_LINE_IDS],
+          authRealm: "xlv" as const,
+          xlvManagerName: null,
+          xlvOperatorName: null,
         };
       },
     }),
@@ -115,9 +191,20 @@ export async function requireSessionFromAuth(
   return finalizeSessionUser(user);
 }
 
-async function loadLiveUserState(userId: string) {
+async function loadLiveUserState(user: SessionUser) {
+  if (user.authRealm === "xlv" && user.role !== "DIRECTOR") {
+    return db.xlvMemberAccount.findUnique({
+      where: { id: user.id },
+      select: {
+        status: true,
+        accountLifecycle: true,
+        mustChangePassword: true,
+        memberRole: true,
+      },
+    });
+  }
   return db.user.findUnique({
-    where: { id: userId },
+    where: { id: user.id },
     select: {
       status: true,
       accountLifecycle: true,
@@ -132,7 +219,7 @@ export async function ensureLiveSession(): Promise<SessionUser> {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
-  const live = await loadLiveUserState(user.id).catch(() => null);
+  const live = await loadLiveUserState(user).catch(() => null);
   if (!live) {
     if (!canLogin(user.status)) {
       redirect("/api/auth/session-expired?reason=disabled");
@@ -150,29 +237,32 @@ export async function ensureLiveSession(): Promise<SessionUser> {
     redirect("/api/auth/session-expired?reason=disabled");
   }
 
-  // 管理员重置密码：会话仍认为可正常使用，但 DB 已要求首登改密 → 必须重登刷新 JWT
   if (live.mustChangePassword && !user.mustChangePassword) {
     redirect("/api/auth/session-expired?reason=refresh");
   }
 
-  // 被重新置为待认证：同样需要刷新会话
+  const liveLifecycle = live.accountLifecycle;
   if (
-    live.accountLifecycle !== user.accountLifecycle &&
-    needsOnboarding(live.accountLifecycle) &&
+    liveLifecycle !== user.accountLifecycle &&
+    needsOnboarding(liveLifecycle) &&
     !needsOnboarding(user.accountLifecycle)
   ) {
     redirect("/api/auth/session-expired?reason=refresh");
   }
 
-  // 其余漂移（含刚改完密 mustChangePassword true→false）直接以 DB 为准，避免误踢导致「改两次」
+  const role =
+    user.authRealm === "xlv" && user.role !== "DIRECTOR" && "memberRole" in live
+      ? mapXlvMemberRole((live as { memberRole: string }).memberRole)
+      : user.role;
+
   const businessLines = resolveAccessibleBusinessLines(
-    live.role,
+    role,
     user.businessLines ?? DEFAULT_BUSINESS_LINES
   );
 
   return {
     ...user,
-    role: live.role,
+    role,
     status: live.status,
     accountLifecycle: live.accountLifecycle,
     mustChangePassword: live.mustChangePassword,

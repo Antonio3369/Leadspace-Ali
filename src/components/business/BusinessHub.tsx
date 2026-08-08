@@ -7,9 +7,13 @@ import {
 export function BusinessHub({
   userName,
   accessibleLines,
+  title = "选择业务",
+  subtitle,
 }: {
   userName: string;
   accessibleLines: BusinessLineId[];
+  title?: string;
+  subtitle?: string;
 }) {
   return (
     <div className="min-h-[70vh] flex flex-col items-center justify-center px-4 py-10">
@@ -19,10 +23,10 @@ export function BusinessHub({
             Leadspace.Sales
           </p>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#111827] tracking-tight">
-            选择业务
+            {title}
           </h1>
           <p className="text-sm text-[#64748b]">
-            你好，{userName}。请选择要进入的业务工作台。
+            你好，{userName}。{subtitle ?? "请选择要进入的业务工作台。"}
           </p>
         </header>
 

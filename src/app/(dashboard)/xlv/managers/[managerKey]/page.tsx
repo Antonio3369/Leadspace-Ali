@@ -12,7 +12,7 @@ export default async function XlvManagerStaffPage({
   params: Promise<{ managerKey: string }>;
 }) {
   const user = await getSessionUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/login/xlv");
   if (!canAccessXlvWorkspace(user)) redirect("/");
 
   const { managerKey: raw } = await params;

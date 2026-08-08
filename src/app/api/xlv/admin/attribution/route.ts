@@ -9,6 +9,7 @@ import {
   updateXlvDeviceAttribution,
 } from "@/services/xlv/attribution";
 import { syncXlvAttributionFromRoster } from "@/services/xlv/relink-sales-devices";
+import { backfillXlvMemberAccountsFromStoredRoster } from "@/services/xlv/member-accounts";
 
 function assertXlvAdmin(user: Awaited<ReturnType<typeof requireSessionUser>>) {
   if (!canAccessXlvWorkspace(user)) {
@@ -70,8 +71,9 @@ export async function POST(request: Request) {
     }
 
     const result = await syncXlvAttributionFromRoster();
+    const accountBackfill = await backfillXlvMemberAccountsFromStoredRoster();
     const report = await getXlvAttributionReport();
-    return NextResponse.json({ result, report });
+    return NextResponse.json({ result, accountBackfill, report });
   } catch (err) {
     const message = err instanceof Error ? err.message : "操作失败";
     if (message === "UNAUTHORIZED") {

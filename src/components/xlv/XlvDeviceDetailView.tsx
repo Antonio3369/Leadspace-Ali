@@ -14,21 +14,13 @@ import {
 } from "@/components/ui/notion";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 import { CopyTextButton } from "@/components/ui/CopyTextButton";
-import { XlvSnapshotTrendChart } from "@/components/xlv/XlvSnapshotTrendChart";
 import { XlvAssessmentPanel } from "@/components/xlv/XlvAssessmentPanel";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
 import { XlvFollowUpCloseForm } from "@/components/xlv/XlvFollowUpCloseForm";
 import type { XlvFollowUpPatchResult } from "@/lib/xlv-follow-up-client";
+import { XlvTxnActivityChart } from "@/components/xlv/XlvTxnActivityChart";
+import type { XlvTxnActivityPoint } from "@/services/xlv/snapshot-daily";
 import type { XlvQualificationDetail } from "@/lib/xlv-rules";
-
-interface Snapshot {
-  statDate: string;
-  dailyTxns: number;
-  dailyUsers: number;
-  sleepDays: number;
-  cumulativeTxns: number;
-  cumulativeUsers: number;
-}
 
 interface Device {
   deviceSn: string;
@@ -62,9 +54,9 @@ function fmtDate(iso: string | null) {
 
 export function XlvDeviceDetailView({ sn }: { sn: string }) {
   const [device, setDevice] = useState<Device | null>(null);
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [qualificationDetail, setQualificationDetail] =
     useState<XlvQualificationDetail | null>(null);
+  const [txnTrend, setTxnTrend] = useState<XlvTxnActivityPoint[]>([]);
   const [followUp, setFollowUp] = useState({
     done: false,
     note: "",
@@ -90,13 +82,8 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
             firstTxnDate: d.firstTxnDate ? String(d.firstTxnDate).slice(0, 10) : null,
             statDate: d.statDate ? String(d.statDate).slice(0, 10) : null,
           });
-          setSnapshots(
-            (json.snapshots as Snapshot[]).map((s) => ({
-              ...s,
-              statDate: String(s.statDate).slice(0, 10),
-            }))
-          );
           setQualificationDetail(json.qualificationDetail ?? null);
+          setTxnTrend(json.txnTrend ?? []);
           setFollowUp({
             done: Boolean(d.followUpDone),
             note: d.followUpNote ?? "",
@@ -259,14 +246,14 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
 
           <section className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-[#111827] mb-3">
-              快照趋势
-              {device.statDate ? (
+              交易趋势
+              {device.lastTxnDate ? (
                 <span className="ml-2 text-xs font-normal text-[#94a3b8]">
-                  截至 {device.statDate}
+                  末笔 {device.lastTxnDate}
                 </span>
               ) : null}
             </h2>
-            <XlvSnapshotTrendChart points={snapshots} />
+            <XlvTxnActivityChart points={txnTrend} />
           </section>
         </div>
       ) : null}

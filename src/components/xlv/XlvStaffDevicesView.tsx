@@ -65,10 +65,12 @@ export function XlvStaffDevicesView({
   managerKey,
   staffKey,
   backHref,
+  viewerRole,
 }: {
   managerKey: string;
   staffKey: string;
   backHref?: string;
+  viewerRole?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -152,16 +154,22 @@ export function XlvStaffDevicesView({
     `/managers/${encodeURIComponent(managerKey)}`
   );
 
+  const isSelfView = viewerRole === "SALES";
+
   return (
     <PageShell>
       <PageHeader
-        title={`${data?.staff.name ?? "队员"} · 设备`}
+        title={isSelfView ? "我的设备" : `${data?.staff.name ?? "队员"} · 设备`}
         kicker="微信小绿盒"
         meta={
           <div className="space-y-1 text-sm text-[#64748b]">
-            {data?.manager.name ? <p>经理：{data.manager.name}</p> : null}
+            {!isSelfView && data?.manager.name ? (
+              <p>经理：{data.manager.name}</p>
+            ) : null}
             <HistoryBackLink
-              label="← 返回队员排行"
+              label={
+                isSelfView ? "← 返回今日待办" : "← 返回队员排行"
+              }
               fallbackHref={backHref ?? defaultBack}
               preferHistoryBack
               className="inline-flex text-sm font-medium text-[#2563eb] hover:text-[#1d4ed8]"
@@ -241,7 +249,7 @@ export function XlvStaffDevicesView({
         <XlvDeviceCardList
           devices={devices}
           showManager={false}
-          emptyText="该队员暂无设备"
+          emptyText={isSelfView ? "暂无设备" : "该队员暂无设备"}
           linkToDetail
         />
       )}

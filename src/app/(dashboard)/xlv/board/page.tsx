@@ -2,10 +2,11 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { canAccessBusinessLine, xlvPath } from "@/lib/business-lines";
+import { xlvPath } from "@/lib/business-lines";
 import {
   canAccessXlvWorkspace,
-  canViewXlv,
+  xlvSessionManagerKey,
+  xlvSessionStaffKey,
 } from "@/services/xlv/xlv-scope";
 import { PageHeader, PageShell } from "@/components/ui/notion";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
@@ -14,11 +15,7 @@ import { XlvStaffBoard } from "@/components/xlv/XlvStaffBoard";
 
 export default async function XlvBoardPage() {
   const user = await getSessionUser();
-  if (!user) redirect("/login");
-
-  if (canViewXlv(user.role) && !canAccessBusinessLine(user.role, user.businessLines, "xlv")) {
-    redirect("/");
-  }
+  if (!user) redirect("/login/xlv");
 
   if (!canAccessXlvWorkspace(user)) {
     return (
@@ -35,27 +32,48 @@ export default async function XlvBoardPage() {
   }
 
   if (user.role === "SALES") {
-    const live = await db.user.findUnique({
-      where: { id: user.id },
-      select: { managerId: true },
-    });
-    let managerKey = live?.managerId ?? null;
-    if (!managerKey) {
-      const sample = await db.xlvDeviceRecord.findFirst({
-        where: { OR: [{ salesUserId: user.id }, { operatorName: user.name }] },
-        select: { managerUserId: true, managerName: true },
-        orderBy: { updatedAt: "desc" },
+    const staffKey = xlvSessionStaffKey(user);
+    let managerKey: string | null = null;
+
+    if (user.authRealm === "xlv") {
+      const managerName = user.xlvManagerName?.trim();
+      if (managerName) {
+        managerKey = `name:${managerName}`;
+      } else {
+        const operatorName = (user.xlvOperatorName ?? user.name).trim();
+        const sample = await db.xlvDeviceRecord.findFirst({
+          where: { operatorName },
+          select: { managerName: true },
+          orderBy: { updatedAt: "desc" },
+        });
+        if (sample?.managerName) {
+          managerKey = `name:${sample.managerName}`;
+        }
+      }
+    } else {
+      const live = await db.user.findUnique({
+        where: { id: user.id },
+        select: { managerId: true },
       });
-      managerKey =
-        sample?.managerUserId ??
-        (sample?.managerName ? `name:${sample.managerName}` : null);
+      managerKey = live?.managerId ?? null;
+      if (!managerKey) {
+        const sample = await db.xlvDeviceRecord.findFirst({
+          where: { OR: [{ salesUserId: user.id }, { operatorName: user.name }] },
+          select: { managerUserId: true, managerName: true },
+          orderBy: { updatedAt: "desc" },
+        });
+        managerKey =
+          sample?.managerUserId ??
+          (sample?.managerName ? `name:${sample.managerName}` : null);
+      }
     }
+
     if (!managerKey) {
       redirect(xlvPath());
     }
     redirect(
       xlvPath(
-        `/managers/${encodeURIComponent(managerKey)}/staff/${encodeURIComponent(user.id)}`
+        `/managers/${encodeURIComponent(managerKey)}/staff/${encodeURIComponent(staffKey)}`
       )
     );
   }
@@ -69,7 +87,7 @@ export default async function XlvBoardPage() {
           </PageShell>
         }
       >
-        <XlvStaffBoard managerKey={user.id} variant="home" />
+        <XlvStaffBoard managerKey={xlvSessionManagerKey(user)} variant="home" />
       </Suspense>
     );
   }

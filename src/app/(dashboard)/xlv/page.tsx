@@ -12,7 +12,7 @@ import { XlvTodayView } from "@/components/xlv/XlvTodayView";
 
 export default async function XlvHomePage() {
   const user = await getSessionUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/login/xlv");
 
   if (canViewXlv(user.role) && !canAccessBusinessLine(user.role, user.businessLines, "xlv")) {
     redirect("/");

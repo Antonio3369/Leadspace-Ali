@@ -1,5 +1,8 @@
 /** 沉睡预警：≥2 天未交易视为沉睡；单笔沉默单独标记（更严重） */
 
+import { xlvStatDateKey } from "@/lib/xlv-stat-date";
+import { computeXlvMonthAssessmentTotals } from "@/services/xlv/snapshot-daily";
+
 export const XLV_SLEEP_THRESHOLD_DAYS = 2;
 
 /** 今日待办：沉睡 ≥N 天未回访升 P0 */
@@ -31,40 +34,60 @@ export function isXlvCumulativeQualified(device: {
 }
 
 type XlvSnapshotPoint = {
+  deviceSn?: string;
   statDate: Date;
+  lastTxnDate?: Date | null;
   cumulativeUsers: number;
   cumulativeTxns: number;
+  dailyUsers?: number;
+  dailyTxns?: number;
+  sleepDays?: number;
 };
 
 function utcYearMonth(d: Date) {
   return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1 };
 }
 
-function lastSnapshotInMonth(points: XlvSnapshotPoint[], y: number, m: number) {
-  const inMonth = points.filter((p) => {
-    const ym = utcYearMonth(p.statDate);
-    return ym.y === y && ym.m === m;
-  });
-  return inMonth.length ? inMonth[inMonth.length - 1]! : null;
+type YearMonth = { y: number; m: number };
+
+/** 考核日历月：按中国自然日，与导入 statDate 一致 */
+function chinaYearMonth(d: Date): YearMonth {
+  const key = xlvStatDateKey(d);
+  const [y, m] = key.split("-").map(Number);
+  return { y: y!, m: m! };
 }
 
-function monthIncrement(
-  points: XlvSnapshotPoint[],
-  y: number,
-  m: number
-): { users: number; txns: number } | null {
-  const end = lastSnapshotInMonth(points, y, m);
-  if (!end) return null;
-  const monthStart = new Date(Date.UTC(y, m - 1, 1));
-  const before = points.filter((p) => p.statDate < monthStart);
-  const baseline = before.length ? before[before.length - 1]! : null;
-  return {
-    users: end.cumulativeUsers - (baseline?.cumulativeUsers ?? 0),
-    txns: end.cumulativeTxns - (baseline?.cumulativeTxns ?? 0),
-  };
+function compareYearMonth(a: YearMonth, b: YearMonth) {
+  return a.y !== b.y ? a.y - b.y : a.m - b.m;
 }
 
-/** 方案 A：按快照自然月增量判定达标 / 考核中 / 无效 */
+function nextYearMonth(y: number, m: number): YearMonth {
+  return m === 12 ? { y: y + 1, m: 1 } : { y, m: m + 1 };
+}
+
+function qualificationAsOf(asOf?: Date) {
+  return asOf ?? new Date();
+}
+
+function isAssessmentWindowClosed(reference: Date, secondMonthY: number, secondMonthM: number) {
+  const afterSecond = nextYearMonth(secondMonthY, secondMonthM);
+  return compareYearMonth(chinaYearMonth(reference), afterSecond) >= 0;
+}
+
+function pickAssessmentFocusMonth(
+  reference: Date,
+  months: XlvQualificationMonthRow[],
+  secondMonthY: number,
+  secondMonthM: number
+) {
+  const second: YearMonth = { y: secondMonthY, m: secondMonthM };
+  if (compareYearMonth(chinaYearMonth(reference), second) >= 0) {
+    return months[1] ?? months[0] ?? null;
+  }
+  return months[0] ?? null;
+}
+
+/** 方案 A：按实际收款日汇总判定达标 / 考核中 / 无效 */
 export function assessXlvQualification(
   device: {
     firstTxnDate: Date | null;
@@ -80,21 +103,19 @@ export function assessXlvQualification(
   const points = [...snapshots].sort(
     (a, b) => a.statDate.getTime() - b.statDate.getTime()
   );
-  const reference =
-    asOf ?? (points.length ? points[points.length - 1]!.statDate : new Date());
+  const reference = qualificationAsOf(asOf);
 
   const { y: y0, m: m0 } = utcYearMonth(device.firstTxnDate);
   const y1 = m0 === 12 ? y0 + 1 : y0;
   const m1 = m0 === 12 ? 1 : m0 + 1;
 
-  const inc0 = monthIncrement(points, y0, m0);
+  const inc0 = computeXlvMonthAssessmentTotals(points, y0, m0, device, true);
   if (inc0 && isXlvMonthlyTargetMet(inc0.users, inc0.txns)) return "qualified";
 
-  const inc1 = monthIncrement(points, y1, m1);
+  const inc1 = computeXlvMonthAssessmentTotals(points, y1, m1, device, false);
   if (inc1 && isXlvMonthlyTargetMet(inc1.users, inc1.txns)) return "qualified";
 
-  const windowEnd = new Date(Date.UTC(y1, m1, 1));
-  if (reference >= windowEnd) return "invalid";
+  if (isAssessmentWindowClosed(reference, y1, m1)) return "invalid";
 
   return "in_progress";
 }
@@ -137,7 +158,7 @@ export function isXlvAssessmentExpiringSoon(
   }
   const remaining = getXlvAssessmentDaysRemaining(
     device.firstTxnDate,
-    asOf ?? (snapshots.length ? snapshots[snapshots.length - 1]!.statDate : new Date())
+    qualificationAsOf(asOf)
   );
   return remaining != null && remaining <= threshold;
 }
@@ -245,6 +266,8 @@ export type XlvQualificationMonthRow = {
   users: number | null;
   txns: number | null;
   met: boolean;
+  /** 无日快照，用设备累计估算 */
+  estimated?: boolean;
 };
 
 export type XlvQualificationDetail = {
@@ -272,8 +295,7 @@ export function getXlvQualificationDetail(
   const points = [...snapshots].sort(
     (a, b) => a.statDate.getTime() - b.statDate.getTime()
   );
-  const reference =
-    asOf ?? (points.length ? points[points.length - 1]!.statDate : new Date());
+  const reference = qualificationAsOf(asOf);
   const status = assessXlvQualification(device, snapshots, reference);
 
   if (!device.firstTxnDate) {
@@ -296,13 +318,20 @@ export function getXlvQualificationDetail(
   ] as const;
 
   const months: XlvQualificationMonthRow[] = monthDefs.map(({ label, y, m }) => {
-    const inc = monthIncrement(points, y, m);
+    const inc = computeXlvMonthAssessmentTotals(
+      points,
+      y,
+      m,
+      device,
+      label === "装机月"
+    );
     return {
       label,
       period: formatYearMonth(y, m),
       users: inc?.users ?? null,
       txns: inc?.txns ?? null,
       met: inc ? isXlvMonthlyTargetMet(inc.users, inc.txns) : false,
+      estimated: inc?.estimated,
     };
   });
 
@@ -312,9 +341,7 @@ export function getXlvQualificationDetail(
   } else if (status === "invalid") {
     focusMonth = months[1] ?? months[0] ?? null;
   } else {
-    const windowEnd = new Date(Date.UTC(y1, m1, 1));
-    const inMonth1 = reference >= new Date(Date.UTC(y0, m0 === 12 ? 0 : m0, 1));
-    focusMonth = inMonth1 && reference < windowEnd ? months[1] ?? null : months[0] ?? null;
+    focusMonth = pickAssessmentFocusMonth(reference, months, y1, m1);
   }
 
   const focusUsers = focusMonth?.users ?? 0;
@@ -331,13 +358,71 @@ export function getXlvQualificationDetail(
   return { status, usersGap, txnsGap, focusMonth, months };
 }
 
+export function xlvQualificationMonthProgressLine(detail: XlvQualificationDetail) {
+  if (detail.status === "qualified" || !detail.focusMonth) return null;
+  const { label, period, users, txns, estimated } = detail.focusMonth;
+  if (users == null && txns == null) {
+    return `${label} ${period}：无收款`;
+  }
+  const suffix = estimated ? "（按累计）" : "";
+  return `${label} ${period}：当月 ${users ?? 0} 用户 · ${txns ?? 0} 笔${suffix}`;
+}
+
 export function xlvQualificationGapLine(detail: XlvQualificationDetail) {
   if (detail.status === "qualified") return "已达标";
   if (!detail.focusMonth) return "待首笔交易";
   const parts: string[] = [];
-  if (detail.usersGap > 0) parts.push(`差 ${detail.usersGap} 用户`);
-  if (detail.txnsGap > 0) parts.push(`差 ${detail.txnsGap} 笔`);
-  return parts.length ? parts.join(" · ") : "当月接近达标";
+  if (detail.usersGap > 0) {
+    parts.push(
+      detail.txnsGap === 0
+        ? `笔数已达标·差 ${detail.usersGap} 用户`
+        : `差 ${detail.usersGap} 用户`
+    );
+  }
+  if (detail.txnsGap > 0) {
+    parts.push(
+      detail.usersGap === 0
+        ? `用户已达标·差 ${detail.txnsGap} 笔`
+        : `差 ${detail.txnsGap} 笔`
+    );
+  }
+  const gapText = parts.length ? parts.join(" · ") : "当月接近达标";
+  if (detail.focusMonth?.label === "次月") {
+    return `次月重计 · ${gapText}`;
+  }
+  if (detail.focusMonth?.label === "装机月") {
+    return `装机月 · ${gapText}`;
+  }
+  return gapText;
+}
+
+export function xlvQualificationMonthResultLabel(row: XlvQualificationMonthRow) {
+  if (row.met) return { tone: "success" as const, text: "达标" };
+  if (row.users == null && row.txns == null) {
+    return { tone: "muted" as const, text: "无收款" };
+  }
+  const users = row.users ?? 0;
+  const txns = row.txns ?? 0;
+  if (users >= XLV_MONTHLY_USER_TARGET && txns < XLV_MONTHLY_TXN_TARGET) {
+    return {
+      tone: "warn" as const,
+      text: `用户已达标·差 ${XLV_MONTHLY_TXN_TARGET - txns} 笔`,
+    };
+  }
+  if (txns >= XLV_MONTHLY_TXN_TARGET && users < XLV_MONTHLY_USER_TARGET) {
+    return {
+      tone: "warn" as const,
+      text: `笔数已达标·差 ${XLV_MONTHLY_USER_TARGET - users} 用户`,
+    };
+  }
+  const parts: string[] = [];
+  if (users < XLV_MONTHLY_USER_TARGET) {
+    parts.push(`差 ${XLV_MONTHLY_USER_TARGET - users} 用户`);
+  }
+  if (txns < XLV_MONTHLY_TXN_TARGET) {
+    parts.push(`差 ${XLV_MONTHLY_TXN_TARGET - txns} 笔`);
+  }
+  return { tone: "warn" as const, text: parts.join(" · ") || "未达标" };
 }
 
 /** 未挂经理的设备池（运营表无经理字段），不是具体负责人 */

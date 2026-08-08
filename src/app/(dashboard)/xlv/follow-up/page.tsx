@@ -7,7 +7,7 @@ import { XlvFollowUpView } from "@/components/xlv/XlvFollowUpView";
 
 export default async function XlvFollowUpPage() {
   const user = await getSessionUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/login/xlv");
   if (!canAccessXlvWorkspace(user)) redirect("/");
 
   return (

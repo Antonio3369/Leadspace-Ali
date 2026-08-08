@@ -17,8 +17,14 @@ export function canViewXlv(role: SessionUser["role"]): boolean {
 }
 
 export function canAccessXlvWorkspace(
-  user: Pick<SessionUser, "role" | "businessLines">
+  user: Pick<
+    SessionUser,
+    "role" | "businessLines" | "authRealm"
+  >
 ) {
+  if (user.authRealm === "xlv") {
+    return canViewXlv(user.role);
+  }
   return (
     canViewXlv(user.role) &&
     canAccessBusinessLine(user.role, user.businessLines, "xlv")
@@ -29,12 +35,29 @@ export function assertCanViewXlv(user: SessionUser) {
   if (!canViewXlv(user.role)) {
     throw new PermissionError("无权访问微信小绿盒数据");
   }
+  if (user.authRealm === "xlv") return;
   if (!canAccessBusinessLine(user.role, user.businessLines, "xlv")) {
     throw new PermissionError("未开通微信小绿盒业务线");
   }
 }
 
 export function buildXlvRoleWhere(user: SessionUser): Prisma.XlvDeviceRecordWhereInput {
+  if (user.authRealm === "xlv") {
+    if (user.role === "DIRECTOR") return {};
+    if (user.role === "MANAGER") {
+      const managerName = (user.xlvManagerName ?? user.name).trim();
+      return { managerName };
+    }
+    if (user.role === "SALES") {
+      const operatorName = (user.xlvOperatorName ?? user.name).trim();
+      const managerName = user.xlvManagerName?.trim();
+      if (managerName) {
+        return { operatorName, managerName };
+      }
+      return { operatorName };
+    }
+  }
+
   if (user.role === "MANAGER") {
     return {
       OR: [
@@ -217,6 +240,22 @@ export async function buildXlvStaffDeviceWhere(
   };
 }
 
+export function xlvSessionManagerKey(user: SessionUser): string {
+  if (user.authRealm === "xlv" && user.role === "MANAGER") {
+    const name = (user.xlvManagerName ?? user.name).trim();
+    return `name:${name}`;
+  }
+  return user.id;
+}
+
+export function xlvSessionStaffKey(user: SessionUser): string {
+  if (user.authRealm === "xlv" && user.role === "SALES") {
+    const name = (user.xlvOperatorName ?? user.name).trim();
+    return `name:${name}`;
+  }
+  return user.id;
+}
+
 export function assertManagerOwnsXlvKey(user: SessionUser, managerKey: string) {
   if (user.role === "DIRECTOR") return;
   if (user.role === "SALES") {
@@ -225,10 +264,75 @@ export function assertManagerOwnsXlvKey(user: SessionUser, managerKey: string) {
   if (user.role !== "MANAGER") {
     throw new PermissionError("无权访问");
   }
-  const ok = managerKey === user.id || managerKey === `name:${user.name}`;
+  const expected = xlvSessionManagerKey(user);
+  const legacy = user.id;
+  const legacyName = `name:${user.name}`;
+  const ok =
+    managerKey === expected ||
+    managerKey === legacy ||
+    managerKey === legacyName;
   if (!ok) {
     throw new PermissionError("无权查看其他经理的数据");
   }
+}
+
+/** 经理看队员设备，或队员看本人设备 */
+export function assertCanViewXlvStaffScope(
+  user: SessionUser,
+  managerKey: string,
+  staffKey: string
+) {
+  assertCanViewXlv(user);
+  if (user.role === "DIRECTOR") return;
+
+  if (user.role === "SALES") {
+    const ownStaffKey = xlvSessionStaffKey(user);
+    const operatorName = (user.xlvOperatorName ?? user.name).trim();
+    const okStaff =
+      staffKey === ownStaffKey ||
+      staffKey === user.id ||
+      staffKey === `name:${operatorName}` ||
+      staffKey === `name:${user.name}`;
+    if (!okStaff) {
+      throw new PermissionError("无权查看其他队员的设备");
+    }
+    return;
+  }
+
+  if (user.role === "MANAGER") {
+    assertManagerOwnsXlvKey(user, managerKey);
+    return;
+  }
+
+  throw new PermissionError("无权访问");
+}
+
+export function resolveXlvManagerKey(
+  user: SessionUser,
+  requested: string | null | undefined
+): string | null {
+  assertCanViewXlv(user);
+  if (user.role === "SALES") return null;
+  if (user.role === "MANAGER") {
+    const ownKey = xlvSessionManagerKey(user);
+    if (
+      requested &&
+      requested !== ownKey &&
+      requested !== user.id &&
+      requested !== `name:${user.name}`
+    ) {
+      throw new PermissionError("无权查看其他经理的数据");
+    }
+    return ownKey;
+  }
+  return requested?.trim() ? requested : null;
+}
+
+/** 队员强制个人范围 */
+export function resolveXlvStaffKey(user: SessionUser): string | null {
+  assertCanViewXlv(user);
+  if (user.role === "SALES") return xlvSessionStaffKey(user);
+  return null;
 }
 
 export async function assertCanViewXlvDevice(user: SessionUser, deviceSn: string) {
@@ -249,9 +353,28 @@ export async function assertCanViewXlvDevice(user: SessionUser, deviceSn: string
   }
 
   if (user.role === "SALES") {
+    if (user.authRealm === "xlv") {
+      const operatorName = (user.xlvOperatorName ?? user.name).trim();
+      const managerName = user.xlvManagerName?.trim();
+      if (device.operatorName !== operatorName) {
+        throw new PermissionError("无权查看该设备");
+      }
+      if (managerName && device.managerName !== managerName) {
+        throw new PermissionError("无权查看该设备");
+      }
+      return;
+    }
     if (device.salesUserId === user.id) return;
     if (device.operatorName === user.name) return;
     throw new PermissionError("无权查看该设备");
+  }
+
+  if (user.authRealm === "xlv" && user.role === "MANAGER") {
+    const managerName = (user.xlvManagerName ?? user.name).trim();
+    if (device.managerName !== managerName) {
+      throw new PermissionError("无权查看该设备");
+    }
+    return;
   }
 
   const owns =

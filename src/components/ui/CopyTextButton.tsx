@@ -27,7 +27,7 @@ export function CopyTextButton({
     <button
       type="button"
       onClick={() => void copy()}
-      className={`inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 hover:border-amber-400 transition-colors ${className}`}
+      className={`inline-flex items-center justify-center min-h-[32px] rounded-lg bg-amber-500 px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-amber-600 active:bg-amber-700 transition-colors ${className}`}
     >
       {copied ? "已复制" : label}
     </button>

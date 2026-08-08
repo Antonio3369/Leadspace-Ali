@@ -12,7 +12,7 @@ import { XlvDashboardView } from "@/components/xlv/XlvDashboardView";
 
 export default async function XlvAlertsPage() {
   const user = await getSessionUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/login/xlv");
 
   if (canViewXlv(user.role) && !canAccessBusinessLine(user.role, user.businessLines, "xlv")) {
     redirect("/");

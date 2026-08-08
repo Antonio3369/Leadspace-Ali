@@ -7,9 +7,15 @@ import type { UserRole } from "@/generated/prisma/client";
 export function MePanel({
   user,
   teamHref,
+  switchHref = "/",
+  switchLabel = "切换业务",
+  signOutRedirectTo = "/login",
 }: {
   user: { name: string; username: string; role: UserRole };
   teamHref?: string;
+  switchHref?: string;
+  switchLabel?: string;
+  signOutRedirectTo?: string;
 }) {
   const roleLabel =
     user.role === "MANAGER"
@@ -46,16 +52,19 @@ export function MePanel({
           </Link>
         )}
         <Link
-          href="/"
+          href={switchHref}
           className="flex items-center justify-between px-4 py-3.5 text-sm text-[#111827] active:bg-[#f8fafc]"
         >
-          <span>切换业务</span>
+          <span>{switchLabel}</span>
           <span className="text-[#94a3b8]">›</span>
         </Link>
       </NotionPanel>
 
       <div className="max-w-md">
-        <SignOutButton className="w-full rounded-xl border border-[#e2e8f0] bg-white px-4 py-3 text-sm text-[#64748b] hover:text-[#111827] active:bg-[#f8fafc]" />
+        <SignOutButton
+          redirectTo={signOutRedirectTo}
+          className="w-full rounded-xl border border-[#e2e8f0] bg-white px-4 py-3 text-sm text-[#64748b] hover:text-[#111827] active:bg-[#f8fafc]"
+        />
       </div>
     </PageShell>
   );

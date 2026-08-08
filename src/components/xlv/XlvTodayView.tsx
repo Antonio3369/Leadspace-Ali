@@ -303,7 +303,7 @@ export function XlvTodayView({ role }: { role: string }) {
         <NotionCallout>
           <p>
             优先催办：单笔沉默，或沉睡 ≥7 天且未回访。一般沉睡待回访、考核将到期（两月窗口剩
-            ≤7 天仍未达标）分列展示；关单请进设备详情或沉睡回访。
+            ≤7 天仍未达标）分列展示；跟进请进设备详情或沉睡回访。
           </p>
         </NotionCallout>
       )}

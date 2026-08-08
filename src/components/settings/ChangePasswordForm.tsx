@@ -58,18 +58,24 @@ export function ChangePasswordForm({ forced = false }: ChangePasswordFormProps) 
         setDoneHint("密码已更新，正在进入系统…");
         const username = data.username as string | undefined;
         if (username) {
-          const result = await signIn("credentials", {
+          const provider =
+            data.provider === "xlv" ? "xlv" : ("alipay" as const);
+          const result = await signIn(provider, {
             username,
             password: newPassword,
             redirect: false,
           });
           if (!result?.error) {
-            window.location.href = "/";
+            window.location.href =
+              provider === "xlv" ? "/xlv" : "/alipay";
             return;
           }
         }
         await signOut({ redirect: false });
-        window.location.href = "/login?passwordChanged=1";
+        window.location.href =
+          data.provider === "xlv"
+            ? "/login/xlv?passwordChanged=1"
+            : "/login?passwordChanged=1";
         return;
       }
 

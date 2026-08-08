@@ -165,7 +165,17 @@ export function XlvAttributionPage() {
       if (!res.ok) throw new Error(json.error || "同步失败");
       setReport(json.report);
       setMessage(
-        `已从组织名册同步 ${json.result.devicesUpdated ?? 0} 台设备；清除历史系统账号关联 ${json.result.userIdsCleared ?? 0} 条`
+        [
+          `已从组织名册同步 ${json.result.devicesUpdated ?? 0} 台设备；清除历史系统账号关联 ${json.result.userIdsCleared ?? 0} 条`,
+          json.accountBackfill?.created
+            ? `新开登录账号 ${json.accountBackfill.created} 个`
+            : null,
+          json.accountBackfill?.updated
+            ? `补开通 ${json.accountBackfill.updated} 个`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("；")
       );
       if (tab === "devices") await loadDevices();
     } catch (err) {
@@ -232,13 +242,20 @@ export function XlvAttributionPage() {
           </div>
         }
         actions={
-          <NotionButton
-            type="button"
-            onClick={handleSyncFromRoster}
-            disabled={syncing || loading}
-          >
-            {syncing ? "同步中…" : "从名册同步"}
-          </NotionButton>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href={xlvPath("/admin/accounts")}>
+              <NotionButton type="button" variant="secondary">
+                经理账号
+              </NotionButton>
+            </Link>
+            <NotionButton
+              type="button"
+              onClick={handleSyncFromRoster}
+              disabled={syncing || loading}
+            >
+              {syncing ? "同步中…" : "从名册同步"}
+            </NotionButton>
+          </div>
         }
       />
 

@@ -18,7 +18,7 @@ function alertBadgeClass(kind: XlvDeviceListItem["alertKind"]) {
 }
 
 function progressLine(d: XlvDeviceListItem) {
-  return `累计用户 ${d.cumulativeUsers} · 笔数 ${d.cumulativeTxns}`;
+  return `至今累计 ${d.cumulativeUsers} 用户 · ${d.cumulativeTxns} 笔`;
 }
 
 function gapLine(d: XlvDeviceListItem) {
@@ -38,7 +38,7 @@ function rightLabel(d: XlvDeviceListItem) {
   if (d.alertKind === "dormant") {
     return { title: `${d.sleepDays} 天`, sub: "未收款" };
   }
-  return { title: "正常", sub: d.sleepDays === 0 ? "今日有动" : `${d.sleepDays} 天` };
+  return { title: "正常", sub: d.sleepDays === 0 ? "近日有动" : `${d.sleepDays} 天` };
 }
 
 export type XlvDashboardShortcutFilter =

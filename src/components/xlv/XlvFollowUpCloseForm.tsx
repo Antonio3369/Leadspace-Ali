@@ -114,7 +114,7 @@ export function XlvFollowUpCloseForm({
         followUpPhotoUrls: photoUrls,
       });
       onChanged?.(json);
-      setMessage("关单成功");
+      setMessage("跟进成功");
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
     } finally {
@@ -205,7 +205,7 @@ export function XlvFollowUpCloseForm({
       {lightbox}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8]">
-          沉睡回访关单
+          沉睡回访跟进
         </p>
         <p className="mt-1 text-xs text-[#94a3b8]">
           选择接通结果，可叠加标签，并上传跟进图（至少一张）后完成。
@@ -329,7 +329,7 @@ export function XlvFollowUpCloseForm({
         disabled={saving || uploading}
         onClick={() => void submitDone()}
       >
-        {saving ? "保存中…" : "完成关单"}
+        {saving ? "保存中…" : "完成跟进"}
       </NotionButton>
 
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}

@@ -81,52 +81,165 @@ export function enrichXlvSnapshotDailyMetrics<T extends SnapshotDailyFields>(
   return enriched;
 }
 
-/** 图表：按日历日去重后，用累计差分生成当日展示值 */
-export function resolveXlvChartDailyMetrics<
-  T extends {
-    statDate: string;
+export type XlvTxnActivityPoint = {
+  date: string;
+  dailyTxns: number;
+  dailyUsers: number;
+  cumulativeTxns: number;
+  cumulativeUsers: number;
+  sleepDays: number;
+};
+
+function activityDateKey(snap: {
+  statDate: Date;
+  lastTxnDate: Date | null;
+}): string {
+  if (snap.lastTxnDate) {
+    const lastKey = xlvStatDateKey(snap.lastTxnDate);
+    const statKey = xlvStatDateKey(snap.statDate);
+    if (lastKey <= statKey) return lastKey;
+  }
+  return xlvStatDateKey(snap.statDate);
+}
+
+/** 仅有收款的日期：用当日/差分笔数，横轴优先末笔交易日（非导入快照日） */
+export function buildXlvTxnActivityTrend(
+  snapshots: Array<{
+    deviceSn: string;
+    statDate: Date;
+    lastTxnDate: Date | null;
     cumulativeUsers: number;
     cumulativeTxns: number;
     dailyUsers: number;
     dailyTxns: number;
-  },
->(points: T[]): T[] {
-  const byDate = new Map<string, T>();
+    sleepDays: number;
+  }>,
+  opts?: { maxPoints?: number }
+): XlvTxnActivityPoint[] {
+  const enriched = enrichXlvSnapshotDailyMetrics(snapshots);
+  const byDate = new Map<string, XlvTxnActivityPoint>();
 
-  for (const point of points) {
-    const key = xlvStatDateKey(point.statDate);
-    const existing = byDate.get(key);
-    if (
-      !existing ||
-      point.cumulativeTxns > existing.cumulativeTxns ||
-      (point.cumulativeTxns === existing.cumulativeTxns &&
-        point.cumulativeUsers > existing.cumulativeUsers)
-    ) {
-      byDate.set(key, { ...point, statDate: key });
+  for (const snap of enriched) {
+    const dailyTxns = snap.dailyTxns;
+    const dailyUsers = snap.dailyUsers;
+    if (dailyTxns <= 0 && dailyUsers <= 0) continue;
+
+    const date = activityDateKey(snap);
+    const existing = byDate.get(date);
+    if (existing) {
+      existing.dailyTxns += dailyTxns;
+      existing.dailyUsers += dailyUsers;
+      existing.cumulativeTxns = Math.max(existing.cumulativeTxns, snap.cumulativeTxns);
+      existing.cumulativeUsers = Math.max(
+        existing.cumulativeUsers,
+        snap.cumulativeUsers
+      );
+      if (xlvStatDateKey(snap.statDate) >= date) {
+        existing.sleepDays = snap.sleepDays;
+      }
+    } else {
+      byDate.set(date, {
+        date,
+        dailyTxns,
+        dailyUsers,
+        cumulativeTxns: snap.cumulativeTxns,
+        cumulativeUsers: snap.cumulativeUsers,
+        sleepDays: snap.sleepDays,
+      });
     }
   }
 
-  const deduped = [...byDate.values()].sort((a, b) =>
-    a.statDate.localeCompare(b.statDate)
-  );
+  const sorted = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const maxPoints = opts?.maxPoints ?? 31;
+  return sorted.length > maxPoints ? sorted.slice(-maxPoints) : sorted;
+}
 
-  return deduped.map((point, index) => {
-    const previous = index > 0 ? deduped[index - 1] : null;
-    if (!previous) return point;
+export type XlvAssessmentSnapshot = {
+  deviceSn: string;
+  statDate: Date;
+  lastTxnDate: Date | null;
+  cumulativeUsers: number;
+  cumulativeTxns: number;
+  dailyUsers: number;
+  dailyTxns: number;
+  sleepDays: number;
+};
 
-    const usersDelta = deltaFromCumulative(
-      point.cumulativeUsers,
-      previous.cumulativeUsers
-    );
-    const txnsDelta = deltaFromCumulative(
-      point.cumulativeTxns,
-      previous.cumulativeTxns
-    );
+function normalizeAssessmentSnapshots(
+  snapshots: Array<{
+    deviceSn?: string;
+    statDate: Date;
+    lastTxnDate?: Date | null;
+    cumulativeUsers: number;
+    cumulativeTxns: number;
+    dailyUsers?: number;
+    dailyTxns?: number;
+    sleepDays?: number;
+  }>
+): XlvAssessmentSnapshot[] {
+  return snapshots.map((snap, index) => ({
+    deviceSn: snap.deviceSn ?? `snap-${index}`,
+    statDate: snap.statDate,
+    lastTxnDate: snap.lastTxnDate ?? null,
+    cumulativeUsers: snap.cumulativeUsers,
+    cumulativeTxns: snap.cumulativeTxns,
+    dailyUsers: snap.dailyUsers ?? 0,
+    dailyTxns: snap.dailyTxns ?? 0,
+    sleepDays: snap.sleepDays ?? 0,
+  }));
+}
 
+/** 考核月成绩：按自然月内实际收款日汇总（与交易趋势一致），装机月可无快照时用累计估算 */
+export function computeXlvMonthAssessmentTotals(
+  snapshots: Array<{
+    deviceSn?: string;
+    statDate: Date;
+    lastTxnDate?: Date | null;
+    cumulativeUsers: number;
+    cumulativeTxns: number;
+    dailyUsers?: number;
+    dailyTxns?: number;
+    sleepDays?: number;
+  }>,
+  year: number,
+  month: number,
+  device?: {
+    firstTxnDate: Date | null;
+    cumulativeUsers: number;
+    cumulativeTxns: number;
+  },
+  allowInstallMonthFallback = false
+): { users: number; txns: number; estimated: boolean } | null {
+  const normalized = normalizeAssessmentSnapshots(snapshots);
+  const trend = buildXlvTxnActivityTrend(normalized, { maxPoints: 9999 });
+  const prefix = `${year}-${String(month).padStart(2, "0")}`;
+
+  let users = 0;
+  let txns = 0;
+  for (const point of trend) {
+    if (!point.date.startsWith(prefix)) continue;
+    users += point.dailyUsers;
+    txns += point.dailyTxns;
+  }
+
+  if (users > 0 || txns > 0) {
+    return { users, txns, estimated: false };
+  }
+
+  if (!allowInstallMonthFallback || !device?.firstTxnDate) return null;
+
+  const [fy, fm] = prefix.split("-").map(Number);
+  const ft = xlvStatDateKey(device.firstTxnDate);
+  const [dy, dm] = ft.split("-").map(Number);
+  if (dy !== fy || dm !== fm) return null;
+
+  if (device.cumulativeUsers > 0 || device.cumulativeTxns > 0) {
     return {
-      ...point,
-      dailyUsers: usersDelta != null ? usersDelta : point.dailyUsers,
-      dailyTxns: txnsDelta != null ? txnsDelta : point.dailyTxns,
+      users: device.cumulativeUsers,
+      txns: device.cumulativeTxns,
+      estimated: true,
     };
-  });
+  }
+
+  return null;
 }

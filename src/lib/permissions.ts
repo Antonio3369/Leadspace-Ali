@@ -3,6 +3,8 @@ import type { BusinessLineId } from "@/lib/business-lines";
 
 export type DataScope = "global" | "team" | "personal";
 
+export type AuthRealm = "alipay" | "xlv";
+
 export interface SessionUser {
   id: string;
   username: string;
@@ -13,6 +15,11 @@ export interface SessionUser {
   accountLifecycle: AccountLifecycle;
   mustChangePassword: boolean;
   businessLines?: BusinessLineId[];
+  /** 登录域：支付宝 User 或微信小绿盒独立账号 */
+  authRealm?: AuthRealm;
+  /** 小绿盒会话：经理姓名 / 作业员姓名 */
+  xlvManagerName?: string | null;
+  xlvOperatorName?: string | null;
 }
 
 export interface AccessibleScope {

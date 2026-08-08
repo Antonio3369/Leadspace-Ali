@@ -6,6 +6,7 @@ import {
   XLV_MONTHLY_USER_TARGET,
   XLV_QUALIFICATION_HINTS,
   xlvQualificationGapLine,
+  xlvQualificationMonthResultLabel,
 } from "@/lib/xlv-rules";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
 
@@ -28,7 +29,8 @@ export function XlvAssessmentPanel({
 
       {firstTxnDate ? (
         <p className="text-xs text-[#64748b]">
-          装机月（首笔）{firstTxnDate} · 最多考核两个自然月
+          装机月（首笔）{firstTxnDate} · 最多考核两个自然月 ·
+          下表按<strong>月内实际收款日</strong>汇总（与交易趋势一致）
         </p>
       ) : (
         <p className="text-xs text-amber-700">暂无首笔交易，尚未进入考核窗口</p>
@@ -40,7 +42,9 @@ export function XlvAssessmentPanel({
             当前关注 · {detail.focusMonth.label}（{detail.focusMonth.period}）
           </p>
           <p className="mt-1 font-medium text-[#334155] tabular-nums">
-            {detail.focusMonth.users ?? "—"} 用户 · {detail.focusMonth.txns ?? "—"} 笔
+            {detail.focusMonth.users == null && detail.focusMonth.txns == null
+              ? "本月暂无收款"
+              : `${detail.focusMonth.users ?? 0} 用户 · ${detail.focusMonth.txns ?? 0} 笔`}
           </p>
           <p className="mt-1 text-xs text-[#c41e3a]">{xlvQualificationGapLine(detail)}</p>
         </div>
@@ -58,7 +62,9 @@ export function XlvAssessmentPanel({
               </tr>
             </thead>
             <tbody>
-              {detail.months.map((row) => (
+              {detail.months.map((row) => {
+                const result = xlvQualificationMonthResultLabel(row);
+                return (
                 <tr key={row.period} className="border-b border-[#f8fafc]">
                   <td className="py-2 pr-2">
                     <span className="text-[#64748b]">{row.label}</span>
@@ -67,16 +73,21 @@ export function XlvAssessmentPanel({
                   <td className="py-2 pr-2 tabular-nums">{row.users ?? "—"}</td>
                   <td className="py-2 pr-2 tabular-nums">{row.txns ?? "—"}</td>
                   <td className="py-2">
-                    {row.met ? (
-                      <span className="text-emerald-700 font-medium">达标</span>
-                    ) : row.users == null && row.txns == null ? (
-                      <span className="text-[#cbd5e1]">无快照</span>
-                    ) : (
-                      <span className="text-[#94a3b8]">未达标</span>
-                    )}
+                    <span
+                      className={
+                        result.tone === "success"
+                          ? "text-emerald-700 font-medium"
+                          : result.tone === "warn"
+                            ? "text-amber-800"
+                            : "text-[#cbd5e1]"
+                      }
+                    >
+                      {result.text}
+                    </span>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -34,6 +34,12 @@ enum DataMode {
   API_SYNC      // P 站 API 自动拉取
 }
 
+/** 微信小绿盒独立账号角色（与全局 UserRole 映射：MANAGER→MANAGER，OPERATOR→SALES） */
+enum XlvMemberRole {
+  MANAGER
+  OPERATOR
+}
+
 enum PhotoStatus {
   PENDING
   APPROVED
@@ -487,6 +493,28 @@ model XlvTeamRoster {
   @@unique([operatorName, managerName])
   @@index([operatorName])
   @@index([managerName])
+}
+
+/** 微信小绿盒：独立登录账号（组织名册导入后自动开通） */
+model XlvMemberAccount {
+  id                 String           @id @default(cuid())
+  username           String           @unique
+  passwordHash       String?
+  name               String
+  memberRole         XlvMemberRole
+  managerName        String
+  operatorName       String           @default("")
+  companyName        String?
+  status             UserStatus       @default(ACTIVE)
+  accountLifecycle   AccountLifecycle @default(IMPORTED)
+  mustChangePassword Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([memberRole, managerName, operatorName])
+  @@index([managerName])
+  @@index([operatorName])
+  @@index([name])
 }
 
 /** 微信小绿盒：按统计日期的历史快照（方案 A 增量考核） */

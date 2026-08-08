@@ -16,11 +16,14 @@ export function N7DateRangePicker({
   dateFrom,
   dateTo,
   onChange,
+  dateLabel = "注册日期",
   trailing,
 }: {
   dateFrom: string;
   dateTo: string;
   onChange: (next: { dateFrom: string; dateTo: string }) => void;
+  /** 日期范围标签，如 N7 注册日 / 小绿盒跟进日 */
+  dateLabel?: string;
   /** 放在结束日期右侧，如搜索框；手机端会换行全宽 */
   trailing?: ReactNode;
 }) {
@@ -57,7 +60,7 @@ export function N7DateRangePicker({
       </div>
       <div className="flex flex-col gap-2 w-full sm:w-auto">
         <div className="flex flex-wrap items-center gap-2 text-sm text-[#64748b]">
-          <span className="shrink-0 text-xs sm:text-sm">注册日期</span>
+          <span className="shrink-0 text-xs sm:text-sm">{dateLabel}</span>
           <NotionInput
             type="date"
             value={dateFrom}

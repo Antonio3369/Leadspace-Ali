@@ -2,12 +2,14 @@ import type { NextAuthConfig } from "next-auth";
 import type { AccountLifecycle, UserRole, UserStatus } from "@/generated/prisma/client";
 import { needsOnboarding } from "@/lib/account-lifecycle";
 import {
-  canAccessBusinessLine,
-  isN7Path,
-  isXlhPath,
-  isXlvPath,
-  type BusinessLineId,
-} from "@/lib/business-lines";
+  canAccessPathWithSession,
+  defaultHomeForRealm,
+  isPublicPath,
+  sessionAuthRealm,
+} from "@/lib/auth-realm";
+import type { AuthRealm } from "@/lib/permissions";
+import type { BusinessLineId } from "@/lib/business-lines";
+import { isXlvScopePath } from "@/lib/business-lines";
 
 declare module "next-auth" {
   interface User {
@@ -17,6 +19,9 @@ declare module "next-auth" {
     accountLifecycle: AccountLifecycle;
     mustChangePassword: boolean;
     businessLines: BusinessLineId[];
+    authRealm: AuthRealm;
+    xlvManagerName?: string | null;
+    xlvOperatorName?: string | null;
   }
 
   interface Session {
@@ -30,6 +35,9 @@ declare module "next-auth" {
       accountLifecycle: AccountLifecycle;
       mustChangePassword: boolean;
       businessLines: BusinessLineId[];
+      authRealm: AuthRealm;
+      xlvManagerName?: string | null;
+      xlvOperatorName?: string | null;
     };
   }
 }
@@ -44,6 +52,9 @@ declare module "@auth/core/jwt" {
     accountLifecycle: AccountLifecycle;
     mustChangePassword: boolean;
     businessLines: BusinessLineId[];
+    authRealm: AuthRealm;
+    xlvManagerName?: string | null;
+    xlvOperatorName?: string | null;
   }
 }
 
@@ -57,18 +68,21 @@ export const authConfig = {
   callbacks: {
     authorized({ auth, request }) {
       const { pathname } = request.nextUrl;
-      const isPublic =
-        pathname.startsWith("/login") ||
-        pathname.startsWith("/api/auth");
-      const isLoggedIn = !!auth?.user;
+      if (isPublicPath(pathname)) return true;
 
-      if (isPublic) return true;
-      if (!isLoggedIn) return false;
+      const isLoggedIn = !!auth?.user;
+      if (!isLoggedIn) {
+        if (isXlvScopePath(pathname)) {
+          return Response.redirect(new URL("/login/xlv", request.nextUrl));
+        }
+        return false;
+      }
 
       if (auth.user.status !== "ACTIVE") {
         return Response.redirect(new URL("/login?disabled=1", request.nextUrl));
       }
 
+      const realm = sessionAuthRealm(auth.user);
       const mustChangePassword = auth.user.mustChangePassword;
       const onChangePassword =
         pathname.startsWith("/settings/password") ||
@@ -88,7 +102,7 @@ export const authConfig = {
 
       const lifecycle = auth.user.accountLifecycle;
 
-      if (needsOnboarding(lifecycle)) {
+      if (needsOnboarding(lifecycle) && realm === "alipay") {
         const onOnboarding =
           pathname.startsWith("/onboarding") || pathname.startsWith("/api/onboarding");
         if (!onOnboarding) {
@@ -98,31 +112,24 @@ export const authConfig = {
       }
 
       if (pathname.startsWith("/onboarding")) {
-        return Response.redirect(new URL("/", request.nextUrl));
+        return Response.redirect(new URL(defaultHomeForRealm(realm), request.nextUrl));
+      }
+
+      if (pathname === "/") {
+        return Response.redirect(
+          new URL(defaultHomeForRealm(realm), request.nextUrl)
+        );
       }
 
       if (pathname.startsWith("/xlh/screen") && auth?.user?.role !== "DIRECTOR") {
-        return Response.redirect(new URL("/", request.nextUrl));
+        return Response.redirect(new URL("/alipay", request.nextUrl));
       }
 
-      const lines = auth.user.businessLines ?? [];
-      if (
-        isXlhPath(pathname) &&
-        !canAccessBusinessLine(auth.user.role, lines, "xlh")
-      ) {
-        return Response.redirect(new URL("/", request.nextUrl));
-      }
-      if (
-        isN7Path(pathname) &&
-        !canAccessBusinessLine(auth.user.role, lines, "n7")
-      ) {
-        return Response.redirect(new URL("/", request.nextUrl));
-      }
-      if (
-        isXlvPath(pathname) &&
-        !canAccessBusinessLine(auth.user.role, lines, "xlv")
-      ) {
-        return Response.redirect(new URL("/", request.nextUrl));
+      const access = canAccessPathWithSession(pathname, auth.user);
+      if (access === false) {
+        return Response.redirect(
+          new URL(defaultHomeForRealm(realm), request.nextUrl)
+        );
       }
 
       return true;
@@ -137,6 +144,9 @@ export const authConfig = {
         token.accountLifecycle = user.accountLifecycle;
         token.mustChangePassword = user.mustChangePassword;
         token.businessLines = user.businessLines;
+        token.authRealm = user.authRealm ?? "alipay";
+        token.xlvManagerName = user.xlvManagerName ?? null;
+        token.xlvOperatorName = user.xlvOperatorName ?? null;
       }
       return token;
     },
@@ -155,6 +165,9 @@ export const authConfig = {
           accountLifecycle: token.accountLifecycle,
           mustChangePassword: token.mustChangePassword,
           businessLines: token.businessLines ?? [],
+          authRealm: token.authRealm ?? "alipay",
+          xlvManagerName: token.xlvManagerName ?? null,
+          xlvOperatorName: token.xlvOperatorName ?? null,
         },
       };
     },

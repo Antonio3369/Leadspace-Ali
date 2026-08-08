@@ -103,6 +103,15 @@ export function isXlvPath(pathname: string): boolean {
   return pathname === XLV_BASE || pathname.startsWith(`${XLV_BASE}/`);
 }
 
+/** 小绿盒鉴权范围：页面 + 同源 API（含导入与任务轮询） */
+export function isXlvScopePath(pathname: string): boolean {
+  if (isXlvPath(pathname)) return true;
+  if (pathname === "/api/xlv" || pathname.startsWith("/api/xlv/")) return true;
+  if (pathname === "/api/import/xlv") return true;
+  if (pathname.startsWith("/api/import/jobs/")) return true;
+  return false;
+}
+
 /** 是否显示业务内完整侧栏 */
 export function showBusinessShell(pathname: string): boolean {
   return isXlhPath(pathname) || isN7Path(pathname) || isXlvPath(pathname);

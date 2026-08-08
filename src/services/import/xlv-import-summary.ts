@@ -29,6 +29,9 @@ export type XlvImportSummary = {
   rosterCreated: number;
   rosterUpdated: number;
   uniqueOperators: number;
+  /** 名册导入后自动开通登录账号 */
+  accountsCreated?: number;
+  accountsUpdated?: number;
   /** 名册导入后回写设备归属 */
   devicesBackfilledFromRoster: number;
   /** SN 归属：从名册反查经理 */

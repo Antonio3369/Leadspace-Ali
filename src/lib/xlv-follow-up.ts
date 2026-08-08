@@ -1,4 +1,4 @@
-/** 微信小绿盒沉睡回访关单：接通互斥 + 可叠加项 + 必传图 */
+/** 微信小绿盒沉睡回访跟进：接通互斥 + 可叠加项 + 必传图 */
 
 export const XLV_FOLLOW_UP_CONNECT = ["connected", "not_connected"] as const;
 export type XlvFollowUpConnectStatus = (typeof XLV_FOLLOW_UP_CONNECT)[number];

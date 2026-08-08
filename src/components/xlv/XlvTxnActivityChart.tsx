@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
-import { resolveXlvChartDailyMetrics } from "@/services/xlv/snapshot-daily";
+import type { XlvTxnActivityPoint } from "@/services/xlv/snapshot-daily";
 import {
   Bar,
   CartesianGrid,
@@ -15,16 +14,7 @@ import {
   YAxis,
 } from "recharts";
 
-interface Point {
-  statDate: string;
-  dailyTxns: number;
-  dailyUsers: number;
-  sleepDays: number;
-  cumulativeTxns: number;
-  cumulativeUsers: number;
-}
-
-type ChartPoint = Point & {
+type ChartPoint = XlvTxnActivityPoint & {
   label: string;
   dormant: boolean;
 };
@@ -32,16 +22,6 @@ type ChartPoint = Point & {
 const COLOR_TXN_ACTIVE = "#10b981";
 const COLOR_TXN_DORMANT = "#f59e0b";
 const COLOR_USERS = "#2563eb";
-
-function normalizePoints(points: Point[]): ChartPoint[] {
-  const resolved = resolveXlvChartDailyMetrics(points);
-
-  return resolved.map((point) => ({
-    ...point,
-    label: point.statDate.slice(5),
-    dormant: point.sleepDays >= 2,
-  }));
-}
 
 function ChartTooltip({
   active,
@@ -54,12 +34,12 @@ function ChartTooltip({
   const point = payload[0].payload;
   return (
     <div className="rounded-[10px] border border-[#eef2f7] bg-white px-3 py-2 text-xs shadow-sm">
-      <p className="font-medium text-[#334155]">{point.statDate}</p>
+      <p className="font-medium text-[#334155]">{point.date}</p>
       <p className="mt-1 tabular-nums text-[#64748b]">
         当日 {point.dailyTxns} 笔 · {point.dailyUsers} 用户
       </p>
       <p className="mt-0.5 tabular-nums text-[#94a3b8]">
-        累计 {point.cumulativeTxns} 笔 · {point.cumulativeUsers} 用户
+        截至该日累计 {point.cumulativeTxns} 笔 · {point.cumulativeUsers} 用户
       </p>
       <p className={`mt-0.5 ${point.dormant ? "text-amber-700" : "text-emerald-700"}`}>
         沉睡 {point.sleepDays} 天{point.dormant ? "（≥2 天）" : ""}
@@ -68,13 +48,17 @@ function ChartTooltip({
   );
 }
 
-export function XlvSnapshotTrendChart({ points }: { points: Point[] }) {
-  const chartData = useMemo(() => normalizePoints(points), [points]);
+export function XlvTxnActivityChart({ points }: { points: XlvTxnActivityPoint[] }) {
+  const chartData: ChartPoint[] = points.map((point) => ({
+    ...point,
+    label: point.date.slice(5),
+    dormant: point.sleepDays >= 2,
+  }));
 
   if (chartData.length === 0) {
     return (
       <p className="text-sm text-[#94a3b8] py-6 text-center">
-        暂无历史快照，导入多日运营表后可看趋势。
+        暂无收款记录；导入多日运营表后，将按有交易的日期展示笔数。
       </p>
     );
   }
@@ -123,7 +107,7 @@ export function XlvSnapshotTrendChart({ points }: { points: Point[] }) {
             >
               {chartData.map((entry) => (
                 <Cell
-                  key={entry.statDate}
+                  key={entry.date}
                   fill={entry.dormant ? COLOR_TXN_DORMANT : COLOR_TXN_ACTIVE}
                 />
               ))}
@@ -142,7 +126,8 @@ export function XlvSnapshotTrendChart({ points }: { points: Point[] }) {
         </ResponsiveContainer>
       </div>
       <p className="text-xs text-[#94a3b8]">
-        柱/线 = 由累计差分推算的当日笔数与用户（绿正常 / 橙沉睡 ≥2 天）；悬停可看累计。
+        仅展示有收款的日期（按末笔交易日归类，非导入快照日）；绿柱=正常，橙柱=当日已沉睡 ≥2
+        天。
       </p>
     </div>
   );

@@ -80,6 +80,20 @@ export function buildXlvMobileTabs(role: UserRole, pathname: string): MobileTabI
       match: "prefix",
       icon: "board",
     },
+    {
+      href: xlvPath("/daily"),
+      label: "回访情况",
+      tabLabel: "回访",
+      match: "prefix",
+      icon: "daily",
+    },
+    {
+      href: xlvPath("/me"),
+      label: "我的",
+      tabLabel: "我的",
+      match: "prefix",
+      icon: "me",
+    },
   ];
 }
 
@@ -131,6 +145,9 @@ export function isMobileNavActive(pathname: string, item: MobileTabItem) {
   }
   if (item.href === xlvPath("/alerts")) {
     return pathname === xlvPath("/alerts");
+  }
+  if (item.href === xlvPath("/me")) {
+    return pathname === xlvPath("/me") || pathname.startsWith(`${XLV_BASE}/me/`);
   }
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }

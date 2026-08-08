@@ -54,6 +54,8 @@ export function XlvFollowUpView({ role }: { role: string }) {
   const [searchDraft, setSearchDraft] = useState(search);
   const [managers, setManagers] = useState<string[]>([]);
   const [operators, setOperators] = useState<string[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   useRestoreListScroll(pathname, !loading && !!data);
 
@@ -129,6 +131,42 @@ export function XlvFollowUpView({ role }: { role: string }) {
   const showManagerFilter = role === "DIRECTOR";
   const showOperatorFilter = role === "DIRECTOR" || role === "MANAGER";
 
+  async function handleExport() {
+    setExporting(true);
+    setExportError("");
+    try {
+      const params = new URLSearchParams();
+      params.set("follow", follow);
+      if (alert !== "all") params.set("alert", alert);
+      if (priority) params.set("priority", priority);
+      if (manager) params.set("manager", manager);
+      if (operator) params.set("operator", operator);
+      if (search) params.set("q", search);
+
+      const res = await fetch(`/api/xlv/follow-up/export?${params}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? "导出失败");
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+      const filename = match
+        ? decodeURIComponent(match[1]!)
+        : `小绿盒沉睡回访_${Date.now()}.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "导出失败");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <PageShell>
       <PageHeader
@@ -145,8 +183,10 @@ export function XlvFollowUpView({ role }: { role: string }) {
       />
 
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
+      {exportError ? <NotionAlert tone="error">{exportError}</NotionAlert> : null}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
         {(
           [
             ["pending", `待回访${data ? ` (${data.counts.pending})` : ""}`],
@@ -168,6 +208,15 @@ export function XlvFollowUpView({ role }: { role: string }) {
             {label}
           </button>
         ))}
+        </div>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting || loading || (data?.devices.length ?? 0) === 0}
+          className="shrink-0 rounded-lg border border-[#e2e8f0] bg-white px-3 py-1.5 text-sm font-medium text-[#334155] hover:bg-[#f8fafc] disabled:opacity-50"
+        >
+          {exporting ? "导出中…" : "导出表格"}
+        </button>
       </div>
 
       {priority ? (
@@ -254,7 +303,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
 
       {follow === "pending" && data && !priority && data.counts.pending > 0 ? (
         <NotionCallout tone="warning">
-          共 {data.counts.pending} 台沉睡设备待回访，请点进详情完成关单（需跟进图，至少一张）。
+          共 {data.counts.pending} 台沉睡设备待回访，请点进详情完成跟进（需跟进图，至少一张）。
         </NotionCallout>
       ) : null}
 

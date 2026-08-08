@@ -3,6 +3,8 @@
 import Link from "next/link";
 import type { XlvBoardRow } from "@/services/xlv/board";
 import { xlvPath } from "@/lib/business-lines";
+import { getCurrentMonthRange } from "@/lib/ledger-date";
+import { n7DateRangeQuery } from "@/lib/n7-date";
 import {
   isXlvInventoryManagerKey,
   XLV_INVENTORY_MANAGER_LABEL,
@@ -195,16 +197,22 @@ export function XlvLeaderboardTable({
               const rank = idx + 1;
               const isInventory =
                 mode === "managers" && isXlvInventoryManagerKey(row.key);
-              const href =
-                mode === "managers"
-                  ? xlvPath(`/managers/${encodeURIComponent(row.key)}`)
-                  : xlvPath(
-                      `/managers/${encodeURIComponent(managerKey!)}/staff/${encodeURIComponent(row.key)}`
-                    );
               const devicesHref =
-                mode === "staff"
-                  ? href
-                  : null;
+                mode === "staff" && managerKey
+                  ? xlvPath(
+                      `/managers/${encodeURIComponent(managerKey)}/staff/${encodeURIComponent(row.key)}`
+                    )
+                  : mode === "managers"
+                    ? xlvPath(`/managers/${encodeURIComponent(row.key)}`)
+                    : null;
+              const { dateFrom, dateTo } = getCurrentMonthRange();
+              const monthQs = n7DateRangeQuery(dateFrom, dateTo);
+              const nameHref =
+                mode === "staff" && managerKey
+                  ? xlvPath(
+                      `/managers/${encodeURIComponent(managerKey)}/staff/${encodeURIComponent(row.key)}/performance?${monthQs}`
+                    )
+                  : devicesHref;
               return (
                 <tr
                   key={row.key}
@@ -220,11 +228,9 @@ export function XlvLeaderboardTable({
                   <td className="px-3 py-3">
                     <Link
                       href={
-                        statusFilter && mode === "staff"
-                          ? `${href}?status=${statusFilter}`
-                          : statusFilter && mode === "managers"
-                            ? `${href}?status=${statusFilter}`
-                            : href
+                        statusFilter && mode === "managers" && devicesHref
+                          ? `${devicesHref}?status=${statusFilter}`
+                          : (nameHref ?? "#")
                       }
                       className={
                         isInventory
@@ -244,7 +250,7 @@ export function XlvLeaderboardTable({
                       href={
                         devicesHref
                           ? statusHref(devicesHref, "qualified")
-                          : statusHref(href, "qualified")
+                          : statusHref(devicesHref ?? "", "qualified")
                       }
                       tone="success"
                       active={statusFilter === "qualified"}
@@ -257,7 +263,7 @@ export function XlvLeaderboardTable({
                       href={
                         devicesHref
                           ? statusHref(devicesHref, "in_progress")
-                          : statusHref(href, "in_progress")
+                          : statusHref(devicesHref ?? "", "in_progress")
                       }
                       tone="sky"
                       active={statusFilter === "in_progress"}
@@ -270,7 +276,7 @@ export function XlvLeaderboardTable({
                       href={
                         devicesHref
                           ? statusHref(devicesHref, "invalid")
-                          : statusHref(href, "invalid")
+                          : statusHref(devicesHref ?? "", "invalid")
                       }
                       tone="muted"
                       active={statusFilter === "invalid"}
@@ -283,7 +289,7 @@ export function XlvLeaderboardTable({
                       href={
                         devicesHref
                           ? alertHref(devicesHref, "single_silence")
-                          : alertHref(href, "single_silence")
+                          : alertHref(devicesHref ?? "", "single_silence")
                       }
                       tone="danger"
                     />
@@ -295,7 +301,7 @@ export function XlvLeaderboardTable({
                       href={
                         devicesHref
                           ? alertHref(devicesHref, "dormant")
-                          : alertHref(href, "dormant")
+                          : alertHref(devicesHref ?? "", "dormant")
                       }
                       tone="amber"
                     />

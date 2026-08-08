@@ -6,6 +6,7 @@ import {
   isXlvUnassignedManager,
   type XlvQualificationStatus,
   xlvManagerDisplayName,
+  xlvQualificationGapLine,
 } from "@/lib/xlv-rules";
 import {
   attachXlvQualificationDetails,
@@ -14,6 +15,7 @@ import {
 } from "@/services/xlv/assessment";
 import {
   assertCanViewXlvDevice,
+  assertCanViewXlvStaffScope,
   assertManagerOwnsXlvKey,
   buildXlvManagerDeviceWhere,
   buildXlvRoleWhere,
@@ -22,7 +24,7 @@ import {
   xlvStaffKeyOf,
 } from "./xlv-scope";
 import { sortXlvDevices } from "./sort-devices";
-import { enrichXlvSnapshotDailyMetrics } from "./snapshot-daily";
+import { enrichXlvSnapshotDailyMetrics, buildXlvTxnActivityTrend } from "./snapshot-daily";
 import { normalizeXlvStatDate } from "@/lib/xlv-stat-date";
 
 function isoDate(d: Date | null | undefined) {
@@ -251,7 +253,7 @@ export async function getXlvStaffDevices(
     staffKey: string;
   }
 ) {
-  assertManagerOwnsXlvKey(user, opts.managerKey);
+  assertCanViewXlvStaffScope(user, opts.managerKey, opts.staffKey);
   const managerWhere = await buildXlvManagerDeviceWhere(opts.managerKey);
   const staffWhere = await buildXlvStaffDeviceWhere(opts.staffKey);
   const roleWhere = buildXlvRoleWhere(user);
@@ -307,14 +309,7 @@ export async function getXlvStaffDevices(
       qualificationGap: {
         usersGap: d.qualificationDetail.usersGap,
         txnsGap: d.qualificationDetail.txnsGap,
-        line: d.qualificationDetail.status === "qualified"
-          ? "已达标"
-          : `${d.qualificationDetail.usersGap > 0 ? `差 ${d.qualificationDetail.usersGap} 用户` : ""}${
-              d.qualificationDetail.usersGap > 0 && d.qualificationDetail.txnsGap > 0
-                ? " · "
-                : ""
-            }${d.qualificationDetail.txnsGap > 0 ? `差 ${d.qualificationDetail.txnsGap} 笔` : ""}`.trim() ||
-            "考核中",
+        line: xlvQualificationGapLine(d.qualificationDetail),
       },
     })),
   };
@@ -341,6 +336,9 @@ export async function getXlvDeviceDetail(user: SessionUser, deviceSn: string) {
   );
 
   const qualificationDetail = buildXlvQualificationDetail(device, snapshots);
+  const txnTrend = buildXlvTxnActivityTrend(snapshots).map((p) => ({
+    ...p,
+  }));
 
-  return { device, snapshots, qualificationDetail };
+  return { device, qualificationDetail, txnTrend };
 }

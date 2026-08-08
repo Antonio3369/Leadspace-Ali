@@ -11,7 +11,8 @@ export function createPrismaClient() {
 function isPrismaClientCurrent(client: PrismaClient) {
   return (
     typeof client.xlvTeamRoster?.findMany === "function" &&
-    typeof client.xlvDeviceRecord?.findMany === "function"
+    typeof client.xlvDeviceRecord?.findMany === "function" &&
+    typeof client.xlvMemberAccount?.findUnique === "function"
   );
 }
 

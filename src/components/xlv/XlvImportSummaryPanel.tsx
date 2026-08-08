@@ -40,6 +40,13 @@ export function XlvImportSummaryPanel({ summary }: { summary: XlvImportSummary }
             <Stat label="作业员" value={summary.uniqueOperators} />
             <Stat label="新建名册" value={summary.rosterCreated} />
             <Stat label="更新名册" value={summary.rosterUpdated} />
+            {(summary.accountsCreated ?? 0) > 0 ||
+            (summary.accountsUpdated ?? 0) > 0 ? (
+              <>
+                <Stat label="新开账号" value={summary.accountsCreated ?? 0} />
+                <Stat label="更新账号" value={summary.accountsUpdated ?? 0} />
+              </>
+            ) : null}
           </>
         )}
         {summary.format === "raw" ? (

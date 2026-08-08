@@ -20,7 +20,13 @@ export async function loadXlvSnapshotMap(deviceSns: string[]) {
   if (deviceSns.length === 0) {
     return new Map<
       string,
-      { statDate: Date; cumulativeUsers: number; cumulativeTxns: number }[]
+      {
+        statDate: Date;
+        cumulativeUsers: number;
+        cumulativeTxns: number;
+        sleepDays: number;
+        lastTxnDate: Date | null;
+      }[]
     >();
   }
 
@@ -31,13 +37,21 @@ export async function loadXlvSnapshotMap(deviceSns: string[]) {
       statDate: true,
       cumulativeUsers: true,
       cumulativeTxns: true,
+      sleepDays: true,
+      lastTxnDate: true,
     },
     orderBy: { statDate: "asc" },
   });
 
   const map = new Map<
     string,
-    { statDate: Date; cumulativeUsers: number; cumulativeTxns: number }[]
+    {
+      statDate: Date;
+      cumulativeUsers: number;
+      cumulativeTxns: number;
+      sleepDays: number;
+      lastTxnDate: Date | null;
+    }[]
   >();
   for (const row of rows) {
     const list = map.get(row.deviceSn) ?? [];

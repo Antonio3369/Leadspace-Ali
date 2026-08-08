@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -9,7 +10,10 @@ import { NotionPasswordInput } from "@/components/ui/NotionPasswordInput";
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/";
+  const group = searchParams.get("group");
+  const callbackUrl =
+    searchParams.get("callbackUrl") ??
+    (group === "alipay" ? "/alipay" : "/alipay");
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -60,7 +64,7 @@ export default function LoginForm() {
         return;
       }
 
-      const result = await signIn("credentials", {
+      const result = await signIn("alipay", {
         username,
         password,
         redirect: false,
@@ -91,10 +95,10 @@ export default function LoginForm() {
             L
           </div>
           <p className="text-[0.78rem] font-semibold tracking-wide uppercase text-[#94a3b8]">
-            Leadspace.Alipay
+            支付宝业务
           </p>
-          <h1 className="text-2xl font-bold text-[#111827] tracking-tight">数据管理</h1>
-          <p className="text-sm text-[#64748b]">请登录您的账号</p>
+          <h1 className="text-2xl font-bold text-[#111827] tracking-tight">登录</h1>
+          <p className="text-sm text-[#64748b]">小蓝环 · 支付宝 N7</p>
         </div>
 
         <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm p-6 sm:p-8 space-y-4">
@@ -144,9 +148,12 @@ export default function LoginForm() {
         </div>
 
         <p className="text-xs text-[#94a3b8] mt-5 text-center leading-relaxed">
-          {process.env.NODE_ENV === "production"
-            ? "经理、负责人与已开通的 N7 队员均可登录"
-            : "开发环境：admin / 123456；N7 队员开通后可用登录名 + 初始密码登录"}
+          <Link href="/" className="text-[#2563eb] hover:underline">
+            ← 返回平台选择
+          </Link>
+          {process.env.NODE_ENV !== "production" ? (
+            <span className="block mt-2">开发环境：admin / 123456</span>
+          ) : null}
         </p>
       </div>
     </div>

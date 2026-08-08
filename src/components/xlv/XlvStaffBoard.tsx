@@ -122,7 +122,7 @@ export function XlvStaffBoard({
         kicker="微信小绿盒"
         meta={
           <div className="space-y-1 text-sm text-[#64748b]">
-            <p>按队员看沉睡预警；点击队员查看设备明细。</p>
+            <p>按队员看沉睡预警；点击队员姓名查看当月拓展/达标/回访/唤醒。</p>
             {statusFilter ? (
               <p>
                 <button

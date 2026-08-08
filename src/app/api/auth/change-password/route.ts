@@ -17,6 +17,54 @@ export async function POST(request: Request) {
     }
 
     const body = changePasswordSchema.parse(await request.json());
+    const isXlvMember =
+      session.user.authRealm === "xlv" && session.user.role !== "DIRECTOR";
+
+    if (isXlvMember) {
+      const account = await db.xlvMemberAccount.findUnique({
+        where: { id: session.user.id },
+        select: { username: true, passwordHash: true, mustChangePassword: true },
+      });
+
+      if (!account?.passwordHash) {
+        return NextResponse.json({ error: "账号尚未开通" }, { status: 400 });
+      }
+
+      if (account.mustChangePassword) {
+        const passwordHash = await bcrypt.hash(body.newPassword, 10);
+        await db.xlvMemberAccount.update({
+          where: { id: session.user.id },
+          data: { passwordHash, mustChangePassword: false },
+        });
+        return NextResponse.json({
+          ok: true,
+          forced: true,
+          username: account.username,
+          provider: "xlv",
+        });
+      }
+
+      if (!body.currentPassword) {
+        return NextResponse.json({ error: "请输入当前密码" }, { status: 400 });
+      }
+
+      const currentOk = await bcrypt.compare(
+        body.currentPassword,
+        account.passwordHash
+      );
+      if (!currentOk) {
+        return NextResponse.json({ error: "当前密码不正确" }, { status: 400 });
+      }
+
+      const passwordHash = await bcrypt.hash(body.newPassword, 10);
+      await db.xlvMemberAccount.update({
+        where: { id: session.user.id },
+        data: { passwordHash },
+      });
+
+      return NextResponse.json({ ok: true, provider: "xlv" });
+    }
+
     const user = await db.user.findUnique({
       where: { id: session.user.id },
       select: { username: true, passwordHash: true, mustChangePassword: true },
@@ -32,11 +80,11 @@ export async function POST(request: Request) {
         where: { id: session.user.id },
         data: { passwordHash, mustChangePassword: false },
       });
-      // 返回 username 供前端用新密码静默重登，刷新 JWT（中间件不会再卡在改密页）
       return NextResponse.json({
         ok: true,
         forced: true,
         username: user.username,
+        provider: "alipay",
       });
     }
 
@@ -55,7 +103,7 @@ export async function POST(request: Request) {
       data: { passwordHash },
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, provider: "alipay" });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.issues[0]?.message }, { status: 400 });
