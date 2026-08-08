@@ -381,7 +381,7 @@ export function XlvDashboardView({
   return (
     <PageShell>
       <PageHeader
-        title="沉睡预警"
+        title="所有设备"
         kicker="微信小绿盒"
         meta={
           <div className="space-y-1 text-sm text-[#64748b]">
@@ -398,27 +398,6 @@ export function XlvDashboardView({
             ) : (
               <p>导入运营原始表后展示沉睡与单笔沉默商户。</p>
             )}
-            {hasDrill ? (
-              <p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    pushQuery({
-                      alert: null,
-                      status: null,
-                      manager: null,
-                      operator: null,
-                      q: null,
-                    })
-                  }
-                  className="text-[#2563eb] hover:text-[#1d4ed8] font-medium"
-                >
-                  ← 清除筛选
-                </button>
-                {manager ? <span className="ml-2">经理：{manager}</span> : null}
-                {operator ? <span className="ml-2">作业员：{operator}</span> : null}
-              </p>
-            ) : null}
           </div>
         }
         actions={
