@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
 import { PermissionError } from "@/lib/permissions";
+import { getXlvFilterOptions } from "@/services/xlv/analytics";
 import {
   getXlvFollowUpDevices,
   type XlvFollowFilter,
@@ -32,16 +33,20 @@ export async function GET(request: Request) {
       ? (priorityRaw as XlvFollowUpPriority)
       : null;
 
-    const data = await getXlvFollowUpDevices(user, {
-      follow,
-      alert,
-      priority,
-      managerName: searchParams.get("manager"),
-      operatorName: searchParams.get("operator"),
-      search: searchParams.get("q"),
-    });
+    const managerName = searchParams.get("manager");
+    const [data, filters] = await Promise.all([
+      getXlvFollowUpDevices(user, {
+        follow,
+        alert,
+        priority,
+        managerName,
+        operatorName: searchParams.get("operator"),
+        search: searchParams.get("q"),
+      }),
+      getXlvFilterOptions(user, { managerName }),
+    ]);
 
-    return NextResponse.json(data);
+    return NextResponse.json({ ...data, filters });
   } catch (err) {
     const message = err instanceof Error ? err.message : "查询失败";
     if (message === "UNAUTHORIZED") {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { readResponseJson } from "@/lib/fetch-json";
+import { fetchJsonWithRetry } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
@@ -32,6 +32,7 @@ interface ApiResponse {
     P2: XlvTodayDeviceItem[];
   };
   listCap: number;
+  filters?: { managers?: string[]; operators?: string[] };
 }
 
 const TONE_CLASS = {
@@ -61,6 +62,7 @@ export function XlvTodayView({ role }: { role: string }) {
   const [managers, setManagers] = useState<string[]>([]);
   const [operators, setOperators] = useState<string[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [retryLabel, setRetryLabel] = useState("");
 
   useRestoreListScroll(pathname, !loading && !!data);
 
@@ -103,24 +105,33 @@ export function XlvTodayView({ role }: { role: string }) {
     if (!silent) {
       setLoading(true);
       setError("");
+      setRetryLabel("");
     }
     const params = new URLSearchParams();
     if (manager) params.set("manager", manager);
     if (operator) params.set("operator", operator);
     if (search) params.set("q", search);
 
-    fetch(`/api/xlv/today?${params}`)
-      .then(async (res) => {
-        const json = await readResponseJson<ApiResponse & { error?: string }>(
-          res,
-          "加载今日"
-        );
-        if (!res.ok) throw new Error(json.error || "加载失败");
-        if (!cancelled) setData(json);
+    fetchJsonWithRetry<ApiResponse>(`/api/xlv/today?${params}`, undefined, {
+      context: "加载今日",
+      onRetry: (attempt) => {
+        if (!cancelled && !silent) {
+          setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
+        }
+      },
+    })
+      .then((json) => {
+        if (!cancelled) {
+          setData(json);
+          setManagers(json.filters?.managers ?? []);
+          setOperators(json.filters?.operators ?? []);
+          setRetryLabel("");
+        }
       })
       .catch((err) => {
         if (!cancelled && !silent) {
           setError(err instanceof Error ? err.message : "加载失败");
+          setRetryLabel("");
         }
       })
       .finally(() => {
@@ -132,20 +143,6 @@ export function XlvTodayView({ role }: { role: string }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manager, operator, search, refreshKey]);
-
-  useEffect(() => {
-    fetch("/api/xlv/dashboard")
-      .then(async (res) => {
-        const json = await readResponseJson<{
-          error?: string;
-          filters?: { managers?: string[]; operators?: string[] };
-        }>(res, "加载筛选");
-        if (!res.ok) return;
-        setManagers(json.filters?.managers ?? []);
-        setOperators(json.filters?.operators ?? []);
-      })
-      .catch(() => {});
-  }, []);
 
   const showManagerFilter = role === "DIRECTOR";
   const showOperatorFilter = role === "DIRECTOR" || role === "MANAGER";
@@ -305,6 +302,9 @@ export function XlvTodayView({ role }: { role: string }) {
       />
 
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
+      {retryLabel ? (
+        <NotionAlert tone="info">{retryLabel}</NotionAlert>
+      ) : null}
 
       {loading && !data ? (
         <p className="text-sm text-[#94a3b8] py-8 text-center">加载中…</p>

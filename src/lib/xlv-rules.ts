@@ -96,7 +96,8 @@ export function assessXlvQualification(
     cumulativeTxns: number;
   },
   snapshots: XlvSnapshotPoint[],
-  asOf?: Date
+  asOf?: Date,
+  snapshotsPreEnriched = false
 ): XlvQualificationStatus {
   if (isXlvCumulativeQualified(device)) return "qualified";
   if (!device.firstTxnDate) return "in_progress";
@@ -110,10 +111,24 @@ export function assessXlvQualification(
   const y1 = m0 === 12 ? y0 + 1 : y0;
   const m1 = m0 === 12 ? 1 : m0 + 1;
 
-  const inc0 = computeXlvMonthAssessmentTotals(points, y0, m0, device, true);
+  const inc0 = computeXlvMonthAssessmentTotals(
+    points,
+    y0,
+    m0,
+    device,
+    true,
+    snapshotsPreEnriched
+  );
   if (inc0 && isXlvMonthlyTargetMet(inc0.users, inc0.txns)) return "qualified";
 
-  const inc1 = computeXlvMonthAssessmentTotals(points, y1, m1, device, false);
+  const inc1 = computeXlvMonthAssessmentTotals(
+    points,
+    y1,
+    m1,
+    device,
+    false,
+    snapshotsPreEnriched
+  );
   if (inc1 && isXlvMonthlyTargetMet(inc1.users, inc1.txns)) return "qualified";
 
   if (isAssessmentWindowClosed(reference, y1, m1)) return "invalid";
@@ -292,13 +307,19 @@ export function getXlvQualificationDetail(
     cumulativeTxns: number;
   },
   snapshots: XlvSnapshotPoint[],
-  asOf?: Date
+  asOf?: Date,
+  snapshotsPreEnriched = false
 ): XlvQualificationDetail {
   const points = [...snapshots].sort(
     (a, b) => a.statDate.getTime() - b.statDate.getTime()
   );
   const reference = qualificationAsOf(asOf);
-  const status = assessXlvQualification(device, snapshots, reference);
+  const status = assessXlvQualification(
+    device,
+    snapshots,
+    reference,
+    snapshotsPreEnriched
+  );
 
   if (!device.firstTxnDate) {
     return {
@@ -325,7 +346,8 @@ export function getXlvQualificationDetail(
       y,
       m,
       device,
-      label === "装机月"
+      label === "装机月",
+      snapshotsPreEnriched
     );
     return {
       label,

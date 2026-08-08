@@ -4,7 +4,6 @@ import {
   classifyXlvAlert,
   classifyXlvTodayPriority,
   getXlvAssessmentDaysRemaining,
-  getXlvQualificationDetail,
   type XlvTodayPriority,
   xlvQualificationGapLine,
   xlvTodayReason,
@@ -46,18 +45,16 @@ function mapTodayDevice(
     lastTxnDate: Date | null;
     firstTxnDate: Date | null;
     qualificationStatus: import("@/lib/xlv-rules").XlvQualificationStatus;
+    qualificationDetail: import("@/lib/xlv-rules").XlvQualificationDetail;
     followUpDone: boolean;
     followUpNote: string | null;
     followUpAt: Date | null;
     followUpConnectStatus: string | null;
     followUpFlags: string[];
   },
-  snapshotMap: Awaited<ReturnType<typeof loadXlvSnapshotMap>>,
   priority: XlvTodayPriority,
   assessmentDaysLeft: number | null
 ): XlvTodayDeviceItem {
-  const snapshots = snapshotMap.get(row.deviceSn) ?? [];
-  const detail = getXlvQualificationDetail(row, snapshots);
   const alertKind = classifyXlvAlert({
     sleepDays: row.sleepDays,
     cumulativeTxns: row.cumulativeTxns,
@@ -77,7 +74,7 @@ function mapTodayDevice(
     firstTxnDate: isoDate(row.firstTxnDate),
     alertKind,
     qualificationStatus: row.qualificationStatus,
-    qualificationGapLine: xlvQualificationGapLine(detail),
+    qualificationGapLine: xlvQualificationGapLine(row.qualificationDetail),
     followUpDone: row.followUpDone,
     followUpNote: row.followUpNote,
     followUpAt: row.followUpAt?.toISOString() ?? null,
@@ -173,7 +170,7 @@ export async function getXlvTodayQueues(
     if (!priority) continue;
 
     buckets[priority].push(
-      mapTodayDevice(row, snapshotMap, priority, assessmentDaysLeft)
+      mapTodayDevice(row, priority, assessmentDaysLeft)
     );
   }
 

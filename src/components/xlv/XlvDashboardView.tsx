@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { readResponseJson } from "@/lib/fetch-json";
+import { fetchJsonWithRetry } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
@@ -54,6 +54,7 @@ export function XlvDashboardView({ role }: { role: string }) {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [retryLabel, setRetryLabel] = useState("");
   const [searchDraft, setSearchDraft] = useState(search);
 
   useRestoreListScroll(pathname, !loading && !!data);
@@ -91,6 +92,7 @@ export function XlvDashboardView({ role }: { role: string }) {
     let cancelled = false;
     setLoading(true);
     setError("");
+    setRetryLabel("");
     const params = new URLSearchParams();
     if (alert !== "all") params.set("alert", alert);
     if (status && alert === "all") params.set("status", status);
@@ -98,17 +100,25 @@ export function XlvDashboardView({ role }: { role: string }) {
     if (operator) params.set("operator", operator);
     if (search) params.set("q", search);
 
-    fetch(`/api/xlv/dashboard?${params.toString()}`)
-      .then(async (res) => {
-        const json = await readResponseJson<ApiResponse & { error?: string }>(
-          res,
-          "加载看板"
-        );
-        if (!res.ok) throw new Error(json.error || "加载失败");
-        if (!cancelled) setData(json);
+    fetchJsonWithRetry<ApiResponse>(`/api/xlv/dashboard?${params.toString()}`, undefined, {
+      context: "加载看板",
+      onRetry: (attempt) => {
+        if (!cancelled) {
+          setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
+        }
+      },
+    })
+      .then((json) => {
+        if (!cancelled) {
+          setData(json);
+          setRetryLabel("");
+        }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "加载失败");
+          setRetryLabel("");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -271,6 +281,7 @@ export function XlvDashboardView({ role }: { role: string }) {
       />
 
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
+      {retryLabel ? <NotionAlert tone="info">{retryLabel}</NotionAlert> : null}
 
       {!loading && summary && summary.totalDevices === 0 ? (
         <NotionCallout>

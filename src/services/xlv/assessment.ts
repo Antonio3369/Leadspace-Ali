@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import {
   assessXlvQualification,
   getXlvQualificationDetail,
@@ -19,7 +20,10 @@ export type XlvDeviceQualificationInput = {
   cumulativeTxns: number;
 };
 
-export async function loadXlvSnapshotMap(deviceSns: string[]) {
+export async function loadXlvSnapshotMap(
+  deviceSns: string[],
+  opts?: { statDateGte?: Date | null }
+) {
   if (deviceSns.length === 0) {
     return new Map<
       string,
@@ -33,20 +37,52 @@ export async function loadXlvSnapshotMap(deviceSns: string[]) {
     >();
   }
 
-  const rows = await db.xlvDeviceSnapshot.findMany({
-    where: { deviceSn: { in: deviceSns } },
-    select: {
-      deviceSn: true,
-      statDate: true,
-      cumulativeUsers: true,
-      cumulativeTxns: true,
-      dailyUsers: true,
-      dailyTxns: true,
-      sleepDays: true,
-      lastTxnDate: true,
-    },
-    orderBy: [{ deviceSn: "asc" }, { statDate: "asc" }],
-  });
+  type SnapshotRow = {
+    deviceSn: string;
+    statDate: Date;
+    cumulativeUsers: number;
+    cumulativeTxns: number;
+    dailyUsers: number;
+    dailyTxns: number;
+    sleepDays: number;
+    lastTxnDate: Date | null;
+  };
+
+  const statDateGte = opts?.statDateGte ?? null;
+  const rows: SnapshotRow[] = [];
+  const chunkSize = 250;
+
+  for (let i = 0; i < deviceSns.length; i += chunkSize) {
+    const chunk = deviceSns.slice(i, i + chunkSize);
+    const chunkRows = await db.$queryRaw<SnapshotRow[]>(Prisma.sql`
+      SELECT
+        s."deviceSn" AS "deviceSn",
+        s."statDate" AS "statDate",
+        s."cumulativeUsers" AS "cumulativeUsers",
+        s."cumulativeTxns" AS "cumulativeTxns",
+        s."dailyUsers" AS "dailyUsers",
+        s."dailyTxns" AS "dailyTxns",
+        s."sleepDays" AS "sleepDays",
+        s."lastTxnDate" AS "lastTxnDate"
+      FROM "XlvDeviceSnapshot" s
+      INNER JOIN "XlvDeviceRecord" d ON s."deviceSn" = d."deviceSn"
+      WHERE s."deviceSn" IN (${Prisma.join(chunk)})
+      AND (
+        (
+          d."firstTxnDate" IS NOT NULL
+          AND s."statDate" >= date_trunc('month', d."firstTxnDate")
+          AND s."statDate" < date_trunc('month', d."firstTxnDate") + interval '4 months'
+        )
+        ${
+          statDateGte
+            ? Prisma.sql`OR s."statDate" >= ${statDateGte}`
+            : Prisma.empty
+        }
+      )
+      ORDER BY s."deviceSn" ASC, s."statDate" ASC
+    `);
+    rows.push(...chunkRows);
+  }
 
   const map = new Map<
     string,
@@ -79,14 +115,14 @@ export function buildXlvQualificationDetail(
   device: Omit<XlvDeviceQualificationInput, "deviceSn">,
   snapshots: { statDate: Date; cumulativeUsers: number; cumulativeTxns: number }[]
 ): XlvQualificationDetail {
-  return getXlvQualificationDetail(device, snapshots);
+  return getXlvQualificationDetail(device, snapshots, undefined, true);
 }
 
 export function xlvQualificationOf(
   device: Omit<XlvDeviceQualificationInput, "deviceSn">,
   snapshots: { statDate: Date; cumulativeUsers: number; cumulativeTxns: number }[]
 ): XlvQualificationStatus {
-  return assessXlvQualification(device, snapshots);
+  return assessXlvQualification(device, snapshots, undefined, true);
 }
 
 export function attachXlvQualifications<T extends XlvDeviceQualificationInput>(

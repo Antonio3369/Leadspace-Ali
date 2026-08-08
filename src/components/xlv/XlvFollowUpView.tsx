@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { readResponseJson } from "@/lib/fetch-json";
+import { fetchJsonWithRetry, readResponseJson } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
@@ -26,6 +26,7 @@ interface ApiResponse {
   priority: PriorityFilter | null;
   counts: { pending: number; done: number; all: number };
   devices: XlvFollowUpDeviceItem[];
+  filters?: { managers?: string[]; operators?: string[] };
 }
 
 const TAB_CLASS = (active: boolean) =>
@@ -56,6 +57,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
   const [operators, setOperators] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [retryLabel, setRetryLabel] = useState("");
 
   useRestoreListScroll(pathname, !loading && !!data);
 
@@ -86,6 +88,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
     let cancelled = false;
     setLoading(true);
     setError("");
+    setRetryLabel("");
     const params = new URLSearchParams();
     params.set("follow", follow);
     if (alert !== "all") params.set("alert", alert);
@@ -94,17 +97,27 @@ export function XlvFollowUpView({ role }: { role: string }) {
     if (operator) params.set("operator", operator);
     if (search) params.set("q", search);
 
-    fetch(`/api/xlv/follow-up?${params.toString()}`)
-      .then(async (res) => {
-        const json = await readResponseJson<ApiResponse & { error?: string }>(
-          res,
-          "加载回访"
-        );
-        if (!res.ok) throw new Error(json.error || "加载失败");
-        if (!cancelled) setData(json);
+    fetchJsonWithRetry<ApiResponse>(`/api/xlv/follow-up?${params.toString()}`, undefined, {
+      context: "加载回访",
+      onRetry: (attempt) => {
+        if (!cancelled) {
+          setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
+        }
+      },
+    })
+      .then((json) => {
+        if (!cancelled) {
+          setData(json);
+          setManagers(json.filters?.managers ?? []);
+          setOperators(json.filters?.operators ?? []);
+          setRetryLabel("");
+        }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "加载失败");
+          setRetryLabel("");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -114,20 +127,6 @@ export function XlvFollowUpView({ role }: { role: string }) {
       cancelled = true;
     };
   }, [follow, alert, priority, manager, operator, search]);
-
-  useEffect(() => {
-    fetch("/api/xlv/dashboard")
-      .then(async (res) => {
-        const json = await readResponseJson<{
-          error?: string;
-          filters?: { managers?: string[]; operators?: string[] };
-        }>(res, "加载筛选");
-        if (!res.ok) return;
-        setManagers(json.filters?.managers ?? []);
-        setOperators(json.filters?.operators ?? []);
-      })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (!operators.length || !operator) return;
@@ -181,6 +180,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
       />
 
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
+      {retryLabel ? <NotionAlert tone="info">{retryLabel}</NotionAlert> : null}
       {exportError ? <NotionAlert tone="error">{exportError}</NotionAlert> : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2">

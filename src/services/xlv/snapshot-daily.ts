@@ -282,11 +282,13 @@ export function computeXlvMonthAssessmentTotals(
     cumulativeUsers: number;
     cumulativeTxns: number;
   },
-  allowInstallMonthFallback = false
+  allowInstallMonthFallback = false,
+  snapshotsPreEnriched = false
 ): { users: number; txns: number; estimated: boolean } | null {
-  const enriched = enrichXlvSnapshotDailyMetrics(
-    normalizeAssessmentSnapshots(snapshots)
-  );
+  const normalized = normalizeAssessmentSnapshots(snapshots);
+  const enriched = snapshotsPreEnriched
+    ? normalized
+    : enrichXlvSnapshotDailyMetrics(normalized);
 
   const monthEnd = getXlvCalendarMonthEndCumulative(enriched, year, month);
 

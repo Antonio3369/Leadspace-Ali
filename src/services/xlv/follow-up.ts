@@ -6,7 +6,6 @@ import {
   classifyXlvTodayPriority,
   getXlvAssessmentDaysRemaining,
   type XlvAlertKind,
-  getXlvQualificationDetail,
   type XlvTodayPriority,
   xlvQualificationGapLine,
 } from "@/lib/xlv-rules";
@@ -158,7 +157,7 @@ export async function getXlvFollowUpDevices(
     });
     if (opts.priority && todayPriority !== opts.priority) continue;
 
-    const detail = getXlvQualificationDetail(row, snapshots);
+    const detail = row.qualificationDetail;
     devices.push({
       deviceSn: row.deviceSn,
       merchantName: row.merchantName,
