@@ -18,7 +18,7 @@ function RankBadge({ rank }: { rank: number }) {
   return <span className="text-[#94a3b8]">{rank}</span>;
 }
 
-function MetricCell({
+function MetricLink({
   label,
   value,
   href,
@@ -55,6 +55,7 @@ function MetricCell({
       <Link
         href={href}
         className={`inline-flex items-baseline gap-1 rounded-md px-1.5 py-0.5 hover:bg-[#f1f5f9] ${activeClass}`}
+        title={`查看「${label}」明细`}
       >
         {inner}
       </Link>
@@ -174,144 +175,115 @@ export function XlvLeaderboardTable({
     );
   }
 
+  const nameHeader = mode === "managers" ? "经理" : "队员";
+
   return (
     <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="border-b border-[#f1f5f9] text-left text-xs text-[#94a3b8]">
-              <th className="px-3 py-2.5 w-12">#</th>
-              <th className="px-3 py-2.5">
-                {mode === "managers" ? "经理" : "队员"}
-              </th>
-              <th className="px-3 py-2.5">设备</th>
-              <th className="px-3 py-2.5">已达标</th>
-              <th className="px-3 py-2.5">考核中</th>
-              <th className="px-3 py-2.5">无效</th>
-              <th className="px-3 py-2.5">单笔沉默</th>
-              <th className="px-3 py-2.5">沉睡</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#f1f5f9]">
-            {rows.map((row, idx) => {
-              const rank = idx + 1;
-              const isInventory =
-                mode === "managers" && isXlvInventoryManagerKey(row.key);
-              const devicesHref =
-                mode === "staff" && managerKey
-                  ? xlvPath(
-                      `/managers/${encodeURIComponent(managerKey)}/staff/${encodeURIComponent(row.key)}`
-                    )
-                  : mode === "managers"
-                    ? xlvPath(`/managers/${encodeURIComponent(row.key)}`)
-                    : null;
-              const { dateFrom, dateTo } = getCurrentMonthRange();
-              const monthQs = n7DateRangeQuery(dateFrom, dateTo);
-              const nameHref =
-                mode === "staff" && managerKey
-                  ? xlvPath(
-                      `/managers/${encodeURIComponent(managerKey)}/staff/${encodeURIComponent(row.key)}/performance?${monthQs}`
-                    )
-                  : devicesHref;
-              return (
-                <tr
-                  key={row.key}
-                  className={isInventory ? "bg-[#fafbfc]" : "hover:bg-[#f8fafc]"}
-                >
-                  <td className="px-3 py-3">
-                    {isInventory ? (
-                      <span className="text-[#94a3b8]">—</span>
+      <ul className="divide-y divide-[#f1f5f9]" aria-label={`${nameHeader}排行`}>
+        {rows.map((row, idx) => {
+          const rank = idx + 1;
+          const isInventory =
+            mode === "managers" && isXlvInventoryManagerKey(row.key);
+          const devicesHref =
+            mode === "staff" && managerKey
+              ? xlvPath(
+                  `/managers/${encodeURIComponent(managerKey)}/staff/${encodeURIComponent(row.key)}`
+                )
+              : mode === "managers"
+                ? xlvPath(`/managers/${encodeURIComponent(row.key)}`)
+                : null;
+          const { dateFrom, dateTo } = getCurrentMonthRange();
+          const monthQs = n7DateRangeQuery(dateFrom, dateTo);
+          const nameHref =
+            mode === "staff" && managerKey
+              ? xlvPath(
+                  `/managers/${encodeURIComponent(managerKey)}/staff/${encodeURIComponent(row.key)}/performance?${monthQs}`
+                )
+              : devicesHref;
+          const rowNameHref =
+            statusFilter && mode === "managers" && devicesHref
+              ? `${devicesHref}?status=${statusFilter}`
+              : (nameHref ?? "#");
+
+          return (
+            <li
+              key={row.key}
+              data-list-anchor={row.key}
+              className={`px-4 py-3.5 ${isInventory ? "bg-[#fafbfc]" : "hover:bg-[#f8fafc]"}`}
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-10 shrink-0 pt-0.5 text-base tabular-nums">
+                  {isInventory ? (
+                    <span className="text-[#94a3b8]">—</span>
+                  ) : (
+                    <RankBadge rank={rank} />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Link
+                    href={rowNameHref}
+                    className={`block truncate text-base font-semibold ${
+                      isInventory
+                        ? "text-[#64748b] hover:text-[#475569]"
+                        : "text-[#2563eb] hover:text-[#1d4ed8]"
+                    }`}
+                    title={isInventory ? "未挂经理的库存设备" : undefined}
+                  >
+                    {row.name}
+                  </Link>
+                  <p className="text-sm tabular-nums text-[#64748b]">
+                    {devicesHref ? (
+                      <Link
+                        href={devicesHref}
+                        className="font-medium text-[#334155] hover:text-[#2563eb]"
+                      >
+                        设备 {row.deviceCount}
+                      </Link>
                     ) : (
-                      <RankBadge rank={rank} />
+                      <>设备 {row.deviceCount}</>
                     )}
-                  </td>
-                  <td className="px-3 py-3">
-                    <Link
-                      href={
-                        statusFilter && mode === "managers" && devicesHref
-                          ? `${devicesHref}?status=${statusFilter}`
-                          : (nameHref ?? "#")
-                      }
-                      className={
-                        isInventory
-                          ? "font-medium text-[#64748b] hover:text-[#475569]"
-                          : "font-medium text-[#2563eb] hover:text-[#1d4ed8]"
-                      }
-                      title={isInventory ? "未挂经理的库存设备" : undefined}
-                    >
-                      {row.name}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-3 tabular-nums">{row.deviceCount}</td>
-                  <td className="px-3 py-3">
-                    <MetricCell
-                      label=""
-                      value={row.qualifiedCount}
-                      href={
-                        devicesHref
-                          ? statusHref(devicesHref, "qualified")
-                          : statusHref(devicesHref ?? "", "qualified")
-                      }
-                      tone="success"
-                      active={statusFilter === "qualified"}
-                    />
-                  </td>
-                  <td className="px-3 py-3">
-                    <MetricCell
-                      label=""
-                      value={row.inProgressCount}
-                      href={
-                        devicesHref
-                          ? statusHref(devicesHref, "in_progress")
-                          : statusHref(devicesHref ?? "", "in_progress")
-                      }
-                      tone="sky"
-                      active={statusFilter === "in_progress"}
-                    />
-                  </td>
-                  <td className="px-3 py-3">
-                    <MetricCell
-                      label=""
+                    <span className="mx-1.5 text-[#cbd5e1]">·</span>
+                    已达标 {row.qualifiedCount}
+                    <span className="mx-1.5 text-[#cbd5e1]">·</span>
+                    考核中 {row.inProgressCount}
+                  </p>
+                  <div className="-mx-1.5 flex flex-wrap gap-x-1 gap-y-1 text-sm">
+                    <MetricLink
+                      label="无效"
                       value={row.invalidCount}
                       href={
                         devicesHref
                           ? statusHref(devicesHref, "invalid")
-                          : statusHref(devicesHref ?? "", "invalid")
+                          : undefined
                       }
                       tone="muted"
                       active={statusFilter === "invalid"}
                     />
-                  </td>
-                  <td className="px-3 py-3">
-                    <MetricCell
-                      label=""
+                    <MetricLink
+                      label="单笔沉默"
                       value={row.singleSilenceCount}
                       href={
                         devicesHref
                           ? alertHref(devicesHref, "single_silence")
-                          : alertHref(devicesHref ?? "", "single_silence")
+                          : undefined
                       }
                       tone="danger"
                     />
-                  </td>
-                  <td className="px-3 py-3">
-                    <MetricCell
-                      label=""
+                    <MetricLink
+                      label="沉睡"
                       value={row.dormantCount}
                       href={
-                        devicesHref
-                          ? alertHref(devicesHref, "dormant")
-                          : alertHref(devicesHref ?? "", "dormant")
+                        devicesHref ? alertHref(devicesHref, "dormant") : undefined
                       }
                       tone="amber"
                     />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                  </div>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
