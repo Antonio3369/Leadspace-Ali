@@ -106,7 +106,7 @@ export function XlvTodayView({
   }, []);
 
   useEffect(() => {
-    if (!active || role !== "MANAGER") {
+    if (!active || (role !== "MANAGER" && role !== "DIRECTOR")) {
       setMgrUnread(null);
       return;
     }
@@ -341,7 +341,7 @@ export function XlvTodayView({
 
       {data ? (
         <div className="space-y-6">
-          {role === "MANAGER" && mgrUnread != null ? (
+          {(role === "MANAGER" || role === "DIRECTOR") && mgrUnread != null ? (
             <Link
               href={xlvPath("/notifications")}
               className={`flex items-center justify-between rounded-[14px] border px-3.5 py-3 text-sm font-medium transition-colors ${

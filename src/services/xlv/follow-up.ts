@@ -244,19 +244,19 @@ export async function updateXlvDeviceFollowUp(
 
   if (updated.followUpDone && updated.followUpAt) {
     const {
-      notifyManagerFollowUpDone,
-      recipientMatchesActor,
+      notifyFollowUpDoneRecipients,
       resolveXlvDeviceManagerRecipient,
     } = await import("@/services/xlv/notifications");
-    const recipient = await resolveXlvDeviceManagerRecipient(updated);
-    if (recipient && !recipientMatchesActor(recipient, input.followUpById)) {
-      const actor = await db.xlvMemberAccount.findUnique({
-        where: { id: input.followUpById },
-        select: { name: true },
-      });
-      const followUpByName = actor?.name ?? updated.operatorName;
-      await notifyManagerFollowUpDone({
-        xlvMemberAccountId: recipient,
+    const managerId = await resolveXlvDeviceManagerRecipient(updated);
+    const actor = await db.xlvMemberAccount.findUnique({
+      where: { id: input.followUpById },
+      select: { name: true },
+    });
+    const followUpByName = actor?.name ?? updated.operatorName;
+    await notifyFollowUpDoneRecipients({
+      managerXlvMemberAccountId: managerId,
+      followUpById: input.followUpById,
+      payload: {
         deviceSn: updated.deviceSn,
         merchantName: updated.merchantName,
         activationMerchantName: updated.activationMerchantName,
@@ -266,8 +266,8 @@ export async function updateXlvDeviceFollowUp(
         photoUrls: updated.followUpPhotoUrls,
         followUpByName,
         followUpAt: updated.followUpAt,
-      });
-    }
+      },
+    });
   }
 
   return updated;

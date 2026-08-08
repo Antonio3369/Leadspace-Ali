@@ -28,7 +28,7 @@ export async function GET(_req: Request, { params }: Params) {
     const deviceSn = decodeURIComponent(sn);
     const data = await getXlvDeviceDetail(user, deviceSn);
 
-    if (user.role === "MANAGER") {
+    if (user.role === "MANAGER" || user.role === "DIRECTOR") {
       await markXlvNotificationsReadByDevice(user, deviceSn);
     }
 

@@ -63,7 +63,7 @@ const N7_SALES_NAV_ITEMS = [
 
 const XLV_NAV_ITEMS = [
   { href: xlvPath(), label: "今日待办", icon: "📋" },
-  { href: xlvPath("/alerts"), label: "沉睡预警", icon: "😴" },
+  { href: xlvPath("/alerts"), label: "设备", icon: "📱" },
   { href: xlvPath("/board"), label: "团队看板", icon: "📊" },
   { href: xlvPath("/daily"), label: "回访情况", icon: "📈" },
 ];
@@ -71,12 +71,13 @@ const XLV_NAV_ITEMS = [
 const XLV_MANAGER_NAV_ITEMS = [
   ...XLV_NAV_ITEMS,
   { href: xlvPath("/me/team"), label: "队员管理", icon: "👥" },
+  { href: xlvPath("/notifications"), label: "队员已处理", icon: "✉️" },
   { href: xlvPath("/me"), label: "我的", icon: "👤" },
 ];
 
 const XLV_SALES_NAV_ITEMS = [
   { href: xlvPath(), label: "今日待办", icon: "📋" },
-  { href: xlvPath("/alerts"), label: "沉睡预警", icon: "😴" },
+  { href: xlvPath("/alerts"), label: "设备", icon: "📱" },
   { href: xlvPath("/board"), label: "设备看板", icon: "📊" },
   { href: xlvPath("/daily"), label: "回访情况", icon: "📈" },
   { href: xlvPath("/me"), label: "我的", icon: "👤" },
@@ -84,6 +85,7 @@ const XLV_SALES_NAV_ITEMS = [
 
 const XLV_DIRECTOR_NAV_ITEMS = [
   ...XLV_NAV_ITEMS,
+  { href: xlvPath("/notifications"), label: "队员已处理", icon: "✉️" },
   { href: xlvPath("/admin/import"), label: "数据导入", icon: "⬆️" },
   { href: xlvPath("/admin/attribution"), label: "人员归属", icon: "🔗" },
   { href: xlvPath("/admin/accounts"), label: "经理账号", icon: "🔑" },

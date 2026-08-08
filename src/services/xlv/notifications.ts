@@ -7,6 +7,18 @@ import { xlvMerchantLabel } from "@/lib/xlv-rules";
 import type { SessionUser } from "@/lib/permissions";
 import type { Prisma } from "@/generated/prisma/client";
 
+export type XlvFollowUpNotificationPayload = {
+  deviceSn: string;
+  merchantName: string | null;
+  activationMerchantName: string | null;
+  operatorName: string;
+  connectStatus: string | null;
+  flags: string[];
+  photoUrls: string[];
+  followUpByName: string;
+  followUpAt: Date;
+};
+
 /** 解析设备所属小绿盒经理账号；解析不到返回 null（关单仍成功） */
 export async function resolveXlvDeviceManagerRecipient(device: {
   managerName: string;
@@ -29,6 +41,15 @@ export async function resolveXlvDeviceManagerRecipient(device: {
   return account?.id ?? null;
 }
 
+/** 小绿盒管理员端（全局 DIRECTOR 账号，如 admin） */
+export async function listXlvAdminDirectorUserIds(): Promise<string[]> {
+  const rows = await db.user.findMany({
+    where: { role: "DIRECTOR", status: "ACTIVE" },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
 function recipientMatchesActor(
   xlvMemberAccountId: string,
   followUpById: string
@@ -36,25 +57,7 @@ function recipientMatchesActor(
   return xlvMemberAccountId === followUpById;
 }
 
-function recipientWhere(user: SessionUser): Prisma.XlvNotificationWhereInput {
-  if (user.authRealm !== "xlv" || user.role !== "MANAGER") {
-    return { id: "__none__" };
-  }
-  return { xlvMemberAccountId: user.id };
-}
-
-export async function notifyManagerFollowUpDone(opts: {
-  xlvMemberAccountId: string;
-  deviceSn: string;
-  merchantName: string | null;
-  activationMerchantName: string | null;
-  operatorName: string;
-  connectStatus: string | null;
-  flags: string[];
-  photoUrls: string[];
-  followUpByName: string;
-  followUpAt: Date;
-}) {
+function buildFollowUpNotificationContent(opts: XlvFollowUpNotificationPayload) {
   const summary = summarizeFollowUpResult({
     connectStatus: opts.connectStatus,
     flags: opts.flags,
@@ -79,6 +82,16 @@ export async function notifyManagerFollowUpDone(opts: {
     followUpAt: opts.followUpAt.toISOString(),
   };
 
+  return { title, body, meta };
+}
+
+async function createXlvFollowUpNotification(
+  recipient:
+    | { xlvMemberAccountId: string }
+    | { userId: string },
+  opts: XlvFollowUpNotificationPayload
+) {
+  const { title, body, meta } = buildFollowUpNotificationContent(opts);
   return db.xlvNotification.create({
     data: {
       type: XLV_NOTIFICATION_TYPE_FOLLOW_UP_DONE,
@@ -87,12 +100,56 @@ export async function notifyManagerFollowUpDone(opts: {
       body,
       meta,
       read: false,
-      xlvMemberAccountId: opts.xlvMemberAccountId,
+      ...recipient,
     },
   });
 }
 
+/** 关单回告：所属经理 + 全部管理员（DIRECTOR）各一份 */
+export async function notifyFollowUpDoneRecipients(opts: {
+  managerXlvMemberAccountId: string | null;
+  followUpById: string;
+  payload: XlvFollowUpNotificationPayload;
+}) {
+  const tasks: Promise<unknown>[] = [];
+
+  if (
+    opts.managerXlvMemberAccountId &&
+    !recipientMatchesActor(opts.managerXlvMemberAccountId, opts.followUpById)
+  ) {
+    tasks.push(
+      createXlvFollowUpNotification(
+        { xlvMemberAccountId: opts.managerXlvMemberAccountId },
+        opts.payload
+      )
+    );
+  }
+
+  const directorIds = await listXlvAdminDirectorUserIds();
+  for (const userId of directorIds) {
+    if (userId === opts.followUpById) continue;
+    tasks.push(createXlvFollowUpNotification({ userId }, opts.payload));
+  }
+
+  await Promise.all(tasks);
+}
+
+function recipientWhere(user: SessionUser): Prisma.XlvNotificationWhereInput {
+  if (user.role === "DIRECTOR") {
+    return { userId: user.id };
+  }
+  if (user.authRealm === "xlv" && user.role === "MANAGER") {
+    return { xlvMemberAccountId: user.id };
+  }
+  return { id: "__none__" };
+}
+
+export function canViewXlvFollowUpNotifications(user: SessionUser) {
+  return user.role === "MANAGER" || user.role === "DIRECTOR";
+}
+
 export async function countUnreadXlvNotifications(user: SessionUser) {
+  if (!canViewXlvFollowUpNotifications(user)) return 0;
   return db.xlvNotification.count({
     where: { ...recipientWhere(user), read: false },
   });
@@ -132,6 +189,7 @@ export async function markXlvNotificationsReadByDevice(
   user: SessionUser,
   deviceSn: string
 ) {
+  if (!canViewXlvFollowUpNotifications(user)) return;
   const now = new Date();
   await db.xlvNotification.updateMany({
     where: { ...recipientWhere(user), deviceSn, read: false },
