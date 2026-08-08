@@ -91,6 +91,7 @@ function pickAssessmentFocusMonth(
 export function assessXlvQualification(
   device: {
     firstTxnDate: Date | null;
+    statDate?: Date | null;
     cumulativeUsers: number;
     cumulativeTxns: number;
   },
@@ -286,6 +287,7 @@ function formatYearMonth(y: number, m: number) {
 export function getXlvQualificationDetail(
   device: {
     firstTxnDate: Date | null;
+    statDate?: Date | null;
     cumulativeUsers: number;
     cumulativeTxns: number;
   },

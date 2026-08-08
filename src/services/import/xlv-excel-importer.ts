@@ -234,6 +234,7 @@ async function importAssignmentRows(
   const rosterEntries = await loadXlvRosterEntries();
   const rosterByOperator = buildXlvRosterIndex(rosterEntries);
   const rosterPairs = buildXlvRosterPairSet(rosterEntries);
+  const snapshotsToWrite: SnapshotWrite[] = [];
 
   for (const row of rows) {
     let managerName = row.managerName.trim();
@@ -300,10 +301,34 @@ async function importAssignmentRows(
       });
       createdDevices++;
     }
+
+    if (row.statDate) {
+      snapshotsToWrite.push({
+        deviceSn: row.deviceSn,
+        statDate: normalizeXlvStatDate(row.statDate),
+        cumulativeUsers: row.cumulativeUsers,
+        cumulativeTxns: row.cumulativeTxns,
+        cumulativeAmount: row.cumulativeAmount,
+        lastTxnDate: row.lastTxnDate,
+        sleepDays: row.sleepDays,
+        isActivated: row.isActivated,
+        firstTxnDate: row.firstTxnDate,
+        dailyUsers: 0,
+        dailyTxns: 0,
+        dailyAmount: 0,
+        importBatchId,
+      });
+    }
+  }
+
+  let snapshotRows = 0;
+  if (snapshotsToWrite.length > 0) {
+    await upsertSnapshotsBulk(snapshotsToWrite, importBatchId);
+    snapshotRows = snapshotsToWrite.length;
   }
 
   return {
-    snapshotRows: 0,
+    snapshotRows,
     createdDevices,
     updatedDevices,
     rosterRowsWritten: 0,
@@ -412,9 +437,10 @@ export async function importXlvExcelFile(
     const result = await importAssignmentRows(assignmentRows, importLog.id);
     createdDevices = result.createdDevices;
     updatedDevices = result.updatedDevices;
+    snapshotRows = result.snapshotRows;
     importSummary = {
       uniqueDevices: result.uniqueDevices,
-      snapshotsWritten: 0,
+      snapshotsWritten: result.snapshotRows,
       snapshotsCreated: 0,
       snapshotsUpdated: 0,
       duplicateSnapshotsRemoved: 0,

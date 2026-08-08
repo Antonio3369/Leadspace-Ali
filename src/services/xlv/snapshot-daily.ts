@@ -24,9 +24,15 @@ function sortByStatDate<T extends { statDate: Date }>(items: T[]) {
   );
 }
 
-/** 同一天多条快照时，保留累计更大的一条（较新截面） */
+function snapshotDedupeKey(snap: { deviceSn?: string; statDate: Date }) {
+  const dateKey = xlvStatDateKey(snap.statDate);
+  return snap.deviceSn ? `${snap.deviceSn}::${dateKey}` : dateKey;
+}
+
+/** 同设备同一天多条快照时，保留累计更大的一条（较新截面） */
 export function dedupeXlvSnapshotsByStatDate<
   T extends {
+    deviceSn?: string;
     statDate: Date;
     cumulativeTxns: number;
     cumulativeUsers: number;
@@ -35,7 +41,7 @@ export function dedupeXlvSnapshotsByStatDate<
   const byDate = new Map<string, T>();
 
   for (const snap of snapshots) {
-    const key = xlvStatDateKey(snap.statDate);
+    const key = snapshotDedupeKey(snap);
     const existing = byDate.get(key);
     if (
       !existing ||
@@ -272,6 +278,7 @@ export function computeXlvMonthAssessmentTotals(
   month: number,
   device?: {
     firstTxnDate: Date | null;
+    statDate?: Date | null;
     cumulativeUsers: number;
     cumulativeTxns: number;
   },
@@ -306,6 +313,12 @@ export function computeXlvMonthAssessmentTotals(
   const ft = xlvStatDateKey(device.firstTxnDate);
   const [dy, dm] = ft.split("-").map(Number);
   if (dy !== fy || dm !== fm) return null;
+
+  // 无日快照时：仅当最新截面仍在装机月内才用设备累计，避免把 8 月累计误当 7 月成绩
+  if (device.statDate) {
+    const [sy, sm] = xlvStatDateKey(device.statDate).split("-").map(Number);
+    if (sy > fy || (sy === fy && sm > fm)) return null;
+  }
 
   if (device.cumulativeUsers > 0 || device.cumulativeTxns > 0) {
     return {
