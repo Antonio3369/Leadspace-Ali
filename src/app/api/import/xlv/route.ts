@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { canImportExcel, canLogin } from "@/lib/permissions";
-import { importXlvExcelFile } from "@/services/import/xlv-excel-importer";
+import { enqueueHeavyImport } from "@/services/import/heavy-import-job";
 
-/** 原始表行多、耗时长，同步导入最长等待 5 分钟 */
-export const maxDuration = 300;
+/** 接收文件后尽快返回 jobId，实际导入在后台执行 */
+export const maxDuration = 120;
 
 export const POST = auth(async (request) => {
   try {
@@ -25,7 +25,10 @@ export const POST = auth(async (request) => {
       formData = await request.formData();
     } catch {
       return NextResponse.json(
-        { error: "上传文件过大或传输中断，请确认文件小于 60MB 后重试。" },
+        {
+          error:
+            "上传文件过大或传输中断，请确认文件小于 60MB 后重试。",
+        },
         { status: 413 }
       );
     }
@@ -40,16 +43,21 @@ export const POST = auth(async (request) => {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const result = await importXlvExcelFile(buffer, file.name, user.id);
+    const queued = await enqueueHeavyImport({
+      kind: "xlv",
+      fileName: file.name,
+      buffer,
+      uploadedById: user.id,
+    });
 
-    if (result.status === "FAILED") {
-      return NextResponse.json(
-        { error: result.errors[0] || "导入失败" },
-        { status: 400 }
-      );
+    if ("error" in queued) {
+      return NextResponse.json({ error: queued.error }, { status: queued.status });
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json(
+      { async: true, jobId: queued.jobId, message: "已开始后台导入" },
+      { status: 202 }
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "导入失败";
     if (message === "UNAUTHORIZED") {
@@ -57,6 +65,15 @@ export const POST = auth(async (request) => {
     }
     if (message === "FORBIDDEN") {
       return NextResponse.json({ error: "账号不可用" }, { status: 403 });
+    }
+    if (/Failed to parse body as FormData/i.test(message)) {
+      return NextResponse.json(
+        {
+          error:
+            "上传文件过大或传输中断，请确认文件小于 60MB 后重试。",
+        },
+        { status: 413 }
+      );
     }
     return NextResponse.json({ error: message }, { status: 500 });
   }

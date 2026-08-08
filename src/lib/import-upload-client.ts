@@ -27,7 +27,15 @@ export async function uploadImportWithJobPoll<T>(
     if (uploadRes.status === 401) {
       throw new Error("登录已过期，请重新登录后再导入");
     }
-    throw new Error(uploadJson.error || "上传失败");
+    const fallback =
+      uploadRes.status === 413
+        ? "上传文件过大或传输中断，请确认文件小于 60MB 后重试。"
+        : uploadRes.status === 429
+          ? "当前已有导入任务在执行，请等完成后再试。"
+          : uploadRes.status >= 500
+            ? `服务器错误（${uploadRes.status}），请稍后重试。`
+            : "上传失败";
+    throw new Error(uploadJson.error || fallback);
   }
 
   // 兼容旧同步响应
