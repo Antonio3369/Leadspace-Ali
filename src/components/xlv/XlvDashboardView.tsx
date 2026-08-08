@@ -143,21 +143,51 @@ export function XlvDashboardView({
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
-    const listParams = buildListQuery(alert, status, manager, operator, search, 0);
     const summaryUrl = "/api/xlv/dashboard/summary";
+    const cachedSummary = readXlvApiCache<SummaryResponse>(summaryUrl);
+
+    if (cachedSummary) {
+      setSummary(cachedSummary.summary);
+      setFilters(cachedSummary.filters);
+    }
+
+    void fetchXlvJson<SummaryResponse>(summaryUrl, {
+      context: "加载看板统计",
+    })
+      .then((summaryJson) => {
+        if (!cancelled) {
+          setSummary((prev) => ({
+            ...summaryJson.summary,
+            active: prev?.active ?? summaryJson.summary.active,
+            qualifiedCount: prev?.qualifiedCount ?? summaryJson.summary.qualifiedCount,
+            inProgressCount:
+              prev?.inProgressCount ?? summaryJson.summary.inProgressCount,
+            invalidCount: prev?.invalidCount ?? summaryJson.summary.invalidCount,
+          }));
+          setFilters(summaryJson.filters);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [active]);
+
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    const listParams = buildListQuery(alert, status, manager, operator, search, 0);
     const devicesUrl = `/api/xlv/dashboard/devices?${listParams.toString()}`;
 
     if (loadedFilterKey === filterKey) {
       return;
     }
 
-    const cachedSummary = readXlvApiCache<SummaryResponse>(summaryUrl);
     const cachedDevices = readXlvApiCache<DevicesResponse>(devicesUrl);
-    const hasCached = Boolean(cachedSummary && cachedDevices);
+    const hasCached = Boolean(cachedDevices);
 
     if (hasCached) {
-      setSummary(cachedSummary!.summary);
-      setFilters(cachedSummary!.filters);
       setDevices(cachedDevices!.devices);
       setMatchedCount(cachedDevices!.matchedCount);
       setHasMore(cachedDevices!.hasMore);
@@ -198,17 +228,6 @@ export function XlvDashboardView({
         }
       });
 
-    void fetchXlvJson<SummaryResponse>(summaryUrl, {
-      context: "加载看板统计",
-    })
-      .then((summaryJson) => {
-        if (!cancelled) {
-          setSummary(summaryJson.summary);
-          setFilters(summaryJson.filters);
-        }
-      })
-      .catch(() => undefined);
-
     return () => {
       cancelled = true;
     };
@@ -222,7 +241,19 @@ export function XlvDashboardView({
     })
       .then((qual) => {
         if (!cancelled) {
-          setSummary((prev) => (prev ? { ...prev, ...qual } : prev));
+          setSummary((prev) =>
+            prev
+              ? { ...prev, ...qual }
+              : {
+                  totalDevices: 0,
+                  deployedCount: 0,
+                  inventoryCount: 0,
+                  singleSilence: 0,
+                  dormant: 0,
+                  latestStatDate: null,
+                  ...qual,
+                }
+          );
           setQualLoaded(true);
         }
       })
