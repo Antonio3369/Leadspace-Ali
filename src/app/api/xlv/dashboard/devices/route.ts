@@ -4,12 +4,9 @@ import { PermissionError } from "@/lib/permissions";
 import { parseXlvAlertKind, parseXlvQualificationStatus } from "@/lib/xlv-rules";
 import {
   getXlvDashboardDevicesPage,
-  getXlvDashboardSummary,
-  getXlvFilterOptions,
   XLV_DASHBOARD_PAGE_SIZE,
 } from "@/services/xlv/analytics";
 
-/** 兼容旧客户端：summary + 首屏列表 */
 export async function GET(request: Request) {
   try {
     const user = await requireSessionUser();
@@ -23,30 +20,29 @@ export async function GET(request: Request) {
         ? null
         : parseXlvQualificationStatus(searchParams.get("status"));
 
-    const listOpts = {
+    const offset = Math.max(0, Number(searchParams.get("offset") ?? "0") || 0);
+    const limitRaw = Number(searchParams.get("limit") ?? String(XLV_DASHBOARD_PAGE_SIZE));
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.isFinite(limitRaw) ? limitRaw : XLV_DASHBOARD_PAGE_SIZE)
+    );
+
+    const page = await getXlvDashboardDevicesPage(user, {
       alert,
       managerName,
       operatorName,
       search,
       qualificationStatus,
-    };
-
-    const [summary, page, filters] = await Promise.all([
-      getXlvDashboardSummary(user),
-      getXlvDashboardDevicesPage(user, {
-        ...listOpts,
-        offset: 0,
-        limit: XLV_DASHBOARD_PAGE_SIZE,
-      }),
-      getXlvFilterOptions(user, { managerName }),
-    ]);
+      offset,
+      limit,
+    });
 
     return NextResponse.json({
-      summary,
       devices: page.devices,
       matchedCount: page.total,
       hasMore: page.hasMore,
-      filters,
+      offset,
+      limit,
     });
   } catch (err) {
     if (err instanceof PermissionError) {

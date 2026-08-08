@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { readXlvApiCache } from "@/lib/xlv-api-cache";
 import { fetchXlvJson } from "@/lib/xlv-fetch";
-import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
   parseXlvAlertKind,
@@ -30,30 +29,33 @@ import type {
   XlvDeviceListItem,
 } from "@/services/xlv/analytics";
 
-interface ApiResponse {
+interface SummaryResponse {
   summary: XlvDashboardSummary;
-  devices: XlvDeviceListItem[];
-  matchedCount: number;
   filters: { managers: string[]; operators: string[] };
 }
 
-function enrichDashboardFromFullCache(
-  json: ApiResponse,
-  alert: XlvAlertKind
-): ApiResponse {
-  if (alert === "all") return json;
-  const full = readXlvApiCache<ApiResponse>("/api/xlv/dashboard");
-  if (!full?.summary) return json;
-  return {
-    ...json,
-    summary: {
-      ...json.summary,
-      qualifiedCount: full.summary.qualifiedCount,
-      inProgressCount: full.summary.inProgressCount,
-      invalidCount: full.summary.invalidCount,
-      active: full.summary.active,
-    },
-  };
+interface DevicesResponse {
+  devices: XlvDeviceListItem[];
+  matchedCount: number;
+  hasMore: boolean;
+}
+
+function buildListQuery(
+  alert: XlvAlertKind,
+  status: XlvQualificationStatus | null,
+  manager: string,
+  operator: string,
+  search: string,
+  offset: number
+) {
+  const params = new URLSearchParams();
+  if (alert !== "all") params.set("alert", alert);
+  if (status && alert === "all") params.set("status", status);
+  if (manager) params.set("manager", manager);
+  if (operator) params.set("operator", operator);
+  if (search) params.set("q", search);
+  if (offset > 0) params.set("offset", String(offset));
+  return params;
 }
 
 export function XlvDashboardView({ role }: { role: string }) {
@@ -76,13 +78,21 @@ export function XlvDashboardView({ role }: { role: string }) {
   const operator = searchParams.get("operator") ?? "";
   const search = searchParams.get("q") ?? "";
 
-  const [data, setData] = useState<ApiResponse | null>(null);
+  const [summary, setSummary] = useState<XlvDashboardSummary | null>(null);
+  const [filters, setFilters] = useState<SummaryResponse["filters"]>({
+    managers: [],
+    operators: [],
+  });
+  const [devices, setDevices] = useState<XlvDeviceListItem[]>([]);
+  const [matchedCount, setMatchedCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [retryLabel, setRetryLabel] = useState("");
   const [searchDraft, setSearchDraft] = useState(search);
 
-  useRestoreListScroll(pathname, !loading && !!data);
+  useRestoreListScroll(pathname, !loading && devices.length > 0);
 
   const pushQuery = useCallback(
     (patch: Record<string, string | null>) => {
@@ -115,40 +125,60 @@ export function XlvDashboardView({ role }: { role: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    const params = new URLSearchParams();
-    if (alert !== "all") params.set("alert", alert);
-    if (status && alert === "all") params.set("status", status);
-    if (manager) params.set("manager", manager);
-    if (operator) params.set("operator", operator);
-    if (search) params.set("q", search);
+    const listParams = buildListQuery(alert, status, manager, operator, search, 0);
+    const summaryUrl = "/api/xlv/dashboard/summary";
+    const devicesUrl = `/api/xlv/dashboard/devices?${listParams.toString()}`;
 
-    const url = `/api/xlv/dashboard?${params.toString()}`;
-    const cached = readXlvApiCache<ApiResponse>(url);
-    if (cached) {
-      setData(enrichDashboardFromFullCache(cached, alert));
+    const cachedSummary = readXlvApiCache<SummaryResponse>(summaryUrl);
+    const cachedDevices = readXlvApiCache<DevicesResponse>(devicesUrl);
+    const hasCached = Boolean(cachedSummary && cachedDevices);
+
+    if (hasCached) {
+      setSummary(cachedSummary!.summary);
+      setFilters(cachedSummary!.filters);
+      setDevices(cachedDevices!.devices);
+      setMatchedCount(cachedDevices!.matchedCount);
+      setHasMore(cachedDevices!.hasMore);
       setLoading(false);
     } else {
       setLoading(true);
       setError("");
       setRetryLabel("");
+      setDevices([]);
+      setMatchedCount(0);
+      setHasMore(false);
     }
 
-    fetchXlvJson<ApiResponse>(url, {
-      context: "加载看板",
-      onRetry: (attempt) => {
-        if (!cancelled && !cached) {
-          setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
-        }
-      },
-    })
-      .then((json) => {
+    Promise.all([
+      fetchXlvJson<SummaryResponse>(summaryUrl, {
+        context: "加载看板统计",
+        onRetry: (attempt) => {
+          if (!cancelled && !hasCached) {
+            setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
+          }
+        },
+      }),
+      fetchXlvJson<DevicesResponse>(devicesUrl, {
+        context: "加载商户列表",
+        onRetry: (attempt) => {
+          if (!cancelled && !hasCached) {
+            setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
+          }
+        },
+      }),
+    ])
+      .then(([summaryJson, devicesJson]) => {
         if (!cancelled) {
-          setData(enrichDashboardFromFullCache(json, alert));
+          setSummary(summaryJson.summary);
+          setFilters(summaryJson.filters);
+          setDevices(devicesJson.devices);
+          setMatchedCount(devicesJson.matchedCount);
+          setHasMore(devicesJson.hasMore);
           setRetryLabel("");
         }
       })
       .catch((err) => {
-        if (!cancelled && !cached) {
+        if (!cancelled && !hasCached) {
           setError(err instanceof Error ? err.message : "加载失败");
           setRetryLabel("");
         }
@@ -163,13 +193,48 @@ export function XlvDashboardView({ role }: { role: string }) {
   }, [alert, status, manager, operator, search]);
 
   useEffect(() => {
-    if (!data?.filters.operators || !operator) return;
-    if (!data.filters.operators.includes(operator)) {
+    if (!filters.operators.length || !operator) return;
+    if (!filters.operators.includes(operator)) {
       pushQuery({ operator: null });
     }
-  }, [data?.filters.operators, operator, pushQuery]);
+  }, [filters.operators, operator, pushQuery]);
 
-  const summary = data?.summary;
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const listParams = buildListQuery(
+      alert,
+      status,
+      manager,
+      operator,
+      search,
+      devices.length
+    );
+    const url = `/api/xlv/dashboard/devices?${listParams.toString()}`;
+    try {
+      const json = await fetchXlvJson<DevicesResponse>(url, {
+        context: "加载更多商户",
+        useCache: false,
+      });
+      setDevices((prev) => [...prev, ...json.devices]);
+      setMatchedCount(json.matchedCount);
+      setHasMore(json.hasMore);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载更多失败");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [
+    alert,
+    status,
+    manager,
+    operator,
+    search,
+    devices.length,
+    hasMore,
+    loadingMore,
+  ]);
+
   const showManager = role !== "SALES";
   const hasDrill = Boolean(
     manager || operator || alert !== "all" || status || search
@@ -217,7 +282,6 @@ export function XlvDashboardView({ role }: { role: string }) {
     muted: "text-slate-600",
   };
 
-  /** 五张卡片全局单选：预警与考核互斥，再点同项取消 */
   function selectShortcutFilter(
     id: XlvDeviceAlertKind | XlvQualificationStatus
   ) {
@@ -256,6 +320,23 @@ export function XlvDashboardView({ role }: { role: string }) {
     : [];
 
   const activeShortcut = status ?? (alert !== "all" ? alert : null);
+
+  const listTitle =
+    status === "qualified"
+      ? "已达标商户"
+      : status === "invalid"
+        ? "无效用户商户"
+        : alert === "sleep"
+          ? "沉睡商户"
+          : alert === "single_silence"
+            ? "单笔沉默商户"
+            : alert === "dormant"
+              ? "沉睡商户"
+              : alert === "active"
+                ? `${XLV_ACTIVE_IN_PROGRESS_LABEL}商户`
+                : manager === XLV_INVENTORY_MANAGER_LABEL
+                  ? "剩余库存"
+                  : "全部商户";
 
   return (
     <PageShell>
@@ -303,12 +384,12 @@ export function XlvDashboardView({ role }: { role: string }) {
         actions={
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <NotionInput
-            placeholder="商户 / SN / 作业员"
-            value={searchDraft}
-            onChange={(e) => setSearchDraft(e.target.value)}
-            className="w-full sm:w-52"
-            aria-label="搜索商户或设备"
-          />
+              placeholder="商户 / SN / 作业员"
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+              className="w-full sm:w-52"
+              aria-label="搜索商户或设备"
+            />
           </div>
         }
       />
@@ -375,7 +456,7 @@ export function XlvDashboardView({ role }: { role: string }) {
                   aria-label="筛选经理"
                 >
                   <option value="">全部经理</option>
-                  {(data?.filters.managers ?? []).map((name) => (
+                  {filters.managers.map((name) => (
                     <option key={name} value={name}>
                       {name}
                     </option>
@@ -389,7 +470,7 @@ export function XlvDashboardView({ role }: { role: string }) {
                 aria-label={manager ? `${manager} 团队作业员` : "筛选作业员"}
               >
                 <option value="">全部作业员</option>
-                {(data?.filters.operators ?? []).map((name) => (
+                {filters.operators.map((name) => (
                   <option key={name} value={name}>
                     {name}
                   </option>
@@ -400,24 +481,11 @@ export function XlvDashboardView({ role }: { role: string }) {
 
           <section className="space-y-2">
             <div className="flex items-baseline justify-between gap-2 px-0.5">
-              <h2 className="text-sm font-semibold text-[#111827]">
-                {status === "qualified"
-                  ? "已达标商户"
-                  : status === "invalid"
-                    ? "无效用户商户"
-                    : alert === "single_silence"
-                        ? "单笔沉默商户"
-                        : alert === "dormant"
-                          ? "沉睡商户"
-                          : alert === "active"
-                            ? `${XLV_ACTIVE_IN_PROGRESS_LABEL}商户`
-                            : manager === XLV_INVENTORY_MANAGER_LABEL
-                              ? "剩余库存"
-                              : "全部商户"}
-              </h2>
+              <h2 className="text-sm font-semibold text-[#111827]">{listTitle}</h2>
               {!loading ? (
                 <span className="text-xs text-[#94a3b8] tabular-nums">
-                  {data?.matchedCount ?? data?.devices.length ?? 0} 条
+                  已显示 {devices.length}
+                  {matchedCount > devices.length ? ` / ${matchedCount}` : ""} 条
                 </span>
               ) : null}
             </div>
@@ -425,17 +493,33 @@ export function XlvDashboardView({ role }: { role: string }) {
             {loading ? (
               <p className="text-sm text-[#94a3b8] px-1 py-8 text-center">加载中…</p>
             ) : (
-              <XlvDeviceCardList
-                devices={data?.devices ?? []}
-                showManager={showManager}
-                linkToDetail
-                activeShortcut={activeShortcut}
-                emptyText={
-                  hasDrill ? "当前筛选下暂无设备" : "暂无数据，请先导入运营表"
-                }
-                onPickOperator={(name) => pushQuery({ operator: name })}
-                onPickManager={(name) => pushQuery({ manager: name })}
-              />
+              <>
+                <XlvDeviceCardList
+                  devices={devices}
+                  showManager={showManager}
+                  linkToDetail
+                  activeShortcut={activeShortcut}
+                  emptyText={
+                    hasDrill ? "当前筛选下暂无设备" : "暂无数据，请先导入运营表"
+                  }
+                  onPickOperator={(name) => pushQuery({ operator: name })}
+                  onPickManager={(name) => pushQuery({ manager: name })}
+                />
+                {hasMore ? (
+                  <div className="pt-2 pb-1 text-center">
+                    <button
+                      type="button"
+                      onClick={() => void loadMore()}
+                      disabled={loadingMore}
+                      className="inline-flex min-h-[44px] items-center justify-center rounded-[12px] border border-[#e2e8f0] bg-white px-5 py-2.5 text-sm font-medium text-[#334155] shadow-sm transition-colors hover:bg-[#f8fafc] disabled:opacity-60"
+                    >
+                      {loadingMore
+                        ? "加载中…"
+                        : `加载更多（还剩 ${matchedCount - devices.length} 条）`}
+                    </button>
+                  </div>
+                ) : null}
+              </>
             )}
           </section>
         </>
