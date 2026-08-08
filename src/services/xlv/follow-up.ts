@@ -232,7 +232,6 @@ export async function updateXlvDeviceFollowUp(
       activationMerchantName: true,
       operatorName: true,
       managerName: true,
-      managerUserId: true,
       followUpDone: true,
       followUpNote: true,
       followUpAt: true,
@@ -250,24 +249,14 @@ export async function updateXlvDeviceFollowUp(
       resolveXlvDeviceManagerRecipient,
     } = await import("@/services/xlv/notifications");
     const recipient = await resolveXlvDeviceManagerRecipient(updated);
-    if (
-      recipient &&
-      !recipientMatchesActor(recipient, input.followUpById)
-    ) {
-      const [xlvActor, userActor] = await Promise.all([
-        db.xlvMemberAccount.findUnique({
-          where: { id: input.followUpById },
-          select: { name: true },
-        }),
-        db.user.findUnique({
-          where: { id: input.followUpById },
-          select: { name: true },
-        }),
-      ]);
-      const followUpByName =
-        xlvActor?.name ?? userActor?.name ?? updated.operatorName;
+    if (recipient && !recipientMatchesActor(recipient, input.followUpById)) {
+      const actor = await db.xlvMemberAccount.findUnique({
+        where: { id: input.followUpById },
+        select: { name: true },
+      });
+      const followUpByName = actor?.name ?? updated.operatorName;
       await notifyManagerFollowUpDone({
-        recipient,
+        xlvMemberAccountId: recipient,
         deviceSn: updated.deviceSn,
         merchantName: updated.merchantName,
         activationMerchantName: updated.activationMerchantName,

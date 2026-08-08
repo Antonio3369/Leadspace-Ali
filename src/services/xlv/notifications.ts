@@ -7,23 +7,14 @@ import { xlvMerchantLabel } from "@/lib/xlv-rules";
 import type { SessionUser } from "@/lib/permissions";
 import type { Prisma } from "@/generated/prisma/client";
 
-export type XlvNotificationRecipient =
-  | { kind: "user"; userId: string }
-  | { kind: "xlv_member"; xlvMemberAccountId: string };
-
-/** 解析设备所属经理；解析不到返回 null（关单仍成功） */
+/** 解析设备所属小绿盒经理账号；解析不到返回 null（关单仍成功） */
 export async function resolveXlvDeviceManagerRecipient(device: {
-  managerUserId: string | null;
   managerName: string;
-}): Promise<XlvNotificationRecipient | null> {
-  if (device.managerUserId) {
-    return { kind: "user", userId: device.managerUserId };
-  }
-
+}): Promise<string | null> {
   const managerName = device.managerName.trim();
   if (!managerName) return null;
 
-  const byName = await db.xlvMemberAccount.findFirst({
+  const account = await db.xlvMemberAccount.findFirst({
     where: {
       memberRole: "MANAGER",
       status: "ACTIVE",
@@ -34,42 +25,26 @@ export async function resolveXlvDeviceManagerRecipient(device: {
     },
     select: { id: true },
   });
-  if (byName) {
-    return { kind: "xlv_member", xlvMemberAccountId: byName.id };
-  }
 
-  const byUserName = await db.user.findFirst({
-    where: {
-      role: "MANAGER",
-      status: "ACTIVE",
-      name: managerName,
-    },
-    select: { id: true },
-  });
-  if (byUserName) {
-    return { kind: "user", userId: byUserName.id };
-  }
-
-  return null;
+  return account?.id ?? null;
 }
 
 function recipientMatchesActor(
-  recipient: XlvNotificationRecipient,
+  xlvMemberAccountId: string,
   followUpById: string
 ) {
-  if (recipient.kind === "user") return recipient.userId === followUpById;
-  return recipient.xlvMemberAccountId === followUpById;
+  return xlvMemberAccountId === followUpById;
 }
 
 function recipientWhere(user: SessionUser): Prisma.XlvNotificationWhereInput {
-  if (user.authRealm === "xlv" && user.role === "MANAGER") {
-    return { xlvMemberAccountId: user.id };
+  if (user.authRealm !== "xlv" || user.role !== "MANAGER") {
+    return { id: "__none__" };
   }
-  return { userId: user.id };
+  return { xlvMemberAccountId: user.id };
 }
 
 export async function notifyManagerFollowUpDone(opts: {
-  recipient: XlvNotificationRecipient;
+  xlvMemberAccountId: string;
   deviceSn: string;
   merchantName: string | null;
   activationMerchantName: string | null;
@@ -112,9 +87,7 @@ export async function notifyManagerFollowUpDone(opts: {
       body,
       meta,
       read: false,
-      ...(opts.recipient.kind === "user"
-        ? { userId: opts.recipient.userId }
-        : { xlvMemberAccountId: opts.recipient.xlvMemberAccountId }),
+      xlvMemberAccountId: opts.xlvMemberAccountId,
     },
   });
 }
