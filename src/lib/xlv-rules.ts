@@ -216,7 +216,7 @@ export function classifyXlvTodayPriority(input: {
 
 export function xlvTodayReason(input: {
   priority: XlvTodayPriority;
-  alertKind: Exclude<XlvAlertKind, "all">;
+  alertKind: XlvDeviceAlertKind;
   sleepDays: number;
   assessmentDaysLeft: number | null;
 }): string {
@@ -538,12 +538,15 @@ export function isXlvOperatorNotInRoster(
   return !rosterPairs.has(xlvRosterPairKey(manager, operator));
 }
 
-export type XlvAlertKind = "all" | "single_silence" | "dormant" | "active";
+export type XlvDeviceAlertKind = "single_silence" | "dormant" | "active";
+
+/** 列表/API 筛选；`sleep` = 单笔沉默 + 沉睡（沉睡预警 Tab 默认） */
+export type XlvAlertKind = "all" | "sleep" | XlvDeviceAlertKind;
 
 export function classifyXlvAlert(device: {
   sleepDays: number;
   cumulativeTxns: number;
-}): Exclude<XlvAlertKind, "all"> {
+}): XlvDeviceAlertKind {
   if (
     device.cumulativeTxns === 1 &&
     device.sleepDays >= XLV_SLEEP_THRESHOLD_DAYS
@@ -570,20 +573,20 @@ export function isXlvActiveInProgress(device: {
 
 export const XLV_ACTIVE_IN_PROGRESS_LABEL = "正在活跃中";
 
-export const XLV_ALERT_LABELS: Record<Exclude<XlvAlertKind, "all">, string> = {
+export const XLV_ALERT_LABELS: Record<XlvDeviceAlertKind, string> = {
   single_silence: "单笔沉默",
   dormant: "沉睡",
   active: "正常",
 };
 
-export const XLV_ALERT_HINTS: Record<Exclude<XlvAlertKind, "all">, string> = {
+export const XLV_ALERT_HINTS: Record<XlvDeviceAlertKind, string> = {
   single_silence: "仅 1 笔且 ≥2 天未用",
   dormant: "≥2 天无交易（已分配）",
   active: "已分配且近期有收款",
 };
 
 export const XLV_ALERT_FILTERS: {
-  id: Exclude<XlvAlertKind, "all">;
+  id: XlvDeviceAlertKind;
   label: string;
   hint: string;
 }[] = [
@@ -602,6 +605,7 @@ export function xlvMerchantLabel(row: {
 
 export function parseXlvAlertKind(raw: string | null | undefined): XlvAlertKind {
   if (
+    raw === "sleep" ||
     raw === "single_silence" ||
     raw === "dormant" ||
     raw === "active" ||

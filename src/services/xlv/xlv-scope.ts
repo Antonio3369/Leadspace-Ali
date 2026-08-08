@@ -98,6 +98,9 @@ export function buildXlvSleepAlertWhere(): Prisma.XlvDeviceRecordWhereInput {
 export function buildXlvAlertWhere(
   alert: XlvAlertKind
 ): Prisma.XlvDeviceRecordWhereInput {
+  if (alert === "sleep") {
+    return buildXlvSleepAlertWhere();
+  }
   if (alert === "single_silence") {
     return {
       AND: [

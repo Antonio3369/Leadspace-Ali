@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { fetchJsonWithRetry } from "@/lib/fetch-json";
+import { readXlvApiCache } from "@/lib/xlv-api-cache";
+import { fetchXlvJson } from "@/lib/xlv-fetch";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
@@ -112,7 +113,16 @@ export function XlvTodayView({ role }: { role: string }) {
     if (operator) params.set("operator", operator);
     if (search) params.set("q", search);
 
-    fetchJsonWithRetry<ApiResponse>(`/api/xlv/today?${params}`, undefined, {
+    const url = `/api/xlv/today?${params}`;
+    const cached = readXlvApiCache<ApiResponse>(url);
+    if (cached && !silent) {
+      setData(cached);
+      setManagers(cached.filters?.managers ?? []);
+      setOperators(cached.filters?.operators ?? []);
+      setLoading(false);
+    }
+
+    fetchXlvJson<ApiResponse>(url, {
       context: "加载今日",
       onRetry: (attempt) => {
         if (!cancelled && !silent) {

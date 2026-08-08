@@ -3,6 +3,7 @@ import type { SessionUser } from "@/lib/permissions";
 import {
   classifyXlvAlert,
   type XlvAlertKind,
+  type XlvDeviceAlertKind,
   XLV_INVENTORY_MANAGER_LABEL,
   XLV_SLEEP_THRESHOLD_DAYS,
   isXlvUnassignedManager,
@@ -53,7 +54,7 @@ export interface XlvDeviceListItem {
   sleepDays: number;
   lastTxnDate: string | null;
   firstTxnDate: string | null;
-  alertKind: Exclude<XlvAlertKind, "all">;
+  alertKind: XlvDeviceAlertKind;
   qualificationStatus?: XlvQualificationStatus;
   qualificationGapLine?: string;
 }
@@ -174,6 +175,8 @@ export async function getXlvDashboardPageData(
   const baseWhere = buildXlvRoleWhere(user);
   const listWhere = buildXlvDeviceWhere(user, opts);
 
+  const needsFullQual = !opts.alert || opts.alert === "all";
+
   const [
     totalDevices,
     inventoryCount,
@@ -219,21 +222,32 @@ export async function getXlvDashboardPageData(
       ...(opts.limit != null ? { take: opts.limit } : {}),
       select: LIST_DEVICE_SELECT,
     }),
-    db.xlvDeviceRecord.findMany({
-      where: { AND: [baseWhere, buildXlvAssignedDeviceWhere()] },
-      select: ASSIGNED_QUAL_SELECT,
-    }),
+    needsFullQual
+      ? db.xlvDeviceRecord.findMany({
+          where: { AND: [baseWhere, buildXlvAssignedDeviceWhere()] },
+          select: ASSIGNED_QUAL_SELECT,
+        })
+      : Promise.resolve([]),
   ]);
 
   const dormant = Math.max(0, dormantAll - singleSilence);
-  const snapshotSns = [
-    ...new Set([
-      ...listRows.map((r) => r.deviceSn),
-      ...assignedRows.map((r) => r.deviceSn),
-    ]),
-  ];
+  const snapshotSns = needsFullQual
+    ? [
+        ...new Set([
+          ...listRows.map((r) => r.deviceSn),
+          ...assignedRows.map((r) => r.deviceSn),
+        ]),
+      ]
+    : listRows.map((r) => r.deviceSn);
   const snapshotMap = await loadXlvSnapshotMap(snapshotSns);
-  const qualSummary = summarizeAssignedQualification(assignedRows, snapshotMap);
+  const qualSummary = needsFullQual
+    ? summarizeAssignedQualification(assignedRows, snapshotMap)
+    : {
+        qualifiedCount: 0,
+        inProgressCount: 0,
+        invalidCount: 0,
+        active: 0,
+      };
 
   const enriched = attachXlvQualificationDetails(listRows, snapshotMap);
   let filtered = enriched;

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { fetchJsonWithRetry } from "@/lib/fetch-json";
+import { readXlvApiCache } from "@/lib/xlv-api-cache";
+import { fetchXlvJson } from "@/lib/xlv-fetch";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
@@ -12,6 +13,7 @@ import {
   XLV_INVENTORY_MANAGER_LABEL,
   XLV_QUALIFICATION_LABELS,
   type XlvAlertKind,
+  type XlvDeviceAlertKind,
   type XlvQualificationStatus,
 } from "@/lib/xlv-rules";
 import {
@@ -35,11 +37,34 @@ interface ApiResponse {
   filters: { managers: string[]; operators: string[] };
 }
 
+function enrichDashboardFromFullCache(
+  json: ApiResponse,
+  alert: XlvAlertKind
+): ApiResponse {
+  if (alert === "all") return json;
+  const full = readXlvApiCache<ApiResponse>("/api/xlv/dashboard");
+  if (!full?.summary) return json;
+  return {
+    ...json,
+    summary: {
+      ...json.summary,
+      qualifiedCount: full.summary.qualifiedCount,
+      inProgressCount: full.summary.inProgressCount,
+      invalidCount: full.summary.invalidCount,
+      active: full.summary.active,
+    },
+  };
+}
+
 export function XlvDashboardView({ role }: { role: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const alert = parseXlvAlertKind(searchParams.get("alert"));
+  const isAlertsHome = pathname.endsWith("/alerts");
+  const hasQuery = searchParams.toString().length > 0;
+  const alert = parseXlvAlertKind(
+    searchParams.get("alert") ?? (isAlertsHome && !hasQuery ? "sleep" : null)
+  );
   const rawStatus = parseXlvQualificationStatus(searchParams.get("status"));
   const status =
     alert !== "all"
@@ -90,9 +115,6 @@ export function XlvDashboardView({ role }: { role: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError("");
-    setRetryLabel("");
     const params = new URLSearchParams();
     if (alert !== "all") params.set("alert", alert);
     if (status && alert === "all") params.set("status", status);
@@ -100,22 +122,33 @@ export function XlvDashboardView({ role }: { role: string }) {
     if (operator) params.set("operator", operator);
     if (search) params.set("q", search);
 
-    fetchJsonWithRetry<ApiResponse>(`/api/xlv/dashboard?${params.toString()}`, undefined, {
+    const url = `/api/xlv/dashboard?${params.toString()}`;
+    const cached = readXlvApiCache<ApiResponse>(url);
+    if (cached) {
+      setData(enrichDashboardFromFullCache(cached, alert));
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setError("");
+      setRetryLabel("");
+    }
+
+    fetchXlvJson<ApiResponse>(url, {
       context: "加载看板",
       onRetry: (attempt) => {
-        if (!cancelled) {
+        if (!cancelled && !cached) {
           setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
         }
       },
     })
       .then((json) => {
         if (!cancelled) {
-          setData(json);
+          setData(enrichDashboardFromFullCache(json, alert));
           setRetryLabel("");
         }
       })
       .catch((err) => {
-        if (!cancelled) {
+        if (!cancelled && !cached) {
           setError(err instanceof Error ? err.message : "加载失败");
           setRetryLabel("");
         }
@@ -186,7 +219,7 @@ export function XlvDashboardView({ role }: { role: string }) {
 
   /** 五张卡片全局单选：预警与考核互斥，再点同项取消 */
   function selectShortcutFilter(
-    id: Exclude<XlvAlertKind, "all"> | XlvQualificationStatus
+    id: XlvDeviceAlertKind | XlvQualificationStatus
   ) {
     const isAlert =
       id === "single_silence" || id === "dormant" || id === "active";

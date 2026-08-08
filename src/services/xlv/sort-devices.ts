@@ -36,7 +36,13 @@ export function resolveXlvDeviceSortMode(opts: {
 }): XlvDeviceSortMode {
   if (opts.qualificationStatus) return "qualification";
   if (opts.alert === "active") return "active";
-  if (opts.alert === "single_silence" || opts.alert === "dormant") return "risk";
+  if (
+    opts.alert === "sleep" ||
+    opts.alert === "single_silence" ||
+    opts.alert === "dormant"
+  ) {
+    return "risk";
+  }
   if (opts.search?.trim()) return "browse";
   return "browse";
 }
