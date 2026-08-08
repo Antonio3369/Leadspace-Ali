@@ -178,11 +178,9 @@ export function XlvDeviceCardList({
                       d.qualificationStatus !== "qualified" ? (
                         <p
                           className={
-                            d.qualificationStatus === "qualified"
-                              ? "text-emerald-700"
-                              : d.qualificationStatus === "invalid"
-                                ? "text-slate-500"
-                                : "text-sky-700"
+                            d.qualificationStatus === "invalid"
+                              ? "text-slate-500"
+                              : "text-sky-700"
                           }
                         >
                           考核：{d.qualificationGapLine}
