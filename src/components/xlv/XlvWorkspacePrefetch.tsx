@@ -3,9 +3,9 @@
 import { useEffect, useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { isXlvPath } from "@/lib/business-lines";
-import { prefetchXlvApisSequential } from "@/lib/xlv-api-cache";
+import { hasXlvApiInFlightPrefix, prefetchXlvApi } from "@/lib/xlv-api-cache";
 
-/** 在小绿盒工作区内串行预取 Tab 对端 + 团队看板，避免切换时并发打爆服务端 */
+/** 空闲时仅预取团队看板，不叠加 summary/对端 Tab，避免与首屏重接口并发 */
 export function XlvWorkspacePrefetch({
   role,
   managerKey,
@@ -25,20 +25,17 @@ export function XlvWorkspacePrefetch({
 
   useEffect(() => {
     if (!isXlvPath(pathname)) return;
-    if (pathname.endsWith("/board")) return;
-
-    const isAlerts = pathname.endsWith("/alerts");
-    const peerTab = isAlerts
-      ? `/api/xlv/today`
-      : `/api/xlv/dashboard/devices?alert=sleep`;
-
-    const urls = [`/api/xlv/dashboard/summary`];
-    if (boardUrl) urls.push(boardUrl);
-    urls.push(peerTab);
+    if (pathname.endsWith("/board") || !boardUrl) return;
 
     const timer = window.setTimeout(() => {
-      prefetchXlvApisSequential(urls);
-    }, 400);
+      if (
+        hasXlvApiInFlightPrefix("/api/xlv/today") ||
+        hasXlvApiInFlightPrefix("/api/xlv/dashboard/devices")
+      ) {
+        return;
+      }
+      prefetchXlvApi(boardUrl);
+    }, 6000);
 
     return () => window.clearTimeout(timer);
   }, [pathname, boardUrl]);

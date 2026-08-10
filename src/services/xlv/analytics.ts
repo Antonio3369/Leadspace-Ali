@@ -25,6 +25,7 @@ import {
 } from "@/services/xlv/assessment";
 import { syncXlvQualificationStatuses } from "@/services/xlv/recompute-qualification";
 import { countXlvQualificationSummary } from "@/services/xlv/recompute-qualification";
+import { withXlvHeavyGate } from "@/services/xlv/xlv-heavy-gate";
 import {
   resolveXlvDeviceSortMode,
   sortXlvDevices,
@@ -245,6 +246,20 @@ export async function getXlvDashboardDevicesPage(
   devices: XlvDeviceListItem[];
   hasMore: boolean;
 }> {
+  return withXlvHeavyGate(() => loadXlvDashboardDevicesPage(user, opts));
+}
+
+async function loadXlvDashboardDevicesPage(
+  user: SessionUser,
+  opts: XlvDashboardListOpts & {
+    offset?: number;
+    limit?: number;
+  }
+): Promise<{
+  total: number;
+  devices: XlvDeviceListItem[];
+  hasMore: boolean;
+}> {
   assertCanViewXlv(user);
   const offset = Math.max(0, opts.offset ?? 0);
   const limit = opts.limit ?? XLV_DASHBOARD_PAGE_SIZE;
@@ -355,13 +370,26 @@ export async function getXlvFilterOptions(
 ) {
   assertCanViewXlv(user);
   const where = buildXlvRoleWhere(user);
-  const rows = await db.xlvDeviceRecord.findMany({
-    where,
-    select: { managerName: true, operatorName: true, managerUserId: true },
-  });
+  const managerFilter = opts?.managerName?.trim();
+
+  const [managerGroups, operatorGroups] = await Promise.all([
+    db.xlvDeviceRecord.groupBy({
+      by: ["managerName", "managerUserId"],
+      where,
+      _count: { _all: true },
+    }),
+    db.xlvDeviceRecord.groupBy({
+      by: ["operatorName"],
+      where: managerFilter
+        ? { AND: [where, { managerName: managerFilter }] }
+        : where,
+      _count: { _all: true },
+    }),
+  ]);
+
   const managers = [
     ...new Set(
-      rows.map((r) =>
+      managerGroups.map((r) =>
         isXlvUnassignedManager(r) ? XLV_INVENTORY_MANAGER_LABEL : r.managerName
       )
     ),
@@ -373,12 +401,8 @@ export async function getXlvFilterOptions(
       return a.localeCompare(b, "zh-CN");
     });
 
-  const managerFilter = opts?.managerName?.trim();
-  const scopedRows = managerFilter
-    ? rows.filter((r) => r.managerName === managerFilter)
-    : rows;
   const operators = [
-    ...new Set(scopedRows.map((r) => r.operatorName).filter(Boolean)),
+    ...new Set(operatorGroups.map((r) => r.operatorName).filter(Boolean)),
   ].sort();
 
   return { managers, operators };

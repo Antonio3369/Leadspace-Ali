@@ -41,29 +41,36 @@ export async function loadXlvSnapshotMap(deviceSns: string[]) {
 /** 进程内串行加载快照，避免 Tab 切换时多请求并发把容器打 OOM */
 let snapshotLoadGate: Promise<unknown> = Promise.resolve();
 
+const SNAPSHOT_DEVICE_BATCH = 80;
+
 async function loadXlvSnapshotMapSerial(deviceSns: string[]) {
   const run = async () => {
-    const rows = await db.xlvDeviceSnapshot.findMany({
-      where: { deviceSn: { in: deviceSns } },
-      select: {
-        deviceSn: true,
-        statDate: true,
-        cumulativeUsers: true,
-        cumulativeTxns: true,
-        dailyUsers: true,
-        dailyTxns: true,
-        sleepDays: true,
-        lastTxnDate: true,
-      },
-      orderBy: [{ deviceSn: "asc" }, { statDate: "asc" }],
-    });
-
     const map = new Map<string, XlvSnapshotRow[]>();
-    for (const row of rows) {
-      const list = map.get(row.deviceSn) ?? [];
-      list.push(row);
-      map.set(row.deviceSn, list);
+
+    for (let i = 0; i < deviceSns.length; i += SNAPSHOT_DEVICE_BATCH) {
+      const chunk = deviceSns.slice(i, i + SNAPSHOT_DEVICE_BATCH);
+      const rows = await db.xlvDeviceSnapshot.findMany({
+        where: { deviceSn: { in: chunk } },
+        select: {
+          deviceSn: true,
+          statDate: true,
+          cumulativeUsers: true,
+          cumulativeTxns: true,
+          dailyUsers: true,
+          dailyTxns: true,
+          sleepDays: true,
+          lastTxnDate: true,
+        },
+        orderBy: [{ deviceSn: "asc" }, { statDate: "asc" }],
+      });
+
+      for (const row of rows) {
+        const list = map.get(row.deviceSn) ?? [];
+        list.push(row);
+        map.set(row.deviceSn, list);
+      }
     }
+
     for (const [deviceSn, list] of map) {
       map.set(
         deviceSn,

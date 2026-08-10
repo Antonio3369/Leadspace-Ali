@@ -32,6 +32,13 @@ export function isXlvApiInFlight(url: string) {
   return inFlight.has(xlvApiCacheKey(url));
 }
 
+export function hasXlvApiInFlightPrefix(prefix: string) {
+  for (const key of inFlight.keys()) {
+    if (key.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
 export function cacheAgeMs(url: string) {
   const hit = cache.get(xlvApiCacheKey(url));
   if (!hit) return null;

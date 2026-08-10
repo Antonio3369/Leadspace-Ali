@@ -23,6 +23,8 @@ import {
   loadXlvSnapshotMap,
 } from "@/services/xlv/assessment";
 import { sortXlvDevices } from "@/services/xlv/sort-devices";
+import { withXlvBoardCache } from "./board-cache";
+import { withXlvHeavyGate } from "./xlv-heavy-gate";
 
 export const XLV_TODAY_LIST_CAP = 40;
 
@@ -158,6 +160,28 @@ function buildTodayCandidateWhere(
 }
 
 export async function getXlvTodayQueues(
+  user: SessionUser,
+  opts?: {
+    managerName?: string | null;
+    operatorName?: string | null;
+    search?: string | null;
+  }
+) {
+  const cacheKey = [
+    "today",
+    user.id,
+    user.role,
+    opts?.managerName ?? "",
+    opts?.operatorName ?? "",
+    opts?.search ?? "",
+  ].join(":");
+
+  return withXlvBoardCache(cacheKey, () =>
+    withXlvHeavyGate(() => loadXlvTodayQueues(user, opts))
+  );
+}
+
+async function loadXlvTodayQueues(
   user: SessionUser,
   opts?: {
     managerName?: string | null;

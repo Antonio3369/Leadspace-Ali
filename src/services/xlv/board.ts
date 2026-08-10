@@ -30,6 +30,7 @@ import { sortXlvDevices } from "./sort-devices";
 import { enrichXlvSnapshotDailyMetrics, buildXlvTxnActivityTrend } from "./snapshot-daily";
 import { normalizeXlvStatDate } from "@/lib/xlv-stat-date";
 import { withXlvBoardCache } from "./board-cache";
+import { withXlvHeavyGate } from "./xlv-heavy-gate";
 
 function isoDate(d: Date | null | undefined) {
   return d ? d.toISOString().slice(0, 10) : null;
@@ -184,7 +185,8 @@ async function aggregateBoardDevices(
 }
 
 export async function getXlvManagerBoard(user: SessionUser) {
-  return withXlvBoardCache(`mgr:${user.id}:${user.role}`, async () => {
+  return withXlvBoardCache(`mgr:${user.id}:${user.role}`, () =>
+    withXlvHeavyGate(async () => {
     const roleWhere = buildXlvRoleWhere(user);
     const { rows, summary } = await aggregateBoardDevices(
       roleWhere,
@@ -202,7 +204,8 @@ export async function getXlvManagerBoard(user: SessionUser) {
         ...summary,
       },
     };
-  });
+    })
+  );
 }
 
 export async function getXlvStaffBoard(
@@ -211,7 +214,8 @@ export async function getXlvStaffBoard(
 ) {
   return withXlvBoardCache(
     `staff:${user.id}:${opts.managerKey}`,
-    async () => {
+    () =>
+      withXlvHeavyGate(async () => {
       assertManagerOwnsXlvKey(user, opts.managerKey);
       const managerWhere = await buildXlvManagerDeviceWhere(opts.managerKey);
       const roleWhere = buildXlvRoleWhere(user);
@@ -254,7 +258,7 @@ export async function getXlvStaffBoard(
           ...summary,
         },
       };
-    }
+      })
   );
 }
 
