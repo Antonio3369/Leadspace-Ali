@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import type { SessionUser } from "@/lib/permissions";
 import {
@@ -28,6 +29,7 @@ import {
 import { sortXlvDevices } from "./sort-devices";
 import { enrichXlvSnapshotDailyMetrics, buildXlvTxnActivityTrend } from "./snapshot-daily";
 import { normalizeXlvStatDate } from "@/lib/xlv-stat-date";
+import { withXlvBoardCache } from "./board-cache";
 
 function isoDate(d: Date | null | undefined) {
   return d ? d.toISOString().slice(0, 10) : null;
@@ -45,54 +47,36 @@ export type XlvBoardRow = {
   singleSilenceCount: number;
 };
 
-function tallyDevices(
-  devices: {
-    deviceSn: string;
-    managerUserId: string | null;
-    managerName: string;
-    salesUserId: string | null;
-    operatorName: string;
-    sleepDays: number;
-    cumulativeTxns: number;
-    cumulativeUsers: number;
-    firstTxnDate: Date | null;
-    qualificationStatus: XlvQualificationStatus;
-  }[],
-  keyFn: (d: (typeof devices)[0]) => string,
-  nameFn: (d: (typeof devices)[0]) => string,
-  userIdFn: (d: (typeof devices)[0]) => string | null
-): XlvBoardRow[] {
-  const map = new Map<string, XlvBoardRow>();
+const BOARD_DEVICE_SELECT = {
+  deviceSn: true,
+  managerUserId: true,
+  managerName: true,
+  salesUserId: true,
+  operatorName: true,
+  sleepDays: true,
+  cumulativeTxns: true,
+  cumulativeUsers: true,
+  firstTxnDate: true,
+  qualificationStatus: true,
+} as const;
 
-  for (const d of devices) {
-    const key = keyFn(d);
-    let row = map.get(key);
-    if (!row) {
-      row = {
-        key,
-        name: nameFn(d),
-        userId: userIdFn(d),
-        deviceCount: 0,
-        qualifiedCount: 0,
-        inProgressCount: 0,
-        invalidCount: 0,
-        dormantCount: 0,
-        singleSilenceCount: 0,
-      };
-      map.set(key, row);
-    }
-    row.deviceCount += 1;
-    if (!isXlvUnassignedManager(d)) {
-      if (d.qualificationStatus === "qualified") row.qualifiedCount += 1;
-      if (d.qualificationStatus === "in_progress") row.inProgressCount += 1;
-      if (d.qualificationStatus === "invalid") row.invalidCount += 1;
-    }
-    const alert = xlvEffectiveAlertKind(d);
-    if (alert === "dormant") row.dormantCount += 1;
-    if (alert === "single_silence") row.singleSilenceCount += 1;
-  }
+type BoardDeviceRow = {
+  deviceSn: string;
+  managerUserId: string | null;
+  managerName: string;
+  salesUserId: string | null;
+  operatorName: string;
+  sleepDays: number;
+  cumulativeTxns: number;
+  cumulativeUsers: number;
+  firstTxnDate: Date | null;
+  qualificationStatus: XlvQualificationStatus;
+};
 
-  return [...map.values()].sort((a, b) => {
+const BOARD_BATCH_SIZE = 800;
+
+function sortBoardRows(rows: XlvBoardRow[]) {
+  return rows.sort((a, b) => {
     const aInv = isXlvInventoryManagerKey(a.key);
     const bInv = isXlvInventoryManagerKey(b.key);
     if (aInv !== bInv) return aInv ? 1 : -1;
@@ -105,139 +89,173 @@ function tallyDevices(
   });
 }
 
-function boardSummaryStats(
-  devices: {
-    managerUserId: string | null;
-    managerName: string;
-    qualificationStatus: XlvQualificationStatus;
-  }[]
+function addDeviceToBoardMap(
+  map: Map<string, XlvBoardRow>,
+  d: BoardDeviceRow,
+  keyFn: (d: BoardDeviceRow) => string,
+  nameFn: (d: BoardDeviceRow) => string,
+  userIdFn: (d: BoardDeviceRow) => string | null
 ) {
+  const key = keyFn(d);
+  let row = map.get(key);
+  if (!row) {
+    row = {
+      key,
+      name: nameFn(d),
+      userId: userIdFn(d),
+      deviceCount: 0,
+      qualifiedCount: 0,
+      inProgressCount: 0,
+      invalidCount: 0,
+      dormantCount: 0,
+      singleSilenceCount: 0,
+    };
+    map.set(key, row);
+  }
+  row.deviceCount += 1;
+  if (!isXlvUnassignedManager(d)) {
+    if (d.qualificationStatus === "qualified") row.qualifiedCount += 1;
+    if (d.qualificationStatus === "in_progress") row.inProgressCount += 1;
+    if (d.qualificationStatus === "invalid") row.invalidCount += 1;
+  }
+  const alert = xlvEffectiveAlertKind(d);
+  if (alert === "dormant") row.dormantCount += 1;
+  if (alert === "single_silence") row.singleSilenceCount += 1;
+}
+
+async function aggregateBoardDevices(
+  where: Prisma.XlvDeviceRecordWhereInput,
+  keyFn: (d: BoardDeviceRow) => string,
+  nameFn: (d: BoardDeviceRow) => string,
+  userIdFn: (d: BoardDeviceRow) => string | null
+) {
+  const map = new Map<string, XlvBoardRow>();
+  let deviceCount = 0;
   let inventoryCount = 0;
   let qualifiedCount = 0;
   let inProgressCount = 0;
   let invalidCount = 0;
+  let cursor: string | undefined;
 
-  for (const d of devices) {
-    if (isXlvUnassignedManager(d)) {
-      inventoryCount += 1;
-      continue;
+  for (;;) {
+    const batch = await db.xlvDeviceRecord.findMany({
+      where,
+      select: BOARD_DEVICE_SELECT,
+      take: BOARD_BATCH_SIZE,
+      orderBy: { deviceSn: "asc" },
+      ...(cursor ? { skip: 1, cursor: { deviceSn: cursor } } : {}),
+    });
+    if (batch.length === 0) break;
+
+    for (const d of batch) {
+      addDeviceToBoardMap(map, d, keyFn, nameFn, userIdFn);
+      deviceCount += 1;
+      if (isXlvUnassignedManager(d)) {
+        inventoryCount += 1;
+        continue;
+      }
+      if (d.qualificationStatus === "qualified") qualifiedCount += 1;
+      else if (d.qualificationStatus === "in_progress") inProgressCount += 1;
+      else if (d.qualificationStatus === "invalid") invalidCount += 1;
     }
-    if (d.qualificationStatus === "qualified") qualifiedCount += 1;
-    else if (d.qualificationStatus === "in_progress") inProgressCount += 1;
-    else if (d.qualificationStatus === "invalid") invalidCount += 1;
+
+    cursor = batch[batch.length - 1]!.deviceSn;
+    if (batch.length < BOARD_BATCH_SIZE) break;
   }
 
-  const deployedCount = devices.length - inventoryCount;
+  const deployedCount = deviceCount - inventoryCount;
   const qualifyRate =
     deployedCount > 0
       ? Math.round((qualifiedCount / deployedCount) * 1000) / 10
       : 0;
 
   return {
-    deviceCount: devices.length,
-    deployedCount,
-    inventoryCount,
-    qualifiedCount,
-    inProgressCount,
-    invalidCount,
-    qualifyRate,
+    rows: sortBoardRows([...map.values()]),
+    summary: {
+      deviceCount,
+      deployedCount,
+      inventoryCount,
+      qualifiedCount,
+      inProgressCount,
+      invalidCount,
+      qualifyRate,
+    },
   };
 }
 
 export async function getXlvManagerBoard(user: SessionUser) {
-  const roleWhere = buildXlvRoleWhere(user);
-  const devices = await db.xlvDeviceRecord.findMany({
-    where: roleWhere,
-    select: {
-      deviceSn: true,
-      managerUserId: true,
-      managerName: true,
-      salesUserId: true,
-      operatorName: true,
-      sleepDays: true,
-      cumulativeTxns: true,
-      cumulativeUsers: true,
-      firstTxnDate: true,
-      qualificationStatus: true,
-    },
+  return withXlvBoardCache(`mgr:${user.id}:${user.role}`, async () => {
+    const roleWhere = buildXlvRoleWhere(user);
+    const { rows, summary } = await aggregateBoardDevices(
+      roleWhere,
+      (d) => xlvManagerKeyOf(d),
+      (d) => xlvManagerDisplayName(d.managerName),
+      (d) => d.managerUserId
+    );
+
+    const filteredRows = rows.filter((r) => !isXlvInventoryManagerKey(r.key));
+
+    return {
+      rows: filteredRows,
+      summary: {
+        managerCount: filteredRows.length,
+        ...summary,
+      },
+    };
   });
-
-  const rows = tallyDevices(
-    devices,
-    (d) => xlvManagerKeyOf(d),
-    (d) => xlvManagerDisplayName(d.managerName),
-    (d) => d.managerUserId
-  ).filter((r) => !isXlvInventoryManagerKey(r.key));
-
-  const stats = boardSummaryStats(devices);
-
-  return {
-    rows,
-    summary: {
-      managerCount: rows.length,
-      ...stats,
-    },
-  };
 }
 
 export async function getXlvStaffBoard(
   user: SessionUser,
   opts: { managerKey: string }
 ) {
-  assertManagerOwnsXlvKey(user, opts.managerKey);
-  const managerWhere = await buildXlvManagerDeviceWhere(opts.managerKey);
-  const roleWhere = buildXlvRoleWhere(user);
+  return withXlvBoardCache(
+    `staff:${user.id}:${opts.managerKey}`,
+    async () => {
+      assertManagerOwnsXlvKey(user, opts.managerKey);
+      const managerWhere = await buildXlvManagerDeviceWhere(opts.managerKey);
+      const roleWhere = buildXlvRoleWhere(user);
 
-  const devices = await db.xlvDeviceRecord.findMany({
-    where: { AND: [roleWhere, managerWhere] },
-    select: {
-      deviceSn: true,
-      managerUserId: true,
-      managerName: true,
-      salesUserId: true,
-      operatorName: true,
-      sleepDays: true,
-      cumulativeTxns: true,
-      cumulativeUsers: true,
-      firstTxnDate: true,
-      qualificationStatus: true,
-    },
-  });
+      const { rows, summary } = await aggregateBoardDevices(
+        { AND: [roleWhere, managerWhere] },
+        (d) => xlvStaffKeyOf(d),
+        (d) => d.operatorName || "未分配",
+        (d) => d.salesUserId
+      );
 
-  const rows = tallyDevices(
-    devices,
-    (d) => xlvStaffKeyOf(d),
-    (d) => d.operatorName || "未分配",
-    (d) => d.salesUserId
-  );
-
-  const managerUser = opts.managerKey.startsWith("name:")
-    ? null
-    : await db.user.findUnique({
-        where: { id: opts.managerKey },
-        select: { id: true, name: true },
+      const sample = await db.xlvDeviceRecord.findFirst({
+        where: { AND: [roleWhere, managerWhere] },
+        select: { managerName: true, managerUserId: true },
+        orderBy: { updatedAt: "desc" },
       });
 
-  const managerName = isXlvInventoryManagerKey(opts.managerKey)
-    ? xlvManagerDisplayName("")
-    : devices[0]?.managerName?.trim() ||
-      managerUser?.name ||
-      opts.managerKey.slice(5);
+      const managerUser = opts.managerKey.startsWith("name:")
+        ? null
+        : await db.user.findUnique({
+            where: { id: opts.managerKey },
+            select: { id: true, name: true },
+          });
 
-  const stats = boardSummaryStats(devices);
+      const managerName = isXlvInventoryManagerKey(opts.managerKey)
+        ? xlvManagerDisplayName("")
+        : sample?.managerName?.trim() ||
+          managerUser?.name ||
+          opts.managerKey.slice(5);
 
-  return {
-    manager: {
-      key: opts.managerKey,
-      name: managerName,
-      userId: managerUser?.id ?? devices[0]?.managerUserId ?? null,
-    },
-    rows,
-    summary: {
-      staffCount: rows.length,
-      ...stats,
-    },
-  };
+      return {
+        manager: {
+          key: opts.managerKey,
+          name: managerName,
+          userId: managerUser?.id ?? sample?.managerUserId ?? null,
+        },
+        rows,
+        summary: {
+          staffCount: rows.length,
+          ...summary,
+        },
+      };
+    }
+  );
 }
 
 export async function getXlvStaffDevices(

@@ -10,6 +10,7 @@ import {
 import { importPersonnelFromBuffer } from "@/services/import/personnel-importer";
 import { importN7ExcelFile } from "@/services/import/n7-excel-importer";
 import { importXlvExcelFileFromPath } from "@/services/import/xlv-excel-importer";
+import { invalidateXlvBoardCache } from "@/services/xlv/board-cache";
 import { importExcelFile } from "@/services/import/excel-importer";
 
 export type HeavyImportKind = "personnel" | "n7" | "xlh-excel" | "xlv";
@@ -182,7 +183,10 @@ async function runHeavyImportJob(jobId: string) {
       );
       result = xlv;
       if (xlv.status === "FAILED") finalStatus = "FAILED";
-      else if (xlv.status === "PARTIAL") finalStatus = "PARTIAL";
+      else {
+        if (xlv.status === "PARTIAL") finalStatus = "PARTIAL";
+        invalidateXlvBoardCache();
+      }
     } else {
       throw new Error(`未知导入类型: ${job.kind}`);
     }

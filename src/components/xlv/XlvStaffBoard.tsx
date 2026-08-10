@@ -80,22 +80,27 @@ export function XlvStaffBoard({
       setError("");
     }
 
-    fetchXlvJson<ApiResponse>(url, {
-      context: "加载队员",
-      maxAttempts: 3,
-      retryDelayMs: 800,
-    })
-      .then((json) => {
-        if (!cancelled) setData(json);
+    const delayMs = cached ? 0 : 200;
+    const startTimer = window.setTimeout(() => {
+      fetchXlvJson<ApiResponse>(url, {
+        context: "加载队员",
+        maxAttempts: 3,
+        retryDelayMs: 800,
       })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+        .then((json) => {
+          if (!cancelled) setData(json);
+        })
+        .catch((err) => {
+          if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, delayMs);
+
     return () => {
       cancelled = true;
+      window.clearTimeout(startTimer);
     };
   }, [managerKey]);
 
