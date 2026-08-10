@@ -5,6 +5,7 @@ import { readResponseJson } from "@/lib/fetch-json";
 const TRANSIENT_HTTP = new Set([502, 503, 504]);
 const POLL_INTERVAL_MS = 2000;
 const MAX_WAIT_MS = 15 * 60 * 1000;
+const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
 
 function jobStorageKey(endpoint: string) {
   return `leadspace-import-job:${endpoint}`;
@@ -38,10 +39,20 @@ export async function uploadImportWithJobPoll<T>(
       method: "POST",
       body: formData,
       credentials: "same-origin",
-      signal: AbortSignal.timeout(5 * 60 * 1000),
+      signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
     });
-  } catch {
-    throw new Error("上传时网络中断，请检查网络后重试。");
+  } catch (err) {
+    const isTimeout =
+      err instanceof Error &&
+      (err.name === "TimeoutError" || err.name === "AbortError");
+    if (isTimeout) {
+      throw new Error(
+        "上传等待超时（大表上传较慢）。请保持页面打开、网络稳定后重试；若进度条曾出现「后台导入中」，刷新页面查看是否已在导入。"
+      );
+    }
+    throw new Error(
+      "上传时网络中断，请检查网络后重试。若刚部署过服务，请等待 1 分钟再传。"
+    );
   }
 
   let uploadJson: {
@@ -73,7 +84,7 @@ export async function uploadImportWithJobPoll<T>(
     }
     const fallback =
       uploadRes.status === 413
-        ? "上传文件过大或传输中断，请确认文件小于 60MB 后重试。"
+        ? "上传文件过大或传输中断，请确认文件小于 100MB 后重试。"
         : uploadRes.status === 429
           ? "当前已有导入任务在执行，请等完成后再试。"
           : uploadRes.status >= 500

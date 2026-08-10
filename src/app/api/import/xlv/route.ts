@@ -3,8 +3,8 @@ import { auth } from "@/lib/auth";
 import { canImportExcel, canLogin } from "@/lib/permissions";
 import { enqueueHeavyImport } from "@/services/import/heavy-import-job";
 
-/** 接收文件后尽快返回 jobId，实际导入在后台执行 */
-export const maxDuration = 120;
+/** 接收文件后尽快返回 jobId，实际导入在后台执行（大表上传+落盘可能需数分钟） */
+export const maxDuration = 600;
 
 export const POST = auth(async (request) => {
   try {
@@ -27,7 +27,7 @@ export const POST = auth(async (request) => {
       return NextResponse.json(
         {
           error:
-            "上传文件过大或传输中断，请确认文件小于 60MB 后重试。",
+            "上传文件过大或传输中断，请确认文件小于 100MB 后重试。",
         },
         { status: 413 }
       );
@@ -70,7 +70,7 @@ export const POST = auth(async (request) => {
       return NextResponse.json(
         {
           error:
-            "上传文件过大或传输中断，请确认文件小于 60MB 后重试。",
+            "上传文件过大或传输中断，请确认文件小于 100MB 后重试。",
         },
         { status: 413 }
       );

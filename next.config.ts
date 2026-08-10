@@ -2,11 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  // N7 考核表可达 20MB+；默认 proxy 体积极限约 10MB 会导致 FormData 解析失败
+  // N7 / 小绿盒运营原始表可达数十 MB；须与 nginx client_max_body_size 对齐
   experimental: {
-    proxyClientMaxBodySize: "64mb",
+    proxyClientMaxBodySize: "100mb",
     serverActions: {
-      bodySizeLimit: "64mb",
+      bodySizeLimit: "100mb",
     },
   },
   async redirects() {
