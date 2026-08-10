@@ -65,11 +65,26 @@ export function XlvFollowUpCloseForm({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [brokenPhotos, setBrokenPhotos] = useState<Set<string>>(() => new Set());
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
 
+  function markPhotoBroken(path: string) {
+    setBrokenPhotos((prev) => {
+      if (prev.has(path)) return prev;
+      const next = new Set(prev);
+      next.add(path);
+      return next;
+    });
+  }
+
   const lightbox = previewSrc ? (
-    <N7PhotoLightbox src={previewSrc} onClose={() => setPreviewSrc(null)} />
+    <N7PhotoLightbox
+      src={previewSrc}
+      alt="跟进图"
+      title="跟进图"
+      onClose={() => setPreviewSrc(null)}
+    />
   ) : null;
 
   function toggleFlag(flag: XlvFollowUpFlag) {
@@ -176,22 +191,37 @@ export function XlvFollowUpCloseForm({
           ) : null}
         </div>
         {initialPhotos.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {initialPhotos.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPreviewSrc(xlvFollowUpPhotoSrc(p))}
-                className="block h-20 w-20 sm:h-16 sm:w-16 overflow-hidden rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-0"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={xlvFollowUpPhotoSrc(p)}
-                  alt="跟进图"
-                  className="h-full w-full object-cover"
-                />
-              </button>
-            ))}
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {initialPhotos.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPreviewSrc(xlvFollowUpPhotoSrc(p))}
+                  disabled={brokenPhotos.has(p)}
+                  className="block h-20 w-20 sm:h-16 sm:w-16 overflow-hidden rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-0"
+                >
+                  {brokenPhotos.has(p) ? (
+                    <span className="flex h-full w-full items-center justify-center px-1 text-center text-[0.6rem] leading-tight text-[#94a3b8]">
+                      图片不可用
+                    </span>
+                  ) : (
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={xlvFollowUpPhotoSrc(p)}
+                      alt="跟进图"
+                      className="h-full w-full object-cover"
+                      onError={() => markPhotoBroken(p)}
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
+            {brokenPhotos.size > 0 ? (
+              <p className="text-xs text-amber-800">
+                部分跟进图文件已丢失（多为历史部署未持久化），请点「改回待回访」后重新上传。
+              </p>
+            ) : null}
           </div>
         )}
         <NotionButton
@@ -292,6 +322,7 @@ export function XlvFollowUpCloseForm({
                   src={xlvFollowUpPhotoSrc(p)}
                   alt=""
                   className="h-full w-full object-cover"
+                  onError={() => markPhotoBroken(p)}
                 />
               </button>
               <button

@@ -6,12 +6,15 @@ import { useEffect } from "react";
 export function N7PhotoLightbox({
   src,
   alt = "现场图",
+  title,
   onClose,
 }: {
   src: string;
   alt?: string;
+  title?: string;
   onClose: () => void;
 }) {
+  const heading = title ?? alt;
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -36,12 +39,12 @@ export function N7PhotoLightbox({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="现场图预览"
+        aria-label={`${heading}预览`}
         className="relative z-[101] flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-[#eef2f7] px-4 py-3">
-          <p className="text-sm font-medium text-[#111827]">现场图</p>
+          <p className="text-sm font-medium text-[#111827]">{heading}</p>
           <button
             type="button"
             aria-label="关闭"

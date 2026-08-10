@@ -247,7 +247,11 @@ export function XlvDeviceCardList({
                     ) : null}
                   </div>
 
-                  <div className="shrink-0 text-right min-w-[4.5rem]">
+                  <div
+                    className={`shrink-0 min-w-[4.75rem] ${
+                      showFollowUpStatus ? "flex flex-col items-center" : "text-right"
+                    }`}
+                  >
                     {showFollowUpStatus && "followUpDone" in d ? (
                       <XlvFollowUpStatusCell
                         deviceSn={d.deviceSn}
