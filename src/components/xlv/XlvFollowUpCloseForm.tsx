@@ -206,7 +206,7 @@ export function XlvFollowUpCloseForm({
                       图片不可用
                     </span>
                   ) : (
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={xlvFollowUpPhotoSrc(p)}
                       alt="跟进图"
