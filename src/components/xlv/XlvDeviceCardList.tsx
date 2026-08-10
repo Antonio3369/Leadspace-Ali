@@ -79,7 +79,7 @@ export function XlvDeviceCardList({
   activeShortcut?: XlvDashboardShortcutFilter | null;
   showFollowUpStatus?: boolean;
 }) {
-  const hideAlertBadge = Boolean(activeShortcut && isAlertShortcut(activeShortcut));
+  const hideAlertBadge = Boolean(activeShortcut);
   const hideQualificationBadge = Boolean(
     activeShortcut && !isAlertShortcut(activeShortcut)
   );

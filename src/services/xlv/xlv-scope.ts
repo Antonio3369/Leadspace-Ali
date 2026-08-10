@@ -191,7 +191,17 @@ export function buildXlvDeviceWhere(
   }
 
   if (opts?.qualificationStatus) {
-    parts.push({ qualificationStatus: opts.qualificationStatus });
+    if (opts.qualificationStatus === "in_progress") {
+      parts.push({
+        AND: [
+          { qualificationStatus: "in_progress" },
+          { sleepDays: { lt: XLV_SLEEP_THRESHOLD_DAYS } },
+          buildXlvAssignedDeviceWhere(),
+        ],
+      });
+    } else {
+      parts.push({ qualificationStatus: opts.qualificationStatus });
+    }
   }
 
   if (opts?.alert === "active") {

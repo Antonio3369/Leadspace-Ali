@@ -21,6 +21,7 @@ import {
 import type { XlvDeviceListItem } from "@/services/xlv/analytics";
 import {
   XLV_SLEEP_ALERT_FILTERS,
+  isXlvQualificationInProgressActive,
   parseXlvAlertKind,
   parseXlvQualificationStatus,
   xlvEffectiveAlertKind,
@@ -133,7 +134,7 @@ export function XlvStaffDevicesView({
   const filtered = (data?.devices ?? []).filter((d) => {
     if (status === "qualified") return d.qualificationStatus === "qualified";
     if (status === "invalid") return d.qualificationStatus === "invalid";
-    if (status === "in_progress") return d.qualificationStatus === "in_progress";
+    if (status === "in_progress") return isXlvQualificationInProgressActive(d);
     if (alert !== "all") return xlvEffectiveAlertKind(d) === alert;
     return true;
   });
@@ -146,7 +147,7 @@ export function XlvStaffDevicesView({
     all: allDevices.length,
     qualified: allDevices.filter((d) => d.qualificationStatus === "qualified")
       .length,
-    in_progress: allDevices.filter((d) => d.qualificationStatus === "in_progress")
+    in_progress: allDevices.filter((d) => isXlvQualificationInProgressActive(d))
       .length,
     invalid: allDevices.filter((d) => d.qualificationStatus === "invalid").length,
     single_silence: allDevices.filter((d) => d.alertKind === "single_silence").length,
@@ -253,6 +254,7 @@ export function XlvStaffDevicesView({
           showManager={false}
           emptyText={isSelfView ? "暂无设备" : "该队员暂无设备"}
           linkToDetail
+          activeShortcut={status ?? (alert !== "all" ? alert : null)}
         />
       )}
     </PageShell>

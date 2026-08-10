@@ -593,6 +593,18 @@ export function isXlvActiveInProgress(device: {
   );
 }
 
+/** 考核中且近日有动销（不含沉睡/单笔沉默） */
+export function isXlvQualificationInProgressActive(device: {
+  sleepDays: number;
+  cumulativeTxns: number;
+  qualificationStatus?: XlvQualificationStatus | null;
+}) {
+  return (
+    device.qualificationStatus === "in_progress" &&
+    classifyXlvAlert(device) === "active"
+  );
+}
+
 export const XLV_ACTIVE_IN_PROGRESS_LABEL = "正在活跃中";
 
 export const XLV_ALERT_LABELS: Record<XlvDeviceAlertKind, string> = {

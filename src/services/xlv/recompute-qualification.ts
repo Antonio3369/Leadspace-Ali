@@ -121,7 +121,13 @@ export async function countXlvQualificationSummary(user: SessionUser) {
         where: { AND: [assigned, { qualificationStatus: "qualified" }] },
       }),
       db.xlvDeviceRecord.count({
-        where: { AND: [assigned, { qualificationStatus: "in_progress" }] },
+        where: {
+          AND: [
+            assigned,
+            { qualificationStatus: "in_progress" },
+            { sleepDays: { lt: XLV_SLEEP_THRESHOLD_DAYS } },
+          ],
+        },
       }),
       db.xlvDeviceRecord.count({
         where: { AND: [assigned, { qualificationStatus: "invalid" }] },
