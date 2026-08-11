@@ -4,7 +4,6 @@ import type { XlvQualificationDetail } from "@/lib/xlv-rules";
 import {
   XLV_MONTHLY_TXN_TARGET,
   XLV_MONTHLY_USER_TARGET,
-  XLV_QUALIFICATION_HINTS,
   xlvQualificationMonthResultLabel,
 } from "@/lib/xlv-rules";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
@@ -21,9 +20,6 @@ export function XlvAssessmentPanel({
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-semibold text-[#111827]">考核进度</h2>
         <XlvQualificationBadge status={detail.status} />
-        <span className="text-xs text-[#94a3b8]" title={XLV_QUALIFICATION_HINTS[detail.status]}>
-          目标：月 {XLV_MONTHLY_USER_TARGET} 用户 + {XLV_MONTHLY_TXN_TARGET} 笔
-        </span>
       </div>
 
       {firstTxnDate ? (

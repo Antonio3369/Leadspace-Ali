@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { randomBytes } from "crypto";
+import { db } from "@/lib/db";
 import { followUpPhotoPublicUrl } from "@/lib/xlv-follow-up";
 
 const UPLOAD_ROOT =
@@ -27,6 +28,24 @@ export function absolutePathForFollowUpPhoto(relativePath: string): string | nul
   const root = path.resolve(UPLOAD_ROOT);
   if (!abs.startsWith(root + path.sep) && abs !== root) return null;
   return abs;
+}
+
+/** 跟进图相对路径 → 真实设备 SN（存盘目录会 sanitize * 等字符） */
+export async function findXlvDeviceSnForFollowUpPhoto(
+  relativePath: string
+): Promise<string | null> {
+  const safe = relativePath.replace(/^\/+/, "").replace(/\.\./g, "");
+  if (!safe) return null;
+
+  const rows = await db.$queryRaw<{ deviceSn: string }[]>`
+    SELECT "deviceSn" FROM "XlvDeviceRecord"
+    WHERE EXISTS (
+      SELECT 1 FROM unnest("followUpPhotoUrls") AS p
+      WHERE p = ${safe}
+    )
+    LIMIT 1
+  `;
+  return rows[0]?.deviceSn ?? null;
 }
 
 export async function saveFollowUpPhoto(opts: {
@@ -58,6 +77,6 @@ export async function saveFollowUpPhoto(opts: {
   const relativePath = `${snSafe}/${name}`;
   return {
     relativePath,
-    url: followUpPhotoPublicUrl(relativePath),
+    url: followUpPhotoPublicUrl(relativePath, opts.deviceSn),
   };
 }

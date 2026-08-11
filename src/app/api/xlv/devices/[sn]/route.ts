@@ -72,6 +72,17 @@ export async function PATCH(request: Request, { params }: Params) {
           { status: 400 }
         );
       }
+      const flags = normalizeFollowUpFlags(body.followUpFlags);
+      if (flags.length < 1) {
+        return NextResponse.json(
+          { error: "请选择可叠加项（至少一项）" },
+          { status: 400 }
+        );
+      }
+      const note = body.followUpNote?.trim() ?? "";
+      if (!note) {
+        return NextResponse.json({ error: "请填写备注" }, { status: 400 });
+      }
     }
 
     const flags = normalizeFollowUpFlags(body.followUpFlags);

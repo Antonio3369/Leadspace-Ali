@@ -132,6 +132,14 @@ export function XlvFollowUpCloseForm({
       setError("请选择已接通或未接通");
       return;
     }
+    if (flags.length < 1) {
+      setError("请选择可叠加项（至少一项）");
+      return;
+    }
+    if (!note.trim()) {
+      setError("请填写备注");
+      return;
+    }
     if (photoUrls.length < 1) {
       setError("请上传跟进图（至少一张）");
       return;
@@ -209,7 +217,7 @@ export function XlvFollowUpCloseForm({
                 <button
                   key={p}
                   type="button"
-                  onClick={() => setPreviewSrc(xlvFollowUpPhotoSrc(p))}
+                  onClick={() => setPreviewSrc(xlvFollowUpPhotoSrc(p, deviceSn))}
                   disabled={brokenPhotos.has(p)}
                   className="block h-20 w-20 sm:h-16 sm:w-16 overflow-hidden rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-0"
                 >
@@ -220,7 +228,7 @@ export function XlvFollowUpCloseForm({
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={xlvFollowUpPhotoSrc(p)}
+                      src={xlvFollowUpPhotoSrc(p, deviceSn)}
                       alt="跟进图"
                       className="h-full w-full object-cover"
                       onError={() => markPhotoBroken(p)}
@@ -261,14 +269,6 @@ export function XlvFollowUpCloseForm({
   return (
     <div className="space-y-4">
       {lightbox}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8]">
-          沉睡回访跟进
-        </p>
-        <p className="mt-1 text-xs text-[#94a3b8] leading-relaxed">
-          选择接通结果，可叠加标签，并上传跟进图（至少一张）后完成。
-        </p>
-      </div>
 
       <div>
         <p className="text-xs text-[#64748b] mb-2">接通结果（必选）</p>
@@ -297,7 +297,7 @@ export function XlvFollowUpCloseForm({
       </div>
 
       <div>
-        <p className="text-xs text-[#64748b] mb-2">可叠加（选填）</p>
+        <p className="text-xs text-[#64748b] mb-2">可叠加（必填）</p>
         <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
           {(
             [
@@ -324,7 +324,7 @@ export function XlvFollowUpCloseForm({
 
       <div>
         <p className="text-xs text-[#64748b] mb-2">
-          跟进图（至少一张）
+          跟进图（至少一张，请上传真实的聊天或通话记录截图）
           <span className="text-[#94a3b8] ml-1">
             {photoUrls.length}/9
           </span>
@@ -335,11 +335,11 @@ export function XlvFollowUpCloseForm({
               <button
                 type="button"
                 className="h-full w-full overflow-hidden rounded-xl border border-[#e2e8f0] p-0"
-                onClick={() => setPreviewSrc(xlvFollowUpPhotoSrc(p))}
+                onClick={() => setPreviewSrc(xlvFollowUpPhotoSrc(p, deviceSn))}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={xlvFollowUpPhotoSrc(p)}
+                  src={xlvFollowUpPhotoSrc(p, deviceSn)}
                   alt=""
                   className="h-full w-full object-cover"
                   onError={() => markPhotoBroken(p)}
@@ -410,12 +410,13 @@ export function XlvFollowUpCloseForm({
       </div>
 
       <div>
-        <label className="block text-xs text-[#64748b] mb-2">备注（选填）</label>
+        <label className="block text-xs text-[#64748b] mb-2">备注（必填）</label>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={3}
           maxLength={2000}
+          required
           placeholder="沟通结果、下次动作等"
           className={`${notion.input} w-full resize-y min-h-[72px] text-base sm:text-sm`}
         />

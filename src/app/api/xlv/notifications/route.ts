@@ -10,7 +10,7 @@ import {
   canViewXlvNotifications,
 } from "@/services/xlv/notifications";
 
-function mapMetaPhotos(meta: unknown) {
+function mapMetaPhotos(meta: unknown, deviceSn: string) {
   if (!meta || typeof meta !== "object") return meta;
   const m = meta as Record<string, unknown>;
   const urls = Array.isArray(m.photoUrls)
@@ -19,7 +19,9 @@ function mapMetaPhotos(meta: unknown) {
   return {
     ...m,
     photoUrls: urls.map((u) =>
-      u.startsWith("/") || u.startsWith("http") ? u : followUpPhotoPublicUrl(u)
+      u.startsWith("/") || u.startsWith("http")
+        ? u
+        : followUpPhotoPublicUrl(u, deviceSn)
     ),
   };
 }
@@ -50,7 +52,7 @@ export async function GET(request: Request) {
         deviceSn: r.deviceSn,
         title: r.title,
         body: r.body,
-        meta: mapMetaPhotos(r.meta),
+        meta: mapMetaPhotos(r.meta, r.deviceSn),
         read: r.read,
         readAt: r.readAt?.toISOString() ?? null,
         createdAt: r.createdAt.toISOString(),

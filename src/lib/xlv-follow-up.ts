@@ -42,12 +42,20 @@ export function summarizeFollowUpResult(input: {
 }
 
 /** 存库相对路径 → 对外 URL */
-export function followUpPhotoPublicUrl(relativePath: string): string {
+export function followUpPhotoPublicUrl(
+  relativePath: string,
+  deviceSn?: string
+): string {
   const safe = relativePath.replace(/^\/+/, "");
-  return `/api/xlv/follow-up/photos/${safe
+  const base = `/api/xlv/follow-up/photos/${safe
     .split("/")
     .map(encodeURIComponent)
     .join("/")}`;
+  const sn = deviceSn?.trim();
+  if (sn) {
+    return `${base}?deviceSn=${encodeURIComponent(sn)}`;
+  }
+  return base;
 }
 
 export function isFollowUpConnectStatus(

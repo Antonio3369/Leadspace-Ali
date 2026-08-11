@@ -96,9 +96,12 @@ export async function uploadXlvFollowUpPhoto(
   };
 }
 
-export function xlvFollowUpPhotoSrc(relativeOrUrl: string): string {
+export function xlvFollowUpPhotoSrc(
+  relativeOrUrl: string,
+  deviceSn?: string
+): string {
   if (relativeOrUrl.startsWith("/") || relativeOrUrl.startsWith("http")) {
     return relativeOrUrl;
   }
-  return followUpPhotoPublicUrl(relativeOrUrl);
+  return followUpPhotoPublicUrl(relativeOrUrl, deviceSn);
 }
