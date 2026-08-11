@@ -190,14 +190,14 @@ export function XlvFollowUpCloseForm({
             已回访
             {followUpAt ? ` · ${fmt(followUpAt)}` : ""}
           </p>
-          <p className="mt-1 text-sm text-[#64748b]">
+          <p className="mt-1 text-base font-medium text-[#c41e3a]">
             {connectStatusLabel(initialConnect)}
             {initialFlags.length
               ? ` · ${initialFlags.map(followUpFlagLabel).join("、")}`
               : ""}
           </p>
           {initialNote ? (
-            <p className="mt-1 text-sm text-[#64748b] whitespace-pre-wrap">
+            <p className="mt-1 text-base font-medium text-[#c41e3a] whitespace-pre-wrap">
               {initialNote}
             </p>
           ) : null}

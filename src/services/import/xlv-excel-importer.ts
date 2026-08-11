@@ -252,12 +252,31 @@ async function importRosterRows(rows: ParsedXlvRosterRow[], _importBatchId: stri
   let created = 0;
   let updated = 0;
   const seenOperators = new Set<string>();
+  const uploadedPairs = new Set<string>();
 
   for (const row of rows) {
     seenOperators.add(row.operatorName);
+    uploadedPairs.add(`${row.managerName.trim()}::${row.operatorName.trim()}`);
     const outcome = await writeRosterRow(row);
     if (outcome === "created") created += 1;
     else updated += 1;
+  }
+
+  // 同一作业员若历史上有多条经理挂靠（如 境/镜 混用），以本次上传为准，删掉未出现在文件中的旧行
+  if (seenOperators.size > 0) {
+    const stale = await db.xlvTeamRoster.findMany({
+      where: { operatorName: { in: [...seenOperators] } },
+      select: { id: true, operatorName: true, managerName: true },
+    });
+    const staleIds = stale
+      .filter(
+        (row) =>
+          !uploadedPairs.has(`${row.managerName.trim()}::${row.operatorName.trim()}`)
+      )
+      .map((row) => row.id);
+    if (staleIds.length > 0) {
+      await db.xlvTeamRoster.deleteMany({ where: { id: { in: staleIds } } });
+    }
   }
 
   const accountStats = await provisionXlvAccountsFromRoster(rows);
