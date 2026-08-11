@@ -17,6 +17,8 @@ import {
 } from "@/lib/xlv-follow-up-client";
 import { NotionAlert, NotionButton, notion } from "@/components/ui/notion";
 import { N7PhotoLightbox } from "@/components/n7/N7PhotoLightbox";
+import { XlvFollowUpReviewPanel } from "@/components/xlv/XlvFollowUpReviewPanel";
+import type { XlvFollowUpReviewResult } from "@/lib/xlv-follow-up-client";
 
 type Props = {
   deviceSn: string;
@@ -26,6 +28,11 @@ type Props = {
   flags: string[];
   photoUrls: string[];
   followUpAt: string | null;
+  canReview?: boolean;
+  reviewNote?: string | null;
+  reviewAt?: string | null;
+  reviewByName?: string | null;
+  onReviewChanged?: (next: XlvFollowUpReviewResult) => void;
   onChanged?: (next: XlvFollowUpPatchResult) => void;
 };
 
@@ -45,6 +52,11 @@ export function XlvFollowUpCloseForm({
   flags: initialFlags,
   photoUrls: initialPhotos,
   followUpAt,
+  canReview = false,
+  reviewNote: initialReviewNote = null,
+  reviewAt: initialReviewAt = null,
+  reviewByName: initialReviewByName = null,
+  onReviewChanged,
   onChanged,
 }: Props) {
   const [connectStatus, setConnectStatus] =
@@ -232,6 +244,14 @@ export function XlvFollowUpCloseForm({
         >
           {saving ? "保存中…" : "改回待回访"}
         </NotionButton>
+        <XlvFollowUpReviewPanel
+          deviceSn={deviceSn}
+          canReview={canReview}
+          reviewNote={initialReviewNote}
+          reviewAt={initialReviewAt}
+          reviewByName={initialReviewByName}
+          onChanged={onReviewChanged}
+        />
         {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
         {message ? <NotionAlert tone="success">{message}</NotionAlert> : null}
       </div>

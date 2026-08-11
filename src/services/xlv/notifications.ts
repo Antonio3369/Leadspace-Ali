@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import {
   XLV_NOTIFICATION_TYPE_FOLLOW_UP_DONE,
+  XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW,
   summarizeFollowUpResult,
 } from "@/lib/xlv-follow-up";
 import { xlvMerchantLabel } from "@/lib/xlv-rules";
@@ -41,6 +42,28 @@ export async function resolveXlvDeviceManagerRecipient(device: {
   return account?.id ?? null;
 }
 
+/** 解析设备所属小绿盒队员账号 */
+export async function resolveXlvDeviceOperatorRecipient(device: {
+  operatorName: string;
+  managerName: string;
+}): Promise<string | null> {
+  const operatorName = device.operatorName.trim();
+  const managerName = device.managerName.trim();
+  if (!operatorName) return null;
+
+  const account = await db.xlvMemberAccount.findFirst({
+    where: {
+      memberRole: "OPERATOR",
+      status: "ACTIVE",
+      operatorName,
+      managerName,
+    },
+    select: { id: true },
+  });
+
+  return account?.id ?? null;
+}
+
 /** 小绿盒管理员端：全局 admin 账号（`/login/xlv`） */
 export async function resolveXlvAdminUserId(): Promise<string | null> {
   const admin = await db.user.findFirst({
@@ -48,6 +71,27 @@ export async function resolveXlvAdminUserId(): Promise<string | null> {
     select: { id: true },
   });
   return admin?.id ?? null;
+}
+
+function followUpReviewPreview(note: string, max = 80) {
+  const trimmed = note.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max)}…`;
+}
+
+function buildFollowUpReviewNotificationBody(input: {
+  reviewerName: string;
+  merchantName: string | null;
+  activationMerchantName: string | null;
+  deviceSn: string;
+  reviewNote: string;
+}) {
+  const store =
+    xlvMerchantLabel({
+      merchantName: input.merchantName,
+      activationMerchantName: input.activationMerchantName,
+    }) || input.deviceSn;
+  return `${input.reviewerName} · ${store} · ${followUpReviewPreview(input.reviewNote)}`;
 }
 
 function recipientMatchesActor(
@@ -133,6 +177,55 @@ export async function notifyFollowUpDoneRecipients(opts: {
   await Promise.all(tasks);
 }
 
+export type XlvFollowUpReviewNotificationPayload = {
+  deviceSn: string;
+  merchantName: string | null;
+  activationMerchantName: string | null;
+  operatorName: string;
+  reviewNote: string;
+};
+
+/** 经理/管理员反馈回访 → 通知所属队员 */
+export async function notifyFollowUpReviewToOperator(opts: {
+  operatorXlvMemberAccountId: string;
+  reviewerId: string;
+  reviewerName: string;
+  payload: XlvFollowUpReviewNotificationPayload;
+}) {
+  if (opts.operatorXlvMemberAccountId === opts.reviewerId) return;
+
+  const store =
+    xlvMerchantLabel({
+      merchantName: opts.payload.merchantName,
+      activationMerchantName: opts.payload.activationMerchantName,
+    }) || opts.payload.deviceSn;
+
+  await db.xlvNotification.create({
+    data: {
+      type: XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW,
+      deviceSn: opts.payload.deviceSn,
+      title: "经理反馈",
+      body: buildFollowUpReviewNotificationBody({
+        reviewerName: opts.reviewerName,
+        merchantName: opts.payload.merchantName,
+        activationMerchantName: opts.payload.activationMerchantName,
+        deviceSn: opts.payload.deviceSn,
+        reviewNote: opts.payload.reviewNote,
+      }),
+      meta: {
+        merchantName: opts.payload.merchantName,
+        activationMerchantName: opts.payload.activationMerchantName,
+        operatorName: opts.payload.operatorName,
+        reviewerName: opts.reviewerName,
+        reviewNote: opts.payload.reviewNote,
+        store,
+      },
+      read: false,
+      xlvMemberAccountId: opts.operatorXlvMemberAccountId,
+    },
+  });
+}
+
 function recipientWhere(user: SessionUser): Prisma.XlvNotificationWhereInput {
   if (user.role === "DIRECTOR") {
     return { userId: user.id };
@@ -140,15 +233,27 @@ function recipientWhere(user: SessionUser): Prisma.XlvNotificationWhereInput {
   if (user.authRealm === "xlv" && user.role === "MANAGER") {
     return { xlvMemberAccountId: user.id };
   }
+  if (user.authRealm === "xlv" && user.role === "SALES") {
+    return { xlvMemberAccountId: user.id };
+  }
   return { id: "__none__" };
 }
 
+export function canViewXlvNotifications(user: SessionUser) {
+  return (
+    user.role === "MANAGER" ||
+    user.role === "DIRECTOR" ||
+    user.role === "SALES"
+  );
+}
+
+/** @deprecated use canViewXlvNotifications */
 export function canViewXlvFollowUpNotifications(user: SessionUser) {
-  return user.role === "MANAGER" || user.role === "DIRECTOR";
+  return canViewXlvNotifications(user);
 }
 
 export async function countUnreadXlvNotifications(user: SessionUser) {
-  if (!canViewXlvFollowUpNotifications(user)) return 0;
+  if (!canViewXlvNotifications(user)) return 0;
   return db.xlvNotification.count({
     where: { ...recipientWhere(user), read: false },
   });
@@ -188,7 +293,7 @@ export async function markXlvNotificationsReadByDevice(
   user: SessionUser,
   deviceSn: string
 ) {
-  if (!canViewXlvFollowUpNotifications(user)) return;
+  if (!canViewXlvNotifications(user)) return;
   const now = new Date();
   await db.xlvNotification.updateMany({
     where: { ...recipientWhere(user), deviceSn, read: false },

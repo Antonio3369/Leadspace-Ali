@@ -7,6 +7,12 @@ export const XLV_FOLLOW_UP_FLAGS = ["unwilling", "promised_use"] as const;
 export type XlvFollowUpFlag = (typeof XLV_FOLLOW_UP_FLAGS)[number];
 
 export const XLV_NOTIFICATION_TYPE_FOLLOW_UP_DONE = "sales_follow_up_done";
+export const XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW = "manager_follow_up_review";
+
+export function xlvNotificationTitle(type: string): string {
+  if (type === XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW) return "经理反馈";
+  return "队员已处理";
+}
 
 export function connectStatusLabel(status: string | null | undefined): string {
   if (status === "connected") return "已接通";

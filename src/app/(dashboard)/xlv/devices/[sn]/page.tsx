@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { xlvPath } from "@/lib/business-lines";
 import { canAccessXlvWorkspace } from "@/services/xlv/xlv-scope";
+import { canSubmitXlvFollowUpReview } from "@/services/xlv/follow-up-review";
 import { PageShell } from "@/components/ui/notion";
 import { XlvDeviceDetailView } from "@/components/xlv/XlvDeviceDetailView";
 import { safeDecodeURIComponent } from "@/lib/fetch-json";
@@ -26,7 +27,10 @@ export default async function XlvDeviceDetailPage({
         </PageShell>
       }
     >
-      <XlvDeviceDetailView sn={safeDecodeURIComponent(sn)} />
+      <XlvDeviceDetailView
+        sn={safeDecodeURIComponent(sn)}
+        canReviewFollowUp={canSubmitXlvFollowUpReview(user)}
+      />
     </Suspense>
   );
 }

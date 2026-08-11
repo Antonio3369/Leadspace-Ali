@@ -75,7 +75,10 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
     const onXlv = isXlvPath(pathname);
     const canN7 = user.role === "MANAGER" && onN7;
     const canXlv =
-      (user.role === "MANAGER" || user.role === "DIRECTOR") && onXlv;
+      (user.role === "MANAGER" ||
+        user.role === "DIRECTOR" ||
+        user.role === "SALES") &&
+      onXlv;
     if (!canN7 && !canXlv) {
       setNotifUnread(0);
       return;

@@ -106,7 +106,7 @@ export function XlvTodayView({
   }, []);
 
   useEffect(() => {
-    if (!active || (role !== "MANAGER" && role !== "DIRECTOR")) {
+    if (!active || (role !== "MANAGER" && role !== "DIRECTOR" && role !== "SALES")) {
       setMgrUnread(null);
       return;
     }
@@ -341,7 +341,8 @@ export function XlvTodayView({
 
       {data ? (
         <div className="space-y-6">
-          {(role === "MANAGER" || role === "DIRECTOR") && mgrUnread != null ? (
+          {(role === "MANAGER" || role === "DIRECTOR" || role === "SALES") &&
+          mgrUnread != null ? (
             <Link
               href={xlvPath("/notifications")}
               className={`flex items-center justify-between rounded-[14px] border px-3.5 py-3 text-sm font-medium transition-colors ${
@@ -351,7 +352,7 @@ export function XlvTodayView({
               }`}
             >
               <span className="flex items-center gap-2">
-                队员已处理
+                {role === "SALES" ? "经理反馈" : "队员已处理"}
                 {mgrUnread > 0 ? (
                   <span className="inline-flex min-w-[1.35rem] items-center justify-center rounded-full bg-[#ef4444] px-1.5 py-0.5 text-center text-xs font-semibold leading-none text-white tabular-nums">
                     {mgrUnread > 99 ? "99+" : mgrUnread}

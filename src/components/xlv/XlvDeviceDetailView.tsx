@@ -22,7 +22,7 @@ import { CopyTextButton } from "@/components/ui/CopyTextButton";
 import { XlvAssessmentPanel } from "@/components/xlv/XlvAssessmentPanel";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
 import { XlvFollowUpCloseForm } from "@/components/xlv/XlvFollowUpCloseForm";
-import type { XlvFollowUpPatchResult } from "@/lib/xlv-follow-up-client";
+import type { XlvFollowUpPatchResult, XlvFollowUpReviewResult } from "@/lib/xlv-follow-up-client";
 import { XlvTxnActivityChart } from "@/components/xlv/XlvTxnActivityChart";
 import type { XlvTxnActivityPoint } from "@/services/xlv/snapshot-daily";
 import type { XlvQualificationDetail } from "@/lib/xlv-rules";
@@ -52,6 +52,9 @@ interface Device {
   followUpConnectStatus?: string | null;
   followUpFlags?: string[];
   followUpPhotoUrls?: string[];
+  followUpReviewNote?: string | null;
+  followUpReviewAt?: string | null;
+  followUpReviewByName?: string | null;
 }
 
 function fmtDate(iso: string | null) {
@@ -59,7 +62,13 @@ function fmtDate(iso: string | null) {
   return iso.slice(0, 10);
 }
 
-export function XlvDeviceDetailView({ sn }: { sn: string }) {
+export function XlvDeviceDetailView({
+  sn,
+  canReviewFollowUp = false,
+}: {
+  sn: string;
+  canReviewFollowUp?: boolean;
+}) {
   const [device, setDevice] = useState<Device | null>(null);
   const [qualificationDetail, setQualificationDetail] =
     useState<XlvQualificationDetail | null>(null);
@@ -71,6 +80,11 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
     flags: [] as string[],
     photoUrls: [] as string[],
     at: null as string | null,
+  });
+  const [review, setReview] = useState({
+    note: null as string | null,
+    at: null as string | null,
+    byName: null as string | null,
   });
   const [error, setError] = useState("");
 
@@ -105,6 +119,11 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
             photoUrls: d.followUpPhotoUrls ?? [],
             at: d.followUpAt ? String(d.followUpAt) : null,
           });
+          setReview({
+            note: d.followUpReviewNote ?? null,
+            at: d.followUpReviewAt ? String(d.followUpReviewAt) : null,
+            byName: d.followUpReviewByName ?? null,
+          });
           emitXlvNotificationsChanged();
         }
       })
@@ -135,7 +154,9 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
     : "active";
 
   const showFollowUp =
-    alertKind === "single_silence" || alertKind === "dormant";
+    alertKind === "single_silence" ||
+    alertKind === "dormant" ||
+    followUp.done;
   const displayInput = {
     alertKind,
     qualificationStatus: qualificationDetail?.status,
@@ -152,6 +173,17 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
       flags: next.followUpFlags,
       photoUrls: next.followUpPhotoUrls,
       at: next.followUpAt,
+    });
+    if (!next.followUpDone) {
+      setReview({ note: null, at: null, byName: null });
+    }
+  }
+
+  function onReviewChanged(next: XlvFollowUpReviewResult) {
+    setReview({
+      note: next.followUpReviewNote,
+      at: next.followUpReviewAt,
+      byName: next.followUpReviewByName,
     });
   }
 
@@ -261,7 +293,12 @@ export function XlvDeviceDetailView({ sn }: { sn: string }) {
                 flags={followUp.flags}
                 photoUrls={followUp.photoUrls}
                 followUpAt={followUp.at}
+                canReview={canReviewFollowUp && followUp.done}
+                reviewNote={review.note}
+                reviewAt={review.at}
+                reviewByName={review.byName}
                 onChanged={onFollowUpChanged}
+                onReviewChanged={onReviewChanged}
               />
             </section>
           ) : null}

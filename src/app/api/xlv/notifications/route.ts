@@ -7,7 +7,7 @@ import {
   listXlvNotifications,
   markAllXlvNotificationsRead,
   markXlvNotificationRead,
-  canViewXlvFollowUpNotifications,
+  canViewXlvNotifications,
 } from "@/services/xlv/notifications";
 
 function mapMetaPhotos(meta: unknown) {
@@ -27,7 +27,7 @@ function mapMetaPhotos(meta: unknown) {
 export async function GET(request: Request) {
   try {
     const user = await requireSessionUser();
-    if (!canViewXlvFollowUpNotifications(user)) {
+    if (!canViewXlvNotifications(user)) {
       return NextResponse.json({ error: "无权限" }, { status: 403 });
     }
 
@@ -73,7 +73,7 @@ const patchSchema = z.object({
 export async function PATCH(request: Request) {
   try {
     const user = await requireSessionUser();
-    if (!canViewXlvFollowUpNotifications(user)) {
+    if (!canViewXlvNotifications(user)) {
       return NextResponse.json({ error: "无权限" }, { status: 403 });
     }
 

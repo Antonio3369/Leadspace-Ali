@@ -10,6 +10,36 @@ export type XlvFollowUpPatchResult = {
   followUpPhotoUrls: string[];
 };
 
+export type XlvFollowUpReviewResult = {
+  followUpReviewNote: string | null;
+  followUpReviewAt: string | null;
+  followUpReviewByName: string | null;
+};
+
+export async function patchXlvFollowUpReview(
+  deviceSn: string,
+  reviewNote: string
+): Promise<XlvFollowUpReviewResult> {
+  const res = await fetch(
+    `/api/xlv/devices/${encodeURIComponent(deviceSn)}/follow-up/review`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewNote }),
+    }
+  );
+  const json = await readResponseJson<{ error?: string } & XlvFollowUpReviewResult>(
+    res,
+    "保存反馈"
+  );
+  if (!res.ok) throw new Error(json.error || "保存失败");
+  return {
+    followUpReviewNote: json.followUpReviewNote ?? null,
+    followUpReviewAt: json.followUpReviewAt ?? null,
+    followUpReviewByName: json.followUpReviewByName ?? null,
+  };
+}
+
 export async function patchXlvDeviceFollowUp(
   deviceSn: string,
   body: {

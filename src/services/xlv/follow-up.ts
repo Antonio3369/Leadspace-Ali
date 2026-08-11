@@ -221,11 +221,19 @@ export async function updateXlvDeviceFollowUp(
             followUpConnectStatus: input.followUpConnectStatus ?? null,
             followUpFlags: input.followUpFlags ?? [],
             followUpPhotoUrls: input.followUpPhotoUrls ?? [],
+            followUpReviewNote: null,
+            followUpReviewAt: null,
+            followUpReviewById: null,
+            followUpReviewByName: null,
           }
         : {
             followUpConnectStatus: null,
             followUpFlags: [],
             followUpPhotoUrls: [],
+            followUpReviewNote: null,
+            followUpReviewAt: null,
+            followUpReviewById: null,
+            followUpReviewByName: null,
           }),
     },
     select: {

@@ -489,6 +489,11 @@ model XlvDeviceRecord {
   followUpConnectStatus  String?
   followUpFlags          String[]            @default([])
   followUpPhotoUrls      String[]                 @default([])
+  /** 经理/管理员对回访的反馈意见（Excel 重导不覆盖） */
+  followUpReviewNote     String?
+  followUpReviewAt       DateTime?
+  followUpReviewById     String?
+  followUpReviewByName   String?
   /** 考核状态：导入后重算写入，页面查询不再加载全量快照 */
   qualificationStatus    XlvQualificationStatus   @default(in_progress)
   qualificationAssessedAt  DateTime?
