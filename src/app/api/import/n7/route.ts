@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
 import { canImportExcel } from "@/lib/permissions";
+import { assertCanViewN7 } from "@/services/n7/n7-scope";
 import { enqueueHeavyImport } from "@/services/import/heavy-import-job";
 
 export const maxDuration = 120;
@@ -8,6 +9,7 @@ export const maxDuration = 120;
 export async function POST(request: Request) {
   try {
     const user = await requireSessionUser();
+    assertCanViewN7(user);
 
     if (!canImportExcel(user.role)) {
       return NextResponse.json({ error: "仅管理员可上传 Excel 数据" }, { status: 403 });

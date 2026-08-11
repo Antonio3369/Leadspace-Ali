@@ -16,7 +16,7 @@ import {
   type XlvFollowUpPatchResult,
 } from "@/lib/xlv-follow-up-client";
 import { NotionAlert, NotionButton, notion } from "@/components/ui/notion";
-import { N7PhotoLightbox } from "@/components/n7/N7PhotoLightbox";
+import { PhotoLightbox } from "@/components/ui/PhotoLightbox";
 import { XlvFollowUpReviewPanel } from "@/components/xlv/XlvFollowUpReviewPanel";
 import type { XlvFollowUpReviewResult } from "@/lib/xlv-follow-up-client";
 
@@ -91,7 +91,7 @@ export function XlvFollowUpCloseForm({
   }
 
   const lightbox = previewSrc ? (
-    <N7PhotoLightbox
+    <PhotoLightbox
       src={previewSrc}
       alt="跟进图"
       title="跟进图"

@@ -58,6 +58,7 @@ const N7_SALES_NAV_ITEMS = [
   { href: n7Path("/follow-up"), label: "达标跟进", icon: "🔔" },
   { href: n7Path("/board"), label: "我的设备", icon: "📊" },
   { href: n7Path("/daily"), label: "每日绩效", icon: "📈" },
+  { href: n7Path("/notifications"), label: "经理反馈", icon: "✉️" },
   { href: n7Path("/me"), label: "我的", icon: "👤" },
 ];
 

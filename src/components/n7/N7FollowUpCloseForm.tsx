@@ -12,9 +12,11 @@ import {
   patchN7DeviceFollowUp,
   uploadN7FollowUpPhoto,
   type N7FollowUpPatchResult,
+  type N7FollowUpReviewResult,
 } from "@/lib/n7-follow-up-client";
 import { NotionAlert, NotionButton, notion } from "@/components/ui/notion";
-import { N7PhotoLightbox } from "@/components/n7/N7PhotoLightbox";
+import { PhotoLightbox } from "@/components/ui/PhotoLightbox";
+import { N7FollowUpReviewPanel } from "@/components/n7/N7FollowUpReviewPanel";
 
 type Props = {
   deviceSn: string;
@@ -26,6 +28,11 @@ type Props = {
   followUpAt: string | null;
   /** 无望单：主按钮文案「已知悉」 */
   acknowledgeOnly?: boolean;
+  canReview?: boolean;
+  reviewNote?: string | null;
+  reviewAt?: string | null;
+  reviewByName?: string | null;
+  onReviewChanged?: (next: N7FollowUpReviewResult) => void;
   onChanged?: (next: N7FollowUpPatchResult) => void;
 };
 
@@ -33,6 +40,9 @@ function fmt(iso: string | null) {
   if (!iso) return "";
   return new Date(iso).toLocaleString("zh-CN", { hour12: false });
 }
+
+const choiceBtn =
+  "min-h-11 rounded-xl px-3 py-2.5 text-sm font-medium border transition-colors disabled:opacity-50";
 
 export function N7FollowUpCloseForm({
   deviceSn,
@@ -43,6 +53,11 @@ export function N7FollowUpCloseForm({
   photoUrls: initialPhotos,
   followUpAt,
   acknowledgeOnly = false,
+  canReview = false,
+  reviewNote: initialReviewNote = null,
+  reviewAt: initialReviewAt = null,
+  reviewByName: initialReviewByName = null,
+  onReviewChanged,
   onChanged,
 }: Props) {
   const [connectStatus, setConnectStatus] =
@@ -63,11 +78,28 @@ export function N7FollowUpCloseForm({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [brokenPhotos, setBrokenPhotos] = useState<Set<string>>(() => new Set());
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
 
   const submitLabel = acknowledgeOnly ? "已知悉并关单" : "完成关单";
+
+  function markPhotoBroken(path: string) {
+    setBrokenPhotos((prev) => {
+      if (prev.has(path)) return prev;
+      const next = new Set(prev);
+      next.add(path);
+      return next;
+    });
+  }
+
   const lightbox = previewSrc ? (
-    <N7PhotoLightbox src={previewSrc} onClose={() => setPreviewSrc(null)} />
+    <PhotoLightbox
+      src={previewSrc}
+      alt="现场图"
+      title="现场图"
+      onClose={() => setPreviewSrc(null)}
+    />
   ) : null;
 
   function toggleFlag(flag: N7FollowUpFlag) {
@@ -93,6 +125,7 @@ export function N7FollowUpCloseForm({
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
+      if (cameraRef.current) cameraRef.current.value = "";
     }
   }
 
@@ -100,6 +133,14 @@ export function N7FollowUpCloseForm({
     if (saving) return;
     if (!connectStatus) {
       setError("请选择已接通或未接通");
+      return;
+    }
+    if (flags.length < 1) {
+      setError("请选择可叠加项（至少一项）");
+      return;
+    }
+    if (!note.trim()) {
+      setError("请填写备注");
       return;
     }
     if (photoUrls.length < 1) {
@@ -166,44 +207,68 @@ export function N7FollowUpCloseForm({
             {acknowledgeOnly ? "已知悉" : "已处理"}
             {followUpAt ? ` · ${fmt(followUpAt)}` : ""}
           </p>
-          <p className="mt-1 text-sm text-[#64748b]">
+          <p className="mt-1 text-base font-medium text-[#c41e3a]">
             {connectStatusLabel(initialConnect)}
             {initialFlags.length
               ? ` · ${initialFlags.map(followUpFlagLabel).join("、")}`
               : ""}
           </p>
           {initialNote ? (
-            <p className="mt-1 text-sm text-[#64748b] whitespace-pre-wrap">
+            <p className="mt-1 text-base font-medium text-[#c41e3a] whitespace-pre-wrap">
               {initialNote}
             </p>
           ) : null}
         </div>
         {initialPhotos.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {initialPhotos.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPreviewSrc(n7FollowUpPhotoSrc(p))}
-                className="block h-16 w-16 overflow-hidden rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-0"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={n7FollowUpPhotoSrc(p)}
-                  alt="关单现场"
-                  className="h-full w-full object-cover"
-                />
-              </button>
-            ))}
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {initialPhotos.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPreviewSrc(n7FollowUpPhotoSrc(p, deviceSn))}
+                  disabled={brokenPhotos.has(p)}
+                  className="block h-20 w-20 sm:h-16 sm:w-16 overflow-hidden rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-0"
+                >
+                  {brokenPhotos.has(p) ? (
+                    <span className="flex h-full w-full items-center justify-center px-1 text-center text-[0.6rem] leading-tight text-[#94a3b8]">
+                      图片不可用
+                    </span>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={n7FollowUpPhotoSrc(p, deviceSn)}
+                      alt="关单现场"
+                      className="h-full w-full object-cover"
+                      onError={() => markPhotoBroken(p)}
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
+            {brokenPhotos.size > 0 ? (
+              <p className="text-xs text-amber-800">
+                部分现场图文件已丢失（多为历史部署未持久化），请点「改回未处理」后重新上传。
+              </p>
+            ) : null}
           </div>
         )}
         <NotionButton
           type="button"
           disabled={saving}
           onClick={() => void reopen()}
+          className="w-full sm:w-auto min-h-11"
         >
           {saving ? "保存中…" : "改回未处理"}
         </NotionButton>
+        <N7FollowUpReviewPanel
+          deviceSn={deviceSn}
+          canReview={canReview}
+          reviewNote={initialReviewNote}
+          reviewAt={initialReviewAt}
+          reviewByName={initialReviewByName}
+          onChanged={onReviewChanged}
+        />
         {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
         {message ? <NotionAlert tone="success">{message}</NotionAlert> : null}
       </div>
@@ -211,20 +276,12 @@ export function N7FollowUpCloseForm({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {lightbox}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8]">
-          关单
-        </p>
-        <p className="mt-1 text-xs text-[#94a3b8]">
-          选择接通结果，可叠加标签，并上传至少 1 张现场图后完成。
-        </p>
-      </div>
 
       <div>
-        <p className="text-xs text-[#64748b] mb-1.5">接通结果（必选）</p>
-        <div className="flex flex-wrap gap-2">
+        <p className="text-xs text-[#64748b] mb-2">接通结果（必选）</p>
+        <div className="grid grid-cols-2 gap-2">
           {(
             [
               ["connected", "已接通"],
@@ -236,10 +293,10 @@ export function N7FollowUpCloseForm({
               type="button"
               disabled={saving}
               onClick={() => setConnectStatus(value)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium border transition-colors disabled:opacity-50 ${
+              className={`${choiceBtn} ${
                 connectStatus === value
                   ? "border-sky-300 bg-sky-50 text-sky-900"
-                  : "border-[#e2e8f0] bg-white text-[#64748b] hover:bg-[#f8fafc]"
+                  : "border-[#e2e8f0] bg-white text-[#64748b] active:bg-[#f8fafc]"
               }`}
             >
               {label}
@@ -249,8 +306,8 @@ export function N7FollowUpCloseForm({
       </div>
 
       <div>
-        <p className="text-xs text-[#64748b] mb-1.5">可叠加（选填）</p>
-        <div className="flex flex-wrap gap-2">
+        <p className="text-xs text-[#64748b] mb-2">可叠加（必填）</p>
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
           {(
             [
               ["unwilling", "不愿配合"],
@@ -262,10 +319,10 @@ export function N7FollowUpCloseForm({
               type="button"
               disabled={saving}
               onClick={() => toggleFlag(value)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium border transition-colors disabled:opacity-50 ${
+              className={`${choiceBtn} sm:w-auto ${
                 flags.includes(value)
                   ? "border-amber-300 bg-amber-50 text-amber-900"
-                  : "border-[#e2e8f0] bg-white text-[#64748b] hover:bg-[#f8fafc]"
+                  : "border-[#e2e8f0] bg-white text-[#64748b] active:bg-[#f8fafc]"
               }`}
             >
               {label}
@@ -275,25 +332,30 @@ export function N7FollowUpCloseForm({
       </div>
 
       <div>
-        <p className="text-xs text-[#64748b] mb-1.5">现场图（至少 1 张）</p>
-        <div className="flex flex-wrap gap-2 mb-2">
+        <p className="text-xs text-[#64748b] mb-2">
+          现场图（至少 1 张，请上传真实的聊天或通话记录截图）
+          <span className="text-[#94a3b8] ml-1">{photoUrls.length}/9</span>
+        </p>
+        <div className="flex flex-wrap gap-2 mb-3">
           {photoUrls.map((p) => (
-            <div key={p} className="relative h-16 w-16">
+            <div key={p} className="relative h-20 w-20 sm:h-16 sm:w-16">
               <button
                 type="button"
-                className="h-16 w-16 overflow-hidden rounded-lg border border-[#e2e8f0] p-0"
-                onClick={() => setPreviewSrc(n7FollowUpPhotoSrc(p))}
+                className="h-full w-full overflow-hidden rounded-xl border border-[#e2e8f0] p-0"
+                onClick={() => setPreviewSrc(n7FollowUpPhotoSrc(p, deviceSn))}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={n7FollowUpPhotoSrc(p)}
+                  src={n7FollowUpPhotoSrc(p, deviceSn)}
                   alt=""
                   className="h-full w-full object-cover"
+                  onError={() => markPhotoBroken(p)}
                 />
               </button>
               <button
                 type="button"
-                className="absolute -right-1 -top-1 h-5 w-5 rounded-full bg-[#111827] text-[10px] text-white"
+                aria-label="删除图片"
+                className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#111827] text-xs text-white"
                 onClick={() =>
                   setPhotoUrls((prev) => prev.filter((x) => x !== p))
                 }
@@ -302,7 +364,27 @@ export function N7FollowUpCloseForm({
               </button>
             </div>
           ))}
+          {photoUrls.length < 9 ? (
+            <button
+              type="button"
+              disabled={uploading || saving}
+              onClick={() => cameraRef.current?.click()}
+              className="flex h-20 w-20 sm:h-16 sm:w-16 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[#cbd5e1] bg-[#f8fafc] text-[#64748b] active:bg-[#f1f5f9] disabled:opacity-50"
+            >
+              <span className="text-xl leading-none">📷</span>
+              <span className="text-[0.65rem]">拍照</span>
+            </button>
+          ) : null}
         </div>
+
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/heic,.heic"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => void onPickFiles(e.target.files)}
+        />
         <input
           ref={fileRef}
           type="file"
@@ -311,36 +393,49 @@ export function N7FollowUpCloseForm({
           className="hidden"
           onChange={(e) => void onPickFiles(e.target.files)}
         />
-        <NotionButton
-          type="button"
-          disabled={uploading || saving || photoUrls.length >= 9}
-          onClick={() => fileRef.current?.click()}
-        >
-          {uploading ? "上传中…" : "添加图片"}
-        </NotionButton>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <NotionButton
+            type="button"
+            variant="secondary"
+            disabled={uploading || saving || photoUrls.length >= 9}
+            onClick={() => cameraRef.current?.click()}
+            className="w-full sm:w-auto min-h-11"
+          >
+            {uploading ? "上传中…" : "拍照上传"}
+          </NotionButton>
+          <NotionButton
+            type="button"
+            variant="ghost"
+            disabled={uploading || saving || photoUrls.length >= 9}
+            onClick={() => fileRef.current?.click()}
+            className="w-full sm:w-auto min-h-11"
+          >
+            从相册选择
+          </NotionButton>
+        </div>
       </div>
 
       <div>
-        <label className="block text-xs text-[#64748b] mb-1.5">
-          备注（选填）
-        </label>
+        <label className="block text-xs text-[#64748b] mb-2">备注（必填）</label>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          rows={2}
+          rows={3}
           maxLength={2000}
+          required
           placeholder="沟通结果、下次动作等"
-          className={`${notion.input} w-full resize-y min-h-[56px]`}
+          className={`${notion.input} w-full resize-y min-h-[72px] text-base sm:text-sm`}
         />
+        <NotionButton
+          type="button"
+          disabled={saving || uploading}
+          onClick={() => void submitDone()}
+          className="mt-3 w-full min-h-12 text-base sm:text-sm sm:min-h-10 sm:w-auto"
+        >
+          {saving ? "保存中…" : submitLabel}
+        </NotionButton>
       </div>
-
-      <NotionButton
-        type="button"
-        disabled={saving || uploading}
-        onClick={() => void submitDone()}
-      >
-        {saving ? "保存中…" : submitLabel}
-      </NotionButton>
 
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
       {message ? <NotionAlert tone="success">{message}</NotionAlert> : null}

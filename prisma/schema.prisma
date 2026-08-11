@@ -348,6 +348,10 @@ model N7DeviceRecord {
   followUpFlags      String[]  @default([])
   /** V1 关单现场图相对路径（≥1） */
   followUpPhotoUrls  String[]  @default([])
+  followUpReviewNote     String?
+  followUpReviewAt       DateTime?
+  followUpReviewById     String?
+  followUpReviewByName   String?
   sourceMode         DataMode  @default(MANUAL_UPLOAD)
   importBatchId      String?
   importBatch        ImportLog? @relation(fields: [importBatchId], references: [id])

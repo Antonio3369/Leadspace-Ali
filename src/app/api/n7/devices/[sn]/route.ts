@@ -38,8 +38,8 @@ export async function GET(
     }
 
     // 经理打开详情即视为审阅，清该 SN 未读提醒
-    if (user.role === "MANAGER") {
-      await markN7NotificationsReadByDevice(user.id, sn);
+    if (user.role === "MANAGER" || user.role === "SALES") {
+      await markN7NotificationsReadByDevice(user, sn);
     }
 
     return NextResponse.json(data);
@@ -77,6 +77,17 @@ export async function PATCH(
           { error: "请选择已接通或未接通" },
           { status: 400 }
         );
+      }
+      const flags = normalizeFollowUpFlags(body.followUpFlags);
+      if (flags.length < 1) {
+        return NextResponse.json(
+          { error: "请选择可叠加项（至少一项）" },
+          { status: 400 }
+        );
+      }
+      const note = body.followUpNote?.trim() ?? "";
+      if (!note) {
+        return NextResponse.json({ error: "请填写备注" }, { status: 400 });
       }
       const photos = body.followUpPhotoUrls ?? [];
       if (photos.length < 1) {

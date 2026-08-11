@@ -1,9 +1,17 @@
 import { db } from "@/lib/db";
 import {
   N7_NOTIFICATION_TYPE_FOLLOW_UP_DONE,
+  N7_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW,
   summarizeFollowUpResult,
 } from "@/lib/n7-follow-up";
+import type { SessionUser } from "@/lib/permissions";
 import type { Prisma } from "@/generated/prisma/client";
+
+function followUpReviewPreview(note: string, max = 80) {
+  const trimmed = note.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max)}…`;
+}
 
 /** 解析设备所属经理账号；解析不到返回 null（关单仍成功） */
 export async function resolveDeviceManagerUserId(device: {
@@ -34,6 +42,40 @@ export async function resolveDeviceManagerUserId(device: {
   }
 
   return null;
+}
+
+/** 解析设备所属队员账号；解析不到返回 null */
+export async function resolveDeviceOperatorUserId(device: {
+  salesUserId: string | null;
+  operatorName: string;
+  managerName: string;
+  followUpById?: string | null;
+}): Promise<string | null> {
+  if (device.salesUserId) return device.salesUserId;
+  if (device.followUpById) {
+    const actor = await db.user.findUnique({
+      where: { id: device.followUpById },
+      select: { id: true, role: true, status: true },
+    });
+    if (actor?.role === "SALES" && actor.status === "ACTIVE") return actor.id;
+  }
+
+  const operatorName = device.operatorName.trim();
+  const managerName = device.managerName.trim();
+  if (!operatorName) return null;
+
+  const byName = await db.user.findFirst({
+    where: {
+      role: "SALES",
+      status: "ACTIVE",
+      name: operatorName,
+      ...(managerName
+        ? { manager: { name: managerName } }
+        : {}),
+    },
+    select: { id: true },
+  });
+  return byName?.id ?? null;
 }
 
 export async function notifyManagerFollowUpDone(opts: {
@@ -97,20 +139,67 @@ export async function notifyManagerFollowUpDone(opts: {
   return row;
 }
 
-export async function countUnreadN7Notifications(userId: string) {
+export type N7FollowUpReviewNotificationPayload = {
+  deviceSn: string;
+  storeName: string | null;
+  operatorName: string;
+  reviewNote: string;
+};
+
+/** 经理/管理员反馈关单 → 通知所属队员 */
+export async function notifyFollowUpReviewToOperator(opts: {
+  operatorUserId: string;
+  reviewerId: string;
+  reviewerName: string;
+  payload: N7FollowUpReviewNotificationPayload;
+}) {
+  if (opts.operatorUserId === opts.reviewerId) return;
+
+  const store = opts.payload.storeName?.trim() || opts.payload.deviceSn;
+  const body = `${opts.reviewerName} · ${store} · ${followUpReviewPreview(opts.payload.reviewNote)}`;
+
+  await db.n7Notification.create({
+    data: {
+      userId: opts.operatorUserId,
+      type: N7_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW,
+      deviceSn: opts.payload.deviceSn,
+      title: "经理反馈",
+      body,
+      meta: {
+        storeName: opts.payload.storeName,
+        operatorName: opts.payload.operatorName,
+        reviewerName: opts.reviewerName,
+        reviewNote: opts.payload.reviewNote,
+        store,
+      },
+      read: false,
+    },
+  });
+}
+
+export function canViewN7Notifications(user: SessionUser) {
+  return (
+    user.role === "MANAGER" ||
+    user.role === "DIRECTOR" ||
+    user.role === "SALES"
+  );
+}
+
+export async function countUnreadN7Notifications(user: SessionUser) {
+  if (!canViewN7Notifications(user)) return 0;
   return db.n7Notification.count({
-    where: { userId, read: false },
+    where: { userId: user.id, read: false },
   });
 }
 
 export async function listN7Notifications(
-  userId: string,
+  user: SessionUser,
   opts?: { limit?: number; unreadOnly?: boolean }
 ) {
   const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
   return db.n7Notification.findMany({
     where: {
-      userId,
+      userId: user.id,
       ...(opts?.unreadOnly ? { read: false } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -119,11 +208,11 @@ export async function listN7Notifications(
 }
 
 export async function markN7NotificationRead(
-  userId: string,
+  user: SessionUser,
   notificationId: string
 ) {
   const row = await db.n7Notification.findFirst({
-    where: { id: notificationId, userId },
+    where: { id: notificationId, userId: user.id },
   });
   if (!row) return null;
   if (row.read) return row;
@@ -134,20 +223,21 @@ export async function markN7NotificationRead(
 }
 
 export async function markN7NotificationsReadByDevice(
-  userId: string,
+  user: SessionUser,
   deviceSn: string
 ) {
+  if (!canViewN7Notifications(user)) return;
   const now = new Date();
   await db.n7Notification.updateMany({
-    where: { userId, deviceSn, read: false },
+    where: { userId: user.id, deviceSn, read: false },
     data: { read: true, readAt: now },
   });
 }
 
-export async function markAllN7NotificationsRead(userId: string) {
+export async function markAllN7NotificationsRead(user: SessionUser) {
   const now = new Date();
   await db.n7Notification.updateMany({
-    where: { userId, read: false },
+    where: { userId: user.id, read: false },
     data: { read: true, readAt: now },
   });
 }

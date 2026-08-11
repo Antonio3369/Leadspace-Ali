@@ -103,6 +103,16 @@ export function isXlvPath(pathname: string): boolean {
   return pathname === XLV_BASE || pathname.startsWith(`${XLV_BASE}/`);
 }
 
+/** N7 鉴权范围：页面 + 同源 API（含导入与任务轮询） */
+export function isN7ScopePath(pathname: string): boolean {
+  if (isN7Path(pathname)) return true;
+  if (pathname === "/api/n7" || pathname.startsWith("/api/n7/")) return true;
+  if (pathname === "/api/import/n7") return true;
+  if (pathname === "/api/import/personnel") return true;
+  if (pathname.startsWith("/api/import/jobs/")) return true;
+  return false;
+}
+
 /** 小绿盒鉴权范围：页面 + 同源 API（含导入与任务轮询） */
 export function isXlvScopePath(pathname: string): boolean {
   if (isXlvPath(pathname)) return true;

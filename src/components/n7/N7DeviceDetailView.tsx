@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { n7Path } from "@/lib/business-lines";
 import { isN7TimeHopeless } from "@/lib/n7-rules";
-import type { N7FollowUpPatchResult } from "@/lib/n7-follow-up-client";
+import type { N7FollowUpPatchResult, N7FollowUpReviewResult } from "@/lib/n7-follow-up-client";
 import {
   NotionAlert,
   NotionButton,
@@ -55,6 +55,9 @@ interface Detail {
   followUpConnectStatus: string | null;
   followUpFlags: string[];
   followUpPhotoUrls: string[];
+  followUpReviewNote?: string | null;
+  followUpReviewAt?: string | null;
+  followUpReviewByName?: string | null;
 }
 
 function fmt(iso: string | null, pending?: boolean, pendingLabel?: string) {
@@ -63,7 +66,13 @@ function fmt(iso: string | null, pending?: boolean, pendingLabel?: string) {
   return new Date(iso).toLocaleString("zh-CN", { hour12: false });
 }
 
-export function N7DeviceDetailView({ sn }: { sn: string }) {
+export function N7DeviceDetailView({
+  sn,
+  canReviewFollowUp = false,
+}: {
+  sn: string;
+  canReviewFollowUp?: boolean;
+}) {
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [copiedField, setCopiedField] = useState<"phone" | "account" | null>(
@@ -110,6 +119,26 @@ export function N7DeviceDetailView({ sn }: { sn: string }) {
             followUpConnectStatus: json.followUpConnectStatus,
             followUpFlags: json.followUpFlags,
             followUpPhotoUrls: json.followUpPhotoUrls,
+            ...(json.followUpDone
+              ? {}
+              : {
+                  followUpReviewNote: null,
+                  followUpReviewAt: null,
+                  followUpReviewByName: null,
+                }),
+          }
+        : prev
+    );
+  }
+
+  function applyReviewResult(next: N7FollowUpReviewResult) {
+    setData((prev) =>
+      prev
+        ? {
+            ...prev,
+            followUpReviewNote: next.followUpReviewNote,
+            followUpReviewAt: next.followUpReviewAt,
+            followUpReviewByName: next.followUpReviewByName,
           }
         : prev
     );
@@ -162,6 +191,11 @@ export function N7DeviceDetailView({ sn }: { sn: string }) {
                 photoUrls={data.followUpPhotoUrls ?? []}
                 followUpAt={data.followUpAt}
                 acknowledgeOnly={hopeless}
+                canReview={canReviewFollowUp && data.followUpDone}
+                reviewNote={data.followUpReviewNote ?? null}
+                reviewAt={data.followUpReviewAt ?? null}
+                reviewByName={data.followUpReviewByName ?? null}
+                onReviewChanged={applyReviewResult}
                 onChanged={applyFollowResult}
               />
             </div>

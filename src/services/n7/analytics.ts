@@ -760,6 +760,9 @@ export async function getN7DeviceDetail(deviceSn: string) {
     followUpConnectStatus: device.followUpConnectStatus,
     followUpFlags: device.followUpFlags ?? [],
     followUpPhotoUrls: device.followUpPhotoUrls ?? [],
+    followUpReviewNote: device.followUpReviewNote,
+    followUpReviewAt: toIso(device.followUpReviewAt),
+    followUpReviewByName: device.followUpReviewByName,
   };
 }
 
@@ -789,11 +792,19 @@ export async function updateN7DeviceFollowUp(
             followUpConnectStatus: input.followUpConnectStatus ?? null,
             followUpFlags: input.followUpFlags ?? [],
             followUpPhotoUrls: input.followUpPhotoUrls ?? [],
+            followUpReviewNote: null,
+            followUpReviewAt: null,
+            followUpReviewById: null,
+            followUpReviewByName: null,
           }
         : {
             followUpConnectStatus: null,
             followUpFlags: [],
             followUpPhotoUrls: [],
+            followUpReviewNote: null,
+            followUpReviewAt: null,
+            followUpReviewById: null,
+            followUpReviewByName: null,
           }),
     },
     select: {

@@ -2,14 +2,16 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSessionUser } from "@/lib/auth";
 import { followUpPhotoPublicUrl } from "@/lib/n7-follow-up";
+import { assertCanViewN7 } from "@/services/n7/n7-scope";
 import {
+  canViewN7Notifications,
   countUnreadN7Notifications,
   listN7Notifications,
   markAllN7NotificationsRead,
   markN7NotificationRead,
 } from "@/services/n7/notifications";
 
-function mapMetaPhotos(meta: unknown) {
+function mapMetaPhotos(meta: unknown, deviceSn: string) {
   if (!meta || typeof meta !== "object") return meta;
   const m = meta as Record<string, unknown>;
   const urls = Array.isArray(m.photoUrls)
@@ -18,7 +20,9 @@ function mapMetaPhotos(meta: unknown) {
   return {
     ...m,
     photoUrls: urls.map((u) =>
-      u.startsWith("/") || u.startsWith("http") ? u : followUpPhotoPublicUrl(u)
+      u.startsWith("/") || u.startsWith("http")
+        ? u
+        : followUpPhotoPublicUrl(u, deviceSn)
     ),
   };
 }
@@ -26,20 +30,21 @@ function mapMetaPhotos(meta: unknown) {
 export async function GET(request: Request) {
   try {
     const user = await requireSessionUser();
-    if (user.role !== "MANAGER" && user.role !== "DIRECTOR") {
+    assertCanViewN7(user);
+    if (!canViewN7Notifications(user)) {
       return NextResponse.json({ error: "无权限" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
     if (searchParams.get("countOnly") === "1") {
-      const unread = await countUnreadN7Notifications(user.id);
+      const unread = await countUnreadN7Notifications(user);
       return NextResponse.json({ unread });
     }
 
     const unreadOnly = searchParams.get("unreadOnly") === "1";
     const limit = Number(searchParams.get("limit") || "50");
-    const rows = await listN7Notifications(user.id, { unreadOnly, limit });
-    const unread = await countUnreadN7Notifications(user.id);
+    const rows = await listN7Notifications(user, { unreadOnly, limit });
+    const unread = await countUnreadN7Notifications(user);
 
     return NextResponse.json({
       unread,
@@ -49,7 +54,7 @@ export async function GET(request: Request) {
         deviceSn: r.deviceSn,
         title: r.title,
         body: r.body,
-        meta: mapMetaPhotos(r.meta),
+        meta: mapMetaPhotos(r.meta, r.deviceSn),
         read: r.read,
         readAt: r.readAt?.toISOString() ?? null,
         createdAt: r.createdAt.toISOString(),
@@ -72,19 +77,20 @@ const patchSchema = z.object({
 export async function PATCH(request: Request) {
   try {
     const user = await requireSessionUser();
-    if (user.role !== "MANAGER" && user.role !== "DIRECTOR") {
+    assertCanViewN7(user);
+    if (!canViewN7Notifications(user)) {
       return NextResponse.json({ error: "无权限" }, { status: 403 });
     }
 
     const body = patchSchema.parse(await request.json());
     if (body.all) {
-      await markAllN7NotificationsRead(user.id);
+      await markAllN7NotificationsRead(user);
       return NextResponse.json({ ok: true });
     }
     if (!body.id) {
       return NextResponse.json({ error: "缺少 id" }, { status: 400 });
     }
-    const row = await markN7NotificationRead(user.id, body.id);
+    const row = await markN7NotificationRead(user, body.id);
     if (!row) {
       return NextResponse.json({ error: "提醒不存在" }, { status: 404 });
     }

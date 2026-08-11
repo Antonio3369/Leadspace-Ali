@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { n7Path } from "@/lib/business-lines";
 import {
+  N7_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW,
+  n7NotificationTitle,
+} from "@/lib/n7-follow-up";
+import {
   N7_NOTIFICATIONS_CHANGED,
   emitN7NotificationsChanged,
 } from "@/lib/n7-notifications-client";
@@ -26,6 +30,7 @@ type NotifItem = {
     connectStatus?: string | null;
     flags?: string[];
     followUpAt?: string;
+    reviewNote?: string;
   } | null;
   read: boolean;
   createdAt: string;
@@ -35,7 +40,11 @@ function fmt(iso: string) {
   return new Date(iso).toLocaleString("zh-CN", { hour12: false });
 }
 
-export function N7NotificationsView() {
+export function N7NotificationsView({
+  pageTitle = "消息通知",
+}: {
+  pageTitle?: string;
+}) {
   const [items, setItems] = useState<NotifItem[]>([]);
   const [unread, setUnread] = useState(0);
   const [error, setError] = useState("");
@@ -126,7 +135,7 @@ export function N7NotificationsView() {
   return (
     <PageShell>
       <PageHeader
-        title="队员已处理"
+        title={pageTitle}
         kicker="提醒通知"
         meta={
           <div className="flex flex-wrap items-center gap-3 text-sm text-[#64748b]">
@@ -152,11 +161,11 @@ export function N7NotificationsView() {
 
       {error && <NotionAlert tone="error">{error}</NotionAlert>}
       {loading && (
-        <p className="text-sm text-[#94a3b8]">正在加载队员已处理…</p>
+        <p className="text-sm text-[#94a3b8]">正在加载…</p>
       )}
 
       {!loading && items.length === 0 && (
-        <p className="text-sm text-[#94a3b8]">暂无队员关单记录</p>
+        <p className="text-sm text-[#94a3b8]">暂无消息</p>
       )}
 
       <ul className="space-y-2 max-w-2xl">
@@ -173,7 +182,7 @@ export function N7NotificationsView() {
             >
               <div className="flex items-start justify-between gap-2">
                 <p className="flex items-center gap-2 text-sm font-medium text-[#111827]">
-                  队员已处理
+                  {n7NotificationTitle(item.type)}
                   {!item.read ? (
                     <span className="inline-flex items-center justify-center rounded-full bg-[#ef4444] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
                       未读
@@ -189,7 +198,11 @@ export function N7NotificationsView() {
                 </span>
               </div>
               <p className="mt-1 text-sm text-[#64748b]">{item.body}</p>
-              {item.meta?.photoUrls && item.meta.photoUrls.length > 0 ? (
+              {item.type === N7_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW ? (
+                <p className="mt-1 text-xs text-[#94a3b8]">
+                  点进详情查看反馈并改进关单
+                </p>
+              ) : item.meta?.photoUrls && item.meta.photoUrls.length > 0 ? (
                 <p className="mt-1 text-xs text-[#94a3b8]">
                   含 {item.meta.photoUrls.length} 张现场图 · 点进详情审阅
                 </p>

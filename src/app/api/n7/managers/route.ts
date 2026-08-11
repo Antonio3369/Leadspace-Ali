@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
 import { PermissionError } from "@/lib/permissions";
+import { assertCanViewN7 } from "@/services/n7/n7-scope";
 import {
   getN7ManagerLeaderboard,
   type N7LeaderboardSortKey,
@@ -10,6 +11,7 @@ import {
 export async function GET(request: Request) {
   try {
     const user = await requireSessionUser();
+    assertCanViewN7(user);
     if (user.role !== "DIRECTOR") {
       return NextResponse.json(
         { error: "仅管理员可查看经理排行" },

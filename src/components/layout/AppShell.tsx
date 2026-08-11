@@ -50,8 +50,11 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
   const mobileTabs = buildMobileTabs(user.role, pathname)?.map((item) =>
     item.icon === "todo" &&
     notifUnread > 0 &&
-    (user.role === "MANAGER" ||
-      (user.role === "DIRECTOR" && isXlvPath(pathname)))
+    ((user.role === "MANAGER" && isN7Path(pathname)) ||
+      (user.role === "SALES" && isN7Path(pathname)) ||
+      (user.role === "DIRECTOR" && isXlvPath(pathname)) ||
+      (user.role === "MANAGER" && isXlvPath(pathname)) ||
+      (user.role === "SALES" && isXlvPath(pathname)))
       ? { ...item, badge: notifUnread }
       : item
   );
@@ -73,7 +76,8 @@ export function AppShell({ user, signOutMobile, signOutDesktop, children }: AppS
   useEffect(() => {
     const onN7 = isN7Path(pathname);
     const onXlv = isXlvPath(pathname);
-    const canN7 = user.role === "MANAGER" && onN7;
+    const canN7 =
+      (user.role === "MANAGER" || user.role === "SALES") && onN7;
     const canXlv =
       (user.role === "MANAGER" ||
         user.role === "DIRECTOR" ||

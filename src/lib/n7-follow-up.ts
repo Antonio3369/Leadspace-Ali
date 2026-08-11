@@ -7,6 +7,12 @@ export const N7_FOLLOW_UP_FLAGS = ["unwilling", "promised_use"] as const;
 export type N7FollowUpFlag = (typeof N7_FOLLOW_UP_FLAGS)[number];
 
 export const N7_NOTIFICATION_TYPE_FOLLOW_UP_DONE = "sales_follow_up_done";
+export const N7_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW = "manager_follow_up_review";
+
+export function n7NotificationTitle(type: string): string {
+  if (type === N7_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW) return "经理反馈";
+  return "队员已处理";
+}
 
 export function connectStatusLabel(status: string | null | undefined): string {
   if (status === "connected") return "已接通";
@@ -36,12 +42,20 @@ export function summarizeFollowUpResult(input: {
 }
 
 /** 存库相对路径 → 对外 URL（客户端/服务端皆可） */
-export function followUpPhotoPublicUrl(relativePath: string): string {
+export function followUpPhotoPublicUrl(
+  relativePath: string,
+  deviceSn?: string
+): string {
   const safe = relativePath.replace(/^\/+/, "");
-  return `/api/n7/follow-up/photos/${safe
+  const base = `/api/n7/follow-up/photos/${safe
     .split("/")
     .map(encodeURIComponent)
     .join("/")}`;
+  const sn = deviceSn?.trim();
+  if (sn) {
+    return `${base}?deviceSn=${encodeURIComponent(sn)}`;
+  }
+  return base;
 }
 
 export function isFollowUpConnectStatus(
