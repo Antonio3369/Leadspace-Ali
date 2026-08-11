@@ -1,8 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EnableSuccessModal } from "@/components/admin/EnableSuccessModal";
-import { uploadImportWithJobPoll } from "@/lib/import-upload-client";
+import {
+  resumeImportJobPoll,
+  uploadImportWithJobPoll,
+} from "@/lib/import-upload-client";
 import { ENABLE_NEXT_STEPS } from "@/lib/account-lifecycle";
 import {
   NotionAlert,
@@ -92,6 +95,54 @@ export function N7ImportPage() {
     password: string;
   } | null>(null);
   const uploadAbortRef = useRef(false);
+  const resumeCheckedRef = useRef(false);
+
+  useEffect(() => {
+    if (resumeCheckedRef.current) return;
+    resumeCheckedRef.current = true;
+
+    let cancelled = false;
+    void (async () => {
+      for (const endpoint of [
+        IMPORT_CONFIG.personnel.endpoint,
+        IMPORT_CONFIG.n7.endpoint,
+      ]) {
+        if (cancelled) return;
+        try {
+          const res = await resumeImportJobPoll<ImportResult>(
+            endpoint,
+            (value, label) => {
+              if (!cancelled) {
+                setLoading(true);
+                setProgress(value);
+                setProgressLabel(label);
+              }
+            }
+          );
+          if (cancelled || !res) continue;
+          setTab(endpoint === IMPORT_CONFIG.n7.endpoint ? "n7" : "personnel");
+          setResult(res);
+          setError("");
+          return;
+        } catch (err) {
+          if (!cancelled) {
+            setError(err instanceof Error ? err.message : "导入失败");
+          }
+          return;
+        } finally {
+          if (!cancelled) {
+            setLoading(false);
+            setProgress(0);
+            setProgressLabel("");
+          }
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function switchTab(next: PageTab) {
     if (loading || creatingManager) return;

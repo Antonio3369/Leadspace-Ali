@@ -15,6 +15,27 @@ function isTransientHttpStatus(status: number): boolean {
   return TRANSIENT_HTTP.has(status);
 }
 
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  if (
+    typeof AbortSignal !== "undefined" &&
+    typeof AbortSignal.timeout === "function"
+  ) {
+    return fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function readJsonBody(res: Response, context: string): Promise<Record<string, unknown>> {
   return readResponseJson<Record<string, unknown>>(res, context);
 }
@@ -35,12 +56,15 @@ export async function uploadImportWithJobPoll<T>(
 
   let uploadRes: Response;
   try {
-    uploadRes = await fetch(endpoint, {
-      method: "POST",
-      body: formData,
-      credentials: "same-origin",
-      signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
-    });
+    uploadRes = await fetchWithTimeout(
+      endpoint,
+      {
+        method: "POST",
+        body: formData,
+        credentials: "same-origin",
+      },
+      UPLOAD_TIMEOUT_MS
+    );
   } catch (err) {
     const isTimeout =
       err instanceof Error &&
@@ -206,10 +230,11 @@ async function pollImportJob<T>(
 
       let res: Response;
       try {
-        res = await fetch(`/api/import/jobs/${encodeURIComponent(jobId)}`, {
-          credentials: "same-origin",
-          signal: AbortSignal.timeout(30_000),
-        });
+        res = await fetchWithTimeout(
+          `/api/import/jobs/${encodeURIComponent(jobId)}`,
+          { credentials: "same-origin" },
+          30_000
+        );
       } catch {
         sawTransient = true;
         onProgress(

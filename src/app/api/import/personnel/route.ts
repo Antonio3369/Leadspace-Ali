@@ -13,7 +13,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "仅管理员可上传 Excel 数据" }, { status: 403 });
     }
 
-    const formData = await request.formData();
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return NextResponse.json(
+        {
+          error:
+            "上传文件过大或传输中断，无法解析。请确认文件小于 100MB 后重试。",
+        },
+        { status: 413 }
+      );
+    }
     const file = formData.get("file");
 
     if (!file || !(file instanceof File)) {
@@ -47,6 +58,15 @@ export async function POST(request: Request) {
     }
     if (message === "FORBIDDEN") {
       return NextResponse.json({ error: "账号已停用" }, { status: 403 });
+    }
+    if (/Failed to parse body as FormData/i.test(message)) {
+      return NextResponse.json(
+        {
+          error:
+            "上传文件过大或传输中断。请确认文件小于 100MB 后重试。",
+        },
+        { status: 413 }
+      );
     }
     return NextResponse.json({ error: message }, { status: 500 });
   }
