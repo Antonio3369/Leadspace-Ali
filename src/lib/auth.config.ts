@@ -55,6 +55,7 @@ declare module "@auth/core/jwt" {
     mustChangePassword: boolean;
     businessLines: BusinessLineId[];
     authRealm: AuthRealm;
+    name?: string | null;
     xlvManagerName?: string | null;
     xlvOperatorName?: string | null;
   }
@@ -162,6 +163,7 @@ export const authConfig = {
         token.mustChangePassword = user.mustChangePassword;
         token.businessLines = user.businessLines;
         token.authRealm = user.authRealm ?? "alipay";
+        token.name = user.name ?? null;
         token.xlvManagerName = user.xlvManagerName ?? null;
         token.xlvOperatorName = user.xlvOperatorName ?? null;
       }
@@ -174,7 +176,7 @@ export const authConfig = {
           ...session.user,
           id: token.id,
           username: token.username,
-          name: session.user?.name ?? token.username,
+          name: token.name ?? token.username,
           email: token.username,
           role: token.role,
           status: token.status,

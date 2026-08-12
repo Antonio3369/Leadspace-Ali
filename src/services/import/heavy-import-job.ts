@@ -15,6 +15,83 @@ import { importExcelFile } from "@/services/import/excel-importer";
 
 export type HeavyImportKind = "personnel" | "n7" | "xlh-excel" | "xlv";
 
+export const STALE_IMPORT_JOB_MS = 3 * 60 * 1000;
+
+export type HeavyImportJobSnapshot = {
+  id: string;
+  kind: string;
+  fileName: string;
+  status: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "PARTIAL";
+  progress: number;
+  message: string | null;
+  errorMessage: string | null;
+  result: unknown;
+  completedAt: Date | null;
+  updatedAt: Date;
+};
+
+type HeavyImportJobRow = NonNullable<
+  Awaited<ReturnType<typeof db.heavyImportJob.findUnique>>
+>;
+
+export function isRunningImportStatus(status: string) {
+  return status === "PENDING" || status === "PROCESSING";
+}
+
+/** 超时未更新的进行中任务，对外呈现为已中断 */
+export function presentHeavyImportJob(
+  job: HeavyImportJobRow
+): HeavyImportJobSnapshot {
+  const isStale =
+    !job.completedAt &&
+    isRunningImportStatus(job.status) &&
+    Date.now() - job.updatedAt.getTime() > STALE_IMPORT_JOB_MS;
+
+  if (isStale) {
+    return {
+      id: job.id,
+      kind: job.kind,
+      fileName: job.fileName,
+      status: "FAILED",
+      progress: job.progress,
+      message: "导入任务已中断",
+      errorMessage: "导入超时或服务重启导致中断，请重新上传。",
+      result: null,
+      completedAt: job.completedAt,
+      updatedAt: job.updatedAt,
+    };
+  }
+
+  return {
+    id: job.id,
+    kind: job.kind,
+    fileName: job.fileName,
+    status: job.status,
+    progress: job.progress,
+    message: job.message,
+    errorMessage: job.errorMessage,
+    result: job.resultJson,
+    completedAt: job.completedAt,
+    updatedAt: job.updatedAt,
+  };
+}
+
+export async function getActiveHeavyImportJob(opts: {
+  kind: HeavyImportKind;
+  uploadedById: string;
+  directorView: boolean;
+}) {
+  const job = await db.heavyImportJob.findFirst({
+    where: {
+      kind: opts.kind,
+      status: { in: ["PENDING", "PROCESSING"] },
+      ...(opts.directorView ? {} : { uploadedById: opts.uploadedById }),
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  return job ? presentHeavyImportJob(job) : null;
+}
+
 /** 应用启动时：释放内存锁，并将孤儿导入任务标为失败（每进程仅执行一次） */
 const RECOVERED_KEY = Symbol.for("leadspace.heavyImport.recovered");
 
@@ -243,8 +320,6 @@ export async function getHeavyImportJob(jobId: string) {
     return getHeavyImportJobViaPg(jobId);
   }
 }
-
-type HeavyImportJobRow = NonNullable<Awaited<ReturnType<typeof db.heavyImportJob.findUnique>>>;
 
 async function getHeavyImportJobViaPg(jobId: string): Promise<HeavyImportJobRow | null> {
   const pool = getPgPool();

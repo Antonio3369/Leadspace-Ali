@@ -2,7 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatRetentionLabel, getMerchantRetentionCutoff } from "@/lib/merchant-retention";
-import { uploadImportWithJobPoll } from "@/lib/import-upload-client";
+import {
+  isImportRestartInterrupted,
+  uploadImportWithJobPoll,
+  type ImportRestartContext,
+} from "@/lib/import-upload-client";
+import { ImportInterruptedNotice } from "@/components/import/ImportInterruptedNotice";
+import { xlhPath } from "@/lib/business-lines";
 import {
   NotionAlert,
   NotionButton,
@@ -76,6 +82,7 @@ export default function ImportPage() {
   const [progressLabel, setProgressLabel] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState("");
+  const [interrupted, setInterrupted] = useState<ImportRestartContext | null>(null);
   const uploadAbortRef = useRef(false);
 
   const config = IMPORT_CONFIG[kind];
@@ -92,6 +99,7 @@ export default function ImportPage() {
     setFile(null);
     setResult(null);
     setError("");
+    setInterrupted(null);
     setProgress(0);
     setProgressLabel("");
   }
@@ -102,6 +110,7 @@ export default function ImportPage() {
 
     setLoading(true);
     setError("");
+    setInterrupted(null);
     setResult(null);
     setProgress(0);
     setProgressLabel("准备上传…");
@@ -123,7 +132,11 @@ export default function ImportPage() {
       setFile(null);
     } catch (err) {
       if (!uploadAbortRef.current) {
-        setError(err instanceof Error ? err.message : "上传失败");
+        if (isImportRestartInterrupted(err)) {
+          setInterrupted(err.context);
+        } else {
+          setError(err instanceof Error ? err.message : "上传失败");
+        }
         setProgress(0);
         setProgressLabel("");
       }
@@ -173,6 +186,17 @@ export default function ImportPage() {
             {loading ? "导入中..." : config.buttonLabel}
           </NotionButton>
         </form>
+
+        {interrupted ? (
+          <div className="mt-4">
+            <ImportInterruptedNotice
+              context={interrupted}
+              verifyHref={xlhPath("/teams")}
+              verifyLabel="打开团队看板核对"
+              onDismiss={() => setInterrupted(null)}
+            />
+          </div>
+        ) : null}
 
         {error && (
           <div className="mt-4">

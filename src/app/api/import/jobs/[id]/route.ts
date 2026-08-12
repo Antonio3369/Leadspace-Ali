@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { canImportExcel, canLogin } from "@/lib/permissions";
-import { getHeavyImportJob } from "@/services/import/heavy-import-job";
+import { getHeavyImportJob, presentHeavyImportJob } from "@/services/import/heavy-import-job";
 
 export const GET = auth(async (request, context) => {
   try {
@@ -25,36 +25,19 @@ export const GET = auth(async (request, context) => {
       return NextResponse.json({ error: "无权查看该任务" }, { status: 403 });
     }
 
-    const staleMs = 3 * 60 * 1000;
-    const isStale =
-      !job.completedAt &&
-      (job.status === "PROCESSING" || job.status === "PENDING") &&
-      Date.now() - job.updatedAt.getTime() > staleMs;
-    if (isStale) {
-      return NextResponse.json({
-        id: job.id,
-        kind: job.kind,
-        fileName: job.fileName,
-        status: "FAILED",
-        progress: job.progress,
-        message: "导入任务已中断",
-        errorMessage: "导入超时或服务重启导致中断，请重新上传。",
-        result: null,
-        completedAt: job.completedAt,
-      });
-    }
+    const presented = presentHeavyImportJob(job);
 
     return NextResponse.json({
-      id: job.id,
-      kind: job.kind,
-      fileName: job.fileName,
-      status: job.status,
-      progress: job.progress,
-      message: job.message,
-      errorMessage: job.errorMessage,
-      result: job.resultJson,
-      completedAt: job.completedAt,
-      updatedAt: job.updatedAt,
+      id: presented.id,
+      kind: presented.kind,
+      fileName: presented.fileName,
+      status: presented.status,
+      progress: presented.progress,
+      message: presented.message,
+      errorMessage: presented.errorMessage,
+      result: presented.result,
+      completedAt: presented.completedAt,
+      updatedAt: presented.updatedAt,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "查询失败";

@@ -4,15 +4,22 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { xlvPath } from "@/lib/business-lines";
 import {
-  resumeImportJobPoll,
+  followActiveImportJob,
+  isImportJobBusyError,
+  isImportRestartInterrupted,
+  peekActiveImportJob,
+  resumeOrFollowActiveImport,
   uploadImportWithJobPoll,
+  type ImportJobSnapshot,
+  type ImportRestartContext,
 } from "@/lib/import-upload-client";
+import { ImportInterruptedNotice } from "@/components/import/ImportInterruptedNotice";
+import { ImportJobStatusPanel } from "@/components/import/ImportJobStatusPanel";
 import {
   NotionAlert,
   NotionButton,
   NotionInput,
   NotionPanel,
-  NotionProgressBar,
   NotionTabs,
   PageHeader,
   PageShell,
@@ -43,7 +50,7 @@ const TAB_CONFIG: Record<
   raw: {
     title: "运营原始表",
     description:
-      "① 先传本表（微信运营导出，含「统计日期」「当日*」「累计*」）。按 SN + 统计日期写快照；大表约 3–8 分钟，上传后勿关页、勿重复点。成功摘要应见快照数千行。",
+      "① 先传本表（微信运营导出，含「统计日期」「当日*」「累计*」）。按 SN + 统计日期写快照；大表约 3–8 分钟，上传后保持页面打开、勿重复点。若提示中断，请先查看看板再决定是否重传。",
     endpoint: "/api/import/xlv",
     buttonLabel: "导入原始表",
   },
@@ -57,7 +64,7 @@ const TAB_CONFIG: Record<
   assignment: {
     title: "SN 归属表",
     description:
-      "③ 最后传 SN 归属（「所属作业员」必填；经理可省略，从名册反查）。仅补挂靠，不能替代原始表快照。",
+      "③ 最后传 SN 归属（「所属作业员」或「所属业务员」必填；经理可省略，从名册反查）。仅补挂靠，不能替代原始表快照。",
     endpoint: "/api/import/xlv",
     buttonLabel: "导入 SN 归属表",
   },
@@ -70,12 +77,84 @@ export function XlvImportPage() {
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
   const [message, setMessage] = useState("");
+  const [interrupted, setInterrupted] = useState<ImportRestartContext | null>(null);
+  const [activeJob, setActiveJob] = useState<ImportJobSnapshot | null>(null);
   const [error, setError] = useState("");
   const [result, setResult] = useState<XlvImportResult | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
 
   const config = TAB_CONFIG[tab];
   const resumeCheckedRef = useRef(false);
+  const importEndpoint = "/api/import/xlv";
+
+  async function refreshActiveJobPeek() {
+    const job = await peekActiveImportJob(importEndpoint);
+    setActiveJob(job);
+    return job;
+  }
+
+  async function watchImportProgress() {
+    setUploading(true);
+    setError("");
+    setInterrupted(null);
+
+    const onProgress = (value: number, label: string) => {
+      setProgress(value);
+      setProgressLabel(label);
+    };
+
+    try {
+      const res = await resumeOrFollowActiveImport<XlvImportResult>(
+        importEndpoint,
+        onProgress,
+        (job) => {
+          setActiveJob(job);
+          if (job && (job.status === "PENDING" || job.status === "PROCESSING")) {
+            setInterrupted(null);
+          }
+        }
+      );
+      if (res) {
+        setResult(res);
+        setMessage("导入完成");
+        setActiveJob(null);
+        setInterrupted(null);
+      } else {
+        await refreshActiveJobPeek();
+      }
+    } catch (err) {
+      if (isImportRestartInterrupted(err)) {
+        const peek = await refreshActiveJobPeek();
+        if (
+          peek &&
+          (peek.status === "PENDING" || peek.status === "PROCESSING")
+        ) {
+          setInterrupted(null);
+          const res = await followActiveImportJob<XlvImportResult>(
+            importEndpoint,
+            onProgress,
+            setActiveJob
+          );
+          if (res) {
+            setResult(res);
+            setMessage("导入完成");
+            setActiveJob(null);
+          }
+        } else {
+          setInterrupted(err.context);
+        }
+      } else {
+        setError(err instanceof Error ? err.message : "导入失败");
+      }
+      if (!isImportRestartInterrupted(err)) {
+        await refreshActiveJobPeek();
+      }
+    } finally {
+      setUploading(false);
+      setProgress(0);
+      setProgressLabel("");
+    }
+  }
 
   useEffect(() => {
     if (resumeCheckedRef.current) return;
@@ -85,38 +164,14 @@ export function XlvImportPage() {
     void (async () => {
       setError("");
       setMessage("");
+      setInterrupted(null);
       setResult(null);
-      try {
-        const res = await resumeImportJobPoll<XlvImportResult>(
-          "/api/import/xlv",
-          (value, label) => {
-            if (!cancelled) {
-              setUploading(true);
-              setProgress(value);
-              setProgressLabel(label);
-            }
-          }
-        );
-        if (cancelled || !res) {
-          if (!cancelled && !res) {
-            setMessage(
-              "若刚上传过原始表，后台可能已写入成功；请刷新本页或打开设备详情核对考核数据。"
-            );
-          }
-          return;
-        }
-        setResult(res);
-        setMessage("导入完成");
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "导入失败");
-        }
-      } finally {
-        if (!cancelled) {
-          setUploading(false);
-          setProgress(0);
-          setProgressLabel("");
-        }
+      const peek = await peekActiveImportJob(importEndpoint);
+      if (!cancelled && peek) {
+        setActiveJob(peek);
+      }
+      if (!cancelled) {
+        await watchImportProgress();
       }
     })();
 
@@ -133,6 +188,7 @@ export function XlvImportPage() {
     setUploading(true);
     setError("");
     setMessage("");
+    setInterrupted(null);
     setResult(null);
     setProgress(10);
 
@@ -150,11 +206,45 @@ export function XlvImportPage() {
       setFile(null);
       setFileInputKey((k) => k + 1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "导入失败");
+      if (isImportJobBusyError(err)) {
+        setMessage("");
+        try {
+          const res = await followActiveImportJob<XlvImportResult>(
+            importEndpoint,
+            (value, label) => {
+              setProgress(value);
+              setProgressLabel(label);
+            },
+            setActiveJob
+          );
+          if (res) {
+            setResult(res);
+            setMessage("导入完成");
+            setActiveJob(null);
+            setFile(null);
+            setFileInputKey((k) => k + 1);
+          }
+        } catch (followErr) {
+          if (isImportRestartInterrupted(followErr)) {
+            setInterrupted(followErr.context);
+          } else {
+            setError(
+              followErr instanceof Error ? followErr.message : "导入失败"
+            );
+          }
+        }
+        return;
+      }
+      if (isImportRestartInterrupted(err)) {
+        setInterrupted(err.context);
+      } else {
+        setError(err instanceof Error ? err.message : "导入失败");
+      }
     } finally {
       setUploading(false);
       setProgress(0);
       setProgressLabel("");
+      void refreshActiveJobPeek();
     }
   }
 
@@ -190,6 +280,7 @@ export function XlvImportPage() {
           setResult(null);
           setError("");
           setMessage("");
+          setInterrupted(null);
           setFileInputKey((k) => k + 1);
         }}
       />
@@ -207,17 +298,40 @@ export function XlvImportPage() {
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
 
-        {uploading && (
-          <NotionProgressBar
-            value={progress}
-            label={progressLabel || (tab === "raw" ? "大表导入中，请稍候…" : "处理中…")}
-          />
-        )}
+        <ImportJobStatusPanel
+          job={activeJob}
+          progress={uploading ? progress : activeJob?.progress ?? 0}
+          progressLabel={
+            progressLabel ||
+            (tab === "raw" ? "大表导入中，请稍候…" : "处理中…")
+          }
+          watching={uploading}
+        />
 
+        {!uploading &&
+        activeJob &&
+        (activeJob.status === "PENDING" || activeJob.status === "PROCESSING") ? (
+          <NotionButton type="button" variant="secondary" onClick={() => void watchImportProgress()}>
+            刷新导入进度
+          </NotionButton>
+        ) : null}
+
+        {interrupted &&
+        !(
+          activeJob &&
+          (activeJob.status === "PENDING" || activeJob.status === "PROCESSING")
+        ) ? (
+          <ImportInterruptedNotice
+            context={interrupted}
+            verifyHref={xlvPath("/board")}
+            verifyLabel="打开小绿盒看板核对"
+            onDismiss={() => setInterrupted(null)}
+          />
+        ) : null}
         {error && (
           <NotionAlert tone="error">
             <p>{error}</p>
-            {error.includes("登录") ? (
+            {(error.includes("登录已过期") || error.includes("重新登录")) ? (
               <p className="mt-2">
                 <Link href="/login" className="font-medium text-[#2563eb] hover:text-[#1d4ed8]">
                   前往登录 →
@@ -247,7 +361,15 @@ export function XlvImportPage() {
           </div>
         )}
 
-        <NotionButton onClick={handleImport} disabled={uploading || !file}>
+        <NotionButton
+          onClick={handleImport}
+          disabled={
+            uploading ||
+            !file ||
+            (activeJob != null &&
+              (activeJob.status === "PENDING" || activeJob.status === "PROCESSING"))
+          }
+        >
           {uploading ? "导入中…" : config.buttonLabel}
         </NotionButton>
       </NotionPanel>

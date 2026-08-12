@@ -3,9 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { EnableSuccessModal } from "@/components/admin/EnableSuccessModal";
 import {
+  isImportRestartInterrupted,
   resumeImportJobPoll,
   uploadImportWithJobPoll,
+  type ImportRestartContext,
 } from "@/lib/import-upload-client";
+import { ImportInterruptedNotice } from "@/components/import/ImportInterruptedNotice";
+import { n7Path } from "@/lib/business-lines";
 import { ENABLE_NEXT_STEPS } from "@/lib/account-lifecycle";
 import {
   NotionAlert,
@@ -87,6 +91,7 @@ export function N7ImportPage() {
   const [progressLabel, setProgressLabel] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState("");
+  const [interrupted, setInterrupted] = useState<ImportRestartContext | null>(null);
   const [managerName, setManagerName] = useState("");
   const [creatingManager, setCreatingManager] = useState(false);
   const [managerSuccess, setManagerSuccess] = useState<{
@@ -119,14 +124,21 @@ export function N7ImportPage() {
               }
             }
           );
-          if (cancelled || !res) continue;
+          if (cancelled || !res) {
+            continue;
+          }
           setTab(endpoint === IMPORT_CONFIG.n7.endpoint ? "n7" : "personnel");
           setResult(res);
           setError("");
+          setInterrupted(null);
           return;
         } catch (err) {
           if (!cancelled) {
-            setError(err instanceof Error ? err.message : "导入失败");
+            if (isImportRestartInterrupted(err)) {
+              setInterrupted(err.context);
+            } else {
+              setError(err instanceof Error ? err.message : "导入失败");
+            }
           }
           return;
         } finally {
@@ -150,6 +162,7 @@ export function N7ImportPage() {
     setFile(null);
     setResult(null);
     setError("");
+    setInterrupted(null);
     setProgress(0);
     setProgressLabel("");
     setManagerName("");
@@ -162,6 +175,7 @@ export function N7ImportPage() {
     const config = IMPORT_CONFIG[tab];
     setLoading(true);
     setError("");
+    setInterrupted(null);
     setResult(null);
     setProgress(0);
     setProgressLabel("准备上传…");
@@ -183,7 +197,11 @@ export function N7ImportPage() {
       setFile(null);
     } catch (err) {
       if (!uploadAbortRef.current) {
-        setError(err instanceof Error ? err.message : "上传失败");
+        if (isImportRestartInterrupted(err)) {
+          setInterrupted(err.context);
+        } else {
+          setError(err instanceof Error ? err.message : "上传失败");
+        }
         setProgress(0);
         setProgressLabel("");
       }
@@ -310,6 +328,14 @@ export function N7ImportPage() {
             </NotionButton>
           </form>
 
+          {interrupted ? (
+            <ImportInterruptedNotice
+              context={interrupted}
+              verifyHref={n7Path("/board")}
+              verifyLabel="打开 N7 看板核对"
+              onDismiss={() => setInterrupted(null)}
+            />
+          ) : null}
           {error && <NotionAlert tone="error">{error}</NotionAlert>}
 
           {result && (

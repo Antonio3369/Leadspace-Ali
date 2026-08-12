@@ -18,6 +18,61 @@ function mapXlvMemberRole(memberRole: string): SessionUser["role"] {
   return memberRole === "MANAGER" ? "MANAGER" : "SALES";
 }
 
+type LiveXlvMemberState = {
+  status: SessionUser["status"];
+  accountLifecycle: SessionUser["accountLifecycle"];
+  mustChangePassword: boolean;
+  memberRole: string;
+  name: string;
+  managerName: string;
+  operatorName: string;
+};
+
+function applyLiveXlvMemberSession(
+  user: SessionUser,
+  live: LiveXlvMemberState
+): SessionUser {
+  const role = mapXlvMemberRole(live.memberRole);
+  return {
+    ...user,
+    name: live.name,
+    role,
+    status: live.status,
+    accountLifecycle: live.accountLifecycle,
+    mustChangePassword: live.mustChangePassword,
+    xlvManagerName: live.managerName,
+    xlvOperatorName:
+      live.memberRole === "OPERATOR" ? live.operatorName : null,
+    businessLines: resolveAccessibleBusinessLines(
+      role,
+      user.businessLines ?? DEFAULT_BUSINESS_LINES
+    ) as BusinessLineId[],
+  };
+}
+
+async function finalizeSessionUser(
+  user: NonNullable<Awaited<ReturnType<typeof getSessionUser>>>
+) {
+  if (!canLogin(user.status)) {
+    throw new Error("FORBIDDEN");
+  }
+
+  if (user.authRealm === "xlv" && user.role !== "DIRECTOR") {
+    const live = await loadLiveUserState(user).catch(() => null);
+    if (live && "memberRole" in live) {
+      return applyLiveXlvMemberSession(user, live);
+    }
+  }
+
+  return {
+    ...user,
+    businessLines: resolveAccessibleBusinessLines(
+      user.role,
+      user.businessLines ?? DEFAULT_BUSINESS_LINES
+    ) as BusinessLineId[],
+  };
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   callbacks: {
@@ -33,6 +88,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.mustChangePassword = user.mustChangePassword;
         token.businessLines = user.businessLines;
         token.authRealm = user.authRealm ?? "alipay";
+        token.name = user.name ?? null;
         token.xlvManagerName = user.xlvManagerName ?? null;
         token.xlvOperatorName = user.xlvOperatorName ?? null;
         return token;
@@ -164,22 +220,6 @@ export async function getSessionUser() {
   return session.user;
 }
 
-async function finalizeSessionUser(
-  user: NonNullable<Awaited<ReturnType<typeof getSessionUser>>>
-) {
-  if (!canLogin(user.status)) {
-    throw new Error("FORBIDDEN");
-  }
-
-  return {
-    ...user,
-    businessLines: resolveAccessibleBusinessLines(
-      user.role,
-      user.businessLines ?? DEFAULT_BUSINESS_LINES
-    ) as BusinessLineId[],
-  };
-}
-
 /** Route Handler 内优先用 req.auth（auth() 包装器注入），读不到时回退 auth() */
 export async function requireSessionFromAuth(
   authUser: Awaited<ReturnType<typeof getSessionUser>> | null | undefined
@@ -200,6 +240,9 @@ async function loadLiveUserState(user: SessionUser) {
         accountLifecycle: true,
         mustChangePassword: true,
         memberRole: true,
+        name: true,
+        managerName: true,
+        operatorName: true,
       },
     });
   }
@@ -255,19 +298,23 @@ export async function ensureLiveSession(): Promise<SessionUser> {
       ? mapXlvMemberRole((live as { memberRole: string }).memberRole)
       : user.role;
 
-  const businessLines = resolveAccessibleBusinessLines(
-    role,
-    user.businessLines ?? DEFAULT_BUSINESS_LINES
-  );
-
-  return {
+  const base = {
     ...user,
     role,
     status: live.status,
     accountLifecycle: live.accountLifecycle,
     mustChangePassword: live.mustChangePassword,
-    businessLines,
+    businessLines: resolveAccessibleBusinessLines(
+      role,
+      user.businessLines ?? DEFAULT_BUSINESS_LINES
+    ),
   };
+
+  if (user.authRealm === "xlv" && user.role !== "DIRECTOR" && "memberRole" in live) {
+    return applyLiveXlvMemberSession(base, live as LiveXlvMemberState);
+  }
+
+  return base;
 }
 
 export async function requireSessionUser() {

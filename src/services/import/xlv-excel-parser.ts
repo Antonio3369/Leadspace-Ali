@@ -101,8 +101,10 @@ function parseBool(value: unknown): boolean {
 
 const XLV_OPERATOR_HEADERS = [
   "所属作业员",
+  "所属业务员",
   "作业员（姓名）",
   "作业员姓名",
+  "业务员",
   "作业员",
   "作业人员",
 ] as const;

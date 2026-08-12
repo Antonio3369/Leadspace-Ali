@@ -3,6 +3,238 @@
 import { readResponseJson } from "@/lib/fetch-json";
 
 const TRANSIENT_HTTP = new Set([502, 503, 504]);
+const STALE_PROCESSING_MS = 45_000;
+
+export type ImportRestartContext = {
+  fileName?: string;
+  progress?: number;
+};
+
+export function formatImportRestartNotice(context: ImportRestartContext = {}) {
+  const fileLabel = context.fileName ? `「${context.fileName}」` : "上次文件";
+  const progressLabel =
+    context.progress != null && context.progress > 0
+      ? `（约 ${context.progress}% 时已中断）`
+      : "";
+
+  return {
+    title: "请勿立即重复上传",
+    body: `${fileLabel}导入${progressLabel}因系统维护中断。大表导入可能已部分或全部写入，请先核对看板/设备数据；仅当确认缺失时，再重新选择文件导入。`,
+  };
+}
+
+export class ImportRestartInterruptedError extends Error {
+  readonly context: ImportRestartContext;
+
+  constructor(context: ImportRestartContext = {}) {
+    super(formatImportRestartNotice(context).body);
+    this.name = "ImportRestartInterruptedError";
+    this.context = context;
+  }
+}
+
+export function isImportRestartInterrupted(
+  err: unknown
+): err is ImportRestartInterruptedError {
+  return err instanceof ImportRestartInterruptedError;
+}
+
+function isImportRestartMessage(message: string): boolean {
+  return message.includes("服务重启") || message.includes("服务更新");
+}
+
+export type ImportJobSnapshot = {
+  id: string;
+  kind: string;
+  fileName: string;
+  status: string;
+  progress: number;
+  message: string | null;
+  errorMessage: string | null;
+  updatedAt?: string;
+};
+
+export const IMPORT_ENDPOINT_KIND: Record<string, string> = {
+  "/api/import/xlv": "xlv",
+  "/api/import/n7": "n7",
+  "/api/import/personnel": "personnel",
+  "/api/import/excel": "xlh-excel",
+};
+
+export class ImportJobBusyError extends Error {
+  readonly endpoint: string;
+
+  constructor(endpoint: string) {
+    super("当前已有导入任务在执行，请等待完成后再试。");
+    this.name = "ImportJobBusyError";
+    this.endpoint = endpoint;
+  }
+}
+
+export function isImportJobBusyError(err: unknown): err is ImportJobBusyError {
+  return err instanceof ImportJobBusyError;
+}
+
+export function describeImportJobStatus(job: ImportJobSnapshot): {
+  tone: "info" | "warning" | "success" | "error";
+  title: string;
+  body: string;
+} {
+  switch (job.status) {
+    case "PENDING":
+      return {
+        tone: "info",
+        title: "导入排队中",
+        body: `「${job.fileName}」已上传，正在排队写入，请勿重复上传。`,
+      };
+    case "PROCESSING":
+      return {
+        tone: "info",
+        title: `正在导入 · ${job.progress}%`,
+        body: `「${job.fileName}」正在写入数据库。${job.message ? `${job.message} ` : ""}请保持页面打开，完成后会自动提示。`,
+      };
+    case "SUCCESS":
+      return {
+        tone: "success",
+        title: "导入已完成",
+        body: `「${job.fileName}」已成功导入，可看板核对数据。`,
+      };
+    case "FAILED":
+      return {
+        tone: "error",
+        title: "导入未成功",
+        body: job.errorMessage || job.message || "导入失败，请核对后重试。",
+      };
+    default:
+      return {
+        tone: "info",
+        title: "导入处理中",
+        body: job.message || "请稍候…",
+      };
+  }
+}
+
+function formatImportJobProgressLabel(job: {
+  fileName?: string;
+  progress?: number;
+  message?: string | null;
+  status?: string;
+}) {
+  const file = job.fileName ? `「${job.fileName}」` : "文件";
+  if (job.status === "PENDING") {
+    return `排队中 · ${file}`;
+  }
+  const pct = job.progress ?? 0;
+  return job.message || `正在导入 ${file} · ${pct}%`;
+}
+
+async function fetchActiveImportJob(
+  kind: string
+): Promise<ImportJobSnapshot | null> {
+  let res: Response;
+  try {
+    res = await fetch(
+      `/api/import/jobs/active?kind=${encodeURIComponent(kind)}`,
+      { credentials: "same-origin" }
+    );
+  } catch {
+    return null;
+  }
+  const data = (await readJsonBody(res, "查询导入状态")) as {
+    active?: boolean;
+    job?: ImportJobSnapshot | null;
+  };
+  if (!res.ok || !data.active || !data.job) {
+    return null;
+  }
+  return data.job;
+}
+
+export async function peekActiveImportJob(
+  endpoint: string
+): Promise<ImportJobSnapshot | null> {
+  const kind = IMPORT_ENDPOINT_KIND[endpoint];
+  if (!kind) return null;
+  return fetchActiveImportJob(kind);
+}
+
+export async function followActiveImportJob<T>(
+  endpoint: string,
+  onProgress: (value: number, label: string) => void,
+  onJobSnapshot?: (job: ImportJobSnapshot | null) => void
+): Promise<T | null> {
+  const kind = IMPORT_ENDPOINT_KIND[endpoint];
+  if (!kind) return null;
+
+  const active = await fetchActiveImportJob(kind);
+  onJobSnapshot?.(active);
+  if (
+    !active?.id ||
+    (active.status !== "PENDING" && active.status !== "PROCESSING")
+  ) {
+    return null;
+  }
+
+  try {
+    sessionStorage.setItem(jobStorageKey(endpoint), active.id);
+  } catch {
+    /* ignore */
+  }
+
+  onProgress(
+    Math.min(99, Math.max(20, active.progress ?? 20)),
+    formatImportJobProgressLabel(active)
+  );
+
+  try {
+    return await pollImportJob<T>(active.id, endpoint, onProgress);
+  } catch (err) {
+    if (isImportRestartInterrupted(err)) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+/** 恢复 session 中的任务，或跟进服务端进行中的导入 */
+export async function resumeOrFollowActiveImport<T>(
+  endpoint: string,
+  onProgress: (value: number, label: string) => void,
+  onJobSnapshot?: (job: ImportJobSnapshot | null) => void
+): Promise<T | null> {
+  const kind = IMPORT_ENDPOINT_KIND[endpoint];
+  if (kind) {
+    const active = await fetchActiveImportJob(kind);
+    onJobSnapshot?.(active);
+    if (
+      active?.id &&
+      (active.status === "PENDING" || active.status === "PROCESSING")
+    ) {
+      try {
+        sessionStorage.setItem(jobStorageKey(endpoint), active.id);
+      } catch {
+        /* ignore */
+      }
+      onProgress(
+        Math.min(99, Math.max(20, active.progress ?? 20)),
+        formatImportJobProgressLabel(active)
+      );
+      try {
+        return await pollImportJob<T>(active.id, endpoint, onProgress);
+      } catch (err) {
+        if (isImportRestartInterrupted(err)) {
+          return null;
+        }
+        throw err;
+      }
+    }
+  }
+
+  const fromSession = await resumeImportJobPoll<T>(endpoint, onProgress);
+  if (fromSession) return fromSession;
+  return followActiveImportJob<T>(endpoint, onProgress, onJobSnapshot);
+}
+
 const POLL_INTERVAL_MS = 2000;
 const MAX_WAIT_MS = 15 * 60 * 1000;
 const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
@@ -106,14 +338,15 @@ export async function uploadImportWithJobPoll<T>(
     if (uploadRes.status === 401) {
       throw new Error("登录已过期，请重新登录后再导入");
     }
+    if (uploadRes.status === 429) {
+      throw new ImportJobBusyError(endpoint);
+    }
     const fallback =
       uploadRes.status === 413
         ? "上传文件过大或传输中断，请确认文件小于 100MB 后重试。"
-        : uploadRes.status === 429
-          ? "当前已有导入任务在执行，请等完成后再试。"
-          : uploadRes.status >= 500
-            ? `服务器错误（${uploadRes.status}），请稍后重试。`
-            : "上传失败";
+        : uploadRes.status >= 500
+          ? `服务器错误（${uploadRes.status}），请稍后重试。`
+          : "上传失败";
     throw new Error(
       typeof uploadJson.error === "string" ? uploadJson.error : fallback
     );
@@ -162,14 +395,17 @@ export async function resumeImportJobPoll<T>(
   }
   const probeJob = (await readJsonBody(probe, "查询导入进度")) as {
     status?: string;
+    fileName?: string;
+    progress?: number;
     errorMessage?: string | null;
     result?: T;
+    updatedAt?: string;
   };
 
   if (!probe.ok || probeJob.status === "FAILED") {
     clearJobStorage(endpoint);
     const msg = probeJob.errorMessage;
-    if (typeof msg === "string" && msg.includes("服务重启")) {
+    if (typeof msg === "string" && isImportRestartMessage(msg)) {
       return null;
     }
     if (!probe.ok && TRANSIENT_HTTP.has(probe.status)) {
@@ -185,8 +421,25 @@ export async function resumeImportJobPoll<T>(
     return (probeJob.result ?? null) as T | null;
   }
 
+  if (probeJob.status === "PROCESSING" || probeJob.status === "PENDING") {
+    const updatedAt = probeJob.updatedAt
+      ? new Date(probeJob.updatedAt).getTime()
+      : 0;
+    if (updatedAt && Date.now() - updatedAt > STALE_PROCESSING_MS) {
+      clearJobStorage(endpoint);
+      return null;
+    }
+  }
+
   onProgress(20, "检测到未完成的导入，继续等待…");
-  return pollImportJob<T>(jobId, endpoint, onProgress);
+  try {
+    return await pollImportJob<T>(jobId, endpoint, onProgress);
+  } catch (err) {
+    if (isImportRestartInterrupted(err)) {
+      return null;
+    }
+    throw err;
+  }
 }
 
 function clearJobStorage(endpoint: string) {
@@ -256,6 +509,7 @@ async function pollImportJob<T>(
       const job = (await readJsonBody(res, "查询导入进度")) as {
         error?: string;
         status?: string;
+        fileName?: string;
         progress?: number;
         message?: string | null;
         errorMessage?: string | null;
@@ -278,11 +532,12 @@ async function pollImportJob<T>(
       }
 
       const progress = Math.min(99, Math.max(20, job.progress ?? 20));
-      const label =
-        job.message ||
-        (elapsedSec >= 20
-          ? `后台导入中…已用时 ${elapsedSec}s`
-          : "后台导入中…");
+      const label = formatImportJobProgressLabel({
+        fileName: job.fileName,
+        progress: job.progress,
+        message: job.message,
+        status: job.status,
+      });
       onProgress(progress, label);
 
       if (job.progress != null && job.progress !== lastServerProgress) {
@@ -309,10 +564,11 @@ async function pollImportJob<T>(
         clearJobStorage(endpoint);
         const failMsg =
           typeof job.errorMessage === "string" ? job.errorMessage : "导入失败";
-        if (failMsg.includes("服务重启")) {
-          throw new Error(
-            "导入因服务更新中断，请重新选择文件并点击导入（数据未完整写入时需重导）。"
-          );
+        if (isImportRestartMessage(failMsg)) {
+          throw new ImportRestartInterruptedError({
+            fileName: job.fileName,
+            progress: job.progress,
+          });
         }
         throw new Error(failMsg);
       }
