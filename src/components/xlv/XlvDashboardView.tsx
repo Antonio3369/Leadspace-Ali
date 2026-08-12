@@ -46,15 +46,6 @@ interface QualSummaryResponse {
   invalidCount: number;
 }
 
-interface ExpandSummaryResponse {
-  monthLabel: string;
-  expandCount: number;
-  qualifiedCount: number;
-  inProgressCount: number;
-  invalidCount: number;
-  qualifyRate: number;
-}
-
 function buildListQuery(
   alert: XlvAlertKind,
   status: XlvQualificationStatus | null,
@@ -105,10 +96,6 @@ export function XlvDashboardView({
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [qualLoaded, setQualLoaded] = useState(false);
-  const [expandSummary, setExpandSummary] = useState<ExpandSummaryResponse | null>(
-    null
-  );
-  const [expandLoaded, setExpandLoaded] = useState(false);
   const [loadedFilterKey, setLoadedFilterKey] = useState("");
   const [error, setError] = useState("");
   const [retryLabel, setRetryLabel] = useState("");
@@ -280,24 +267,6 @@ export function XlvDashboardView({
   }, [active, qualLoaded]);
 
   useEffect(() => {
-    if (!active || expandLoaded) return;
-    let cancelled = false;
-    void fetchXlvJson<ExpandSummaryResponse>("/api/xlv/dashboard/expand-summary", {
-      context: "加载拓展统计",
-    })
-      .then((expand) => {
-        if (!cancelled) {
-          setExpandSummary(expand);
-          setExpandLoaded(true);
-        }
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [active, expandLoaded]);
-
-  useEffect(() => {
     if (!filters.operators.length || !operator) return;
     if (!filters.operators.includes(operator)) {
       pushQuery({ operator: null });
@@ -386,42 +355,6 @@ export function XlvDashboardView({
           value: qualLoaded ? summary.invalidCount : null,
           hint: "两月未达标",
           tone: "muted" as const,
-        },
-      ]
-    : [];
-
-  const expandMonthText = expandSummary
-    ? (() => {
-        const [y, m] = expandSummary.monthLabel.split("-");
-        return `${y}年${Number(m)}月`;
-      })()
-    : "本月";
-
-  const expandShortcuts = expandSummary
-    ? [
-        {
-          label: "本月拓展",
-          value: expandLoaded ? expandSummary.expandCount : null,
-          hint: "首笔交易",
-          tone: "sky" as const,
-        },
-        {
-          label: "已达标",
-          value: expandLoaded ? expandSummary.qualifiedCount : null,
-          hint: "自然月达标",
-          tone: "green" as const,
-        },
-        {
-          label: "达标率",
-          value: expandLoaded ? `${expandSummary.qualifyRate}%` : null,
-          hint: "占本月拓展",
-          tone: "muted" as const,
-          valueClass:
-            expandSummary.qualifyRate >= 75
-              ? "text-emerald-800"
-              : expandSummary.qualifyRate >= 60
-                ? "text-amber-800"
-                : "text-[#b91c1c]",
         },
       ]
     : [];
@@ -570,37 +503,6 @@ export function XlvDashboardView({
                   </button>
                 ))}
               </div>
-            </section>
-            <section className="space-y-2">
-              <h2 className="text-xs font-medium text-[#94a3b8] px-0.5">
-                拓展数据
-                <span className="ml-1 font-normal">· {expandMonthText}首笔</span>
-              </h2>
-              <div className="grid grid-cols-3 gap-3">
-                {expandShortcuts.map((item) => (
-                  <div
-                    key={item.label}
-                    className={`rounded-[14px] border px-3 py-3 text-left ${toneClass[item.tone]}`}
-                  >
-                    <p className="text-xs text-[#64748b]">{item.hint}</p>
-                    <p
-                      className={`mt-1 text-2xl font-bold tabular-nums ${
-                        "valueClass" in item && item.valueClass
-                          ? item.valueClass
-                          : valueClass[item.tone]
-                      }`}
-                    >
-                      {item.value == null ? "…" : item.value}
-                    </p>
-                    <p className="text-sm font-medium text-[#334155]">{item.label}</p>
-                  </div>
-                ))}
-              </div>
-              {expandLoaded && expandSummary && expandSummary.expandCount > 0 ? (
-                <p className="text-[11px] text-[#94a3b8] px-0.5 tabular-nums">
-                  考核中 {expandSummary.inProgressCount} · 无效 {expandSummary.invalidCount}
-                </p>
-              ) : null}
             </section>
           </div>
 
