@@ -61,6 +61,37 @@ async function upsertMemberAccount(opts: {
     return hasLogin ? "skipped" : "updated";
   }
 
+  // 经理变更后名册会带新 managerName；复用已有作业员账号，避免 wuziying / wuziying2 重复开号
+  if (opts.memberRole === "OPERATOR" && operatorName) {
+    const byOperator = await db.xlvMemberAccount.findMany({
+      where: { memberRole: "OPERATOR", operatorName },
+      orderBy: { createdAt: "asc" },
+    });
+    if (byOperator.length > 0) {
+      const target =
+        byOperator.find((row) => canSignIn(row.accountLifecycle, row.passwordHash)) ??
+        byOperator[0]!;
+      const hasLogin = canSignIn(target.accountLifecycle, target.passwordHash);
+      await db.xlvMemberAccount.update({
+        where: { id: target.id },
+        data: {
+          name: displayName,
+          managerName,
+          companyName: opts.companyName?.trim() || target.companyName,
+          status: "ACTIVE",
+          ...(!hasLogin
+            ? {
+                passwordHash: await bcrypt.hash(XLV_MEMBER_DEFAULT_PASSWORD, 10),
+                accountLifecycle: "ACTIVE",
+                mustChangePassword: true,
+              }
+            : {}),
+        },
+      });
+      return hasLogin ? "skipped" : "updated";
+    }
+  }
+
   const username = await allocateXlvPinyinUsername(displayName);
   const passwordHash = await bcrypt.hash(XLV_MEMBER_DEFAULT_PASSWORD, 10);
   await db.xlvMemberAccount.create({

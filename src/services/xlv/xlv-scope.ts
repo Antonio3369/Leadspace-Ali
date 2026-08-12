@@ -50,11 +50,8 @@ export function buildXlvRoleWhere(user: SessionUser): Prisma.XlvDeviceRecordWher
       return { managerName };
     }
     if (user.role === "SALES") {
+      // 队员端按 SN 归属的作业员姓名过滤；账号上的经理名可能因名册变更而滞后
       const operatorName = (user.xlvOperatorName ?? user.name).trim();
-      const managerName = user.xlvManagerName?.trim();
-      if (managerName) {
-        return { operatorName, managerName };
-      }
       return { operatorName };
     }
   }
@@ -383,11 +380,7 @@ export async function assertCanViewXlvDevice(user: SessionUser, deviceSn: string
   if (user.role === "SALES") {
     if (user.authRealm === "xlv") {
       const operatorName = (user.xlvOperatorName ?? user.name).trim();
-      const managerName = user.xlvManagerName?.trim();
       if (device.operatorName !== operatorName) {
-        throw new PermissionError("无权查看该设备");
-      }
-      if (managerName && device.managerName !== managerName) {
         throw new PermissionError("无权查看该设备");
       }
       return;
