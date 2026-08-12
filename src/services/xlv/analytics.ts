@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getCurrentMonthRange } from "@/lib/n7-date";
 import type { SessionUser } from "@/lib/permissions";
 import {
   classifyXlvAlert,
@@ -43,6 +44,15 @@ export interface XlvDashboardSummary {
   inProgressCount: number;
   invalidCount: number;
   latestStatDate: string | null;
+}
+
+export interface XlvDashboardExpandSummary {
+  monthLabel: string;
+  expandCount: number;
+  qualifiedCount: number;
+  inProgressCount: number;
+  invalidCount: number;
+  qualifyRate: number;
 }
 
 export interface XlvDeviceListItem {
@@ -224,6 +234,48 @@ export async function getXlvDashboardQualSummary(
   >
 > {
   return countXlvQualificationSummary(user);
+}
+
+/** 本月拓展：首笔交易落在当月的已铺设设备 */
+export async function getXlvDashboardExpandSummary(
+  user: SessionUser
+): Promise<XlvDashboardExpandSummary> {
+  assertCanViewXlv(user);
+  const { from, to, year, month } = getCurrentMonthRange();
+  const monthLabel = `${year}-${String(month).padStart(2, "0")}`;
+  const expandWhere = {
+    AND: [
+      buildXlvRoleWhere(user),
+      buildXlvAssignedDeviceWhere(),
+      { firstTxnDate: { gte: from, lte: to } },
+    ],
+  };
+
+  const [expandCount, qualifiedCount, inProgressCount, invalidCount] =
+    await Promise.all([
+      db.xlvDeviceRecord.count({ where: expandWhere }),
+      db.xlvDeviceRecord.count({
+        where: { AND: [expandWhere, { qualificationStatus: "qualified" }] },
+      }),
+      db.xlvDeviceRecord.count({
+        where: { AND: [expandWhere, { qualificationStatus: "in_progress" }] },
+      }),
+      db.xlvDeviceRecord.count({
+        where: { AND: [expandWhere, { qualificationStatus: "invalid" }] },
+      }),
+    ]);
+
+  const qualifyRate =
+    expandCount > 0 ? Math.round((qualifiedCount / expandCount) * 1000) / 10 : 0;
+
+  return {
+    monthLabel,
+    expandCount,
+    qualifiedCount,
+    inProgressCount,
+    invalidCount,
+    qualifyRate,
+  };
 }
 
 type XlvDashboardListOpts = {
