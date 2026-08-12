@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
+import { getCurrentMonthRange } from "@/lib/n7-date";
 import { PermissionError } from "@/lib/permissions";
 import { parseXlvAlertKind, parseXlvQualificationStatus } from "@/lib/xlv-rules";
 import {
@@ -19,6 +20,10 @@ export async function GET(request: Request) {
       alert !== "all"
         ? null
         : parseXlvQualificationStatus(searchParams.get("status"));
+    const expandMonth = searchParams.get("expand") === "month";
+    const { from: expandFrom, to: expandTo } = expandMonth
+      ? getCurrentMonthRange()
+      : { from: null, to: null };
 
     const offset = Math.max(0, Number(searchParams.get("offset") ?? "0") || 0);
     const limitRaw = Number(searchParams.get("limit") ?? String(XLV_DASHBOARD_PAGE_SIZE));
@@ -33,6 +38,8 @@ export async function GET(request: Request) {
       operatorName,
       search,
       qualificationStatus,
+      expandFrom,
+      expandTo,
       offset,
       limit,
     });

@@ -145,6 +145,8 @@ export function buildXlvDeviceWhere(
     operatorName?: string | null;
     search?: string | null;
     qualificationStatus?: XlvQualificationStatus | null;
+    expandFrom?: Date | null;
+    expandTo?: Date | null;
   }
 ): Prisma.XlvDeviceRecordWhereInput {
   assertCanViewXlv(user);
@@ -203,6 +205,12 @@ export function buildXlvDeviceWhere(
 
   if (opts?.alert === "active") {
     parts.push({ qualificationStatus: { not: "qualified" } });
+  }
+
+  if (opts?.expandFrom && opts?.expandTo) {
+    parts.push({
+      firstTxnDate: { gte: opts.expandFrom, lte: opts.expandTo },
+    });
   }
 
   return parts.length === 1 ? parts[0]! : { AND: parts };

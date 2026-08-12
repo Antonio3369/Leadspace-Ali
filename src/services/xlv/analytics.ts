@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
+import { getCurrentMonthRange } from "@/lib/n7-date";
 import type { SessionUser } from "@/lib/permissions";
+import { getXlvDailyPerformance } from "@/services/xlv/daily";
 import {
   classifyXlvAlert,
   type XlvAlertKind,
@@ -43,6 +45,15 @@ export interface XlvDashboardSummary {
   inProgressCount: number;
   invalidCount: number;
   latestStatDate: string | null;
+}
+
+export interface XlvDashboardPulseSummary {
+  monthExpandCount: number;
+  monthQualifyRate: number;
+  singleSilence: number;
+  dormant: number;
+  wakeUpRate: number;
+  qualifiedCount: number;
 }
 
 export interface XlvDeviceListItem {
@@ -226,12 +237,52 @@ export async function getXlvDashboardQualSummary(
   return countXlvQualificationSummary(user);
 }
 
+/** 设备页顶部六宫格：一眼看清拓展、达标率、沉睡与唤醒 */
+export async function getXlvDashboardPulseSummary(
+  user: SessionUser
+): Promise<XlvDashboardPulseSummary> {
+  const { from, to } = getCurrentMonthRange();
+  const expandWhere = {
+    AND: [
+      buildXlvRoleWhere(user),
+      buildXlvAssignedDeviceWhere(),
+      { firstTxnDate: { gte: from, lte: to } },
+    ],
+  };
+
+  const [fast, qual, expandCount, expandQualified, daily] = await Promise.all([
+    getXlvDashboardSummaryFast(user),
+    getXlvDashboardQualSummary(user),
+    db.xlvDeviceRecord.count({ where: expandWhere }),
+    db.xlvDeviceRecord.count({
+      where: { AND: [expandWhere, { qualificationStatus: "qualified" }] },
+    }),
+    getXlvDailyPerformance(user, {}),
+  ]);
+
+  const monthQualifyRate =
+    expandCount > 0
+      ? Math.round((expandQualified / expandCount) * 1000) / 10
+      : 0;
+
+  return {
+    monthExpandCount: expandCount,
+    monthQualifyRate,
+    singleSilence: fast.singleSilence,
+    dormant: fast.dormant,
+    wakeUpRate: daily.summary.wakeUpRate,
+    qualifiedCount: qual.qualifiedCount,
+  };
+}
+
 type XlvDashboardListOpts = {
   alert?: XlvAlertKind;
   managerName?: string | null;
   operatorName?: string | null;
   search?: string | null;
   qualificationStatus?: XlvQualificationStatus | null;
+  expandFrom?: Date | null;
+  expandTo?: Date | null;
 };
 
 /** 看板设备列表（分页）：默认先 enrich 当前页，减轻首屏内存 */
@@ -269,6 +320,8 @@ async function loadXlvDashboardDevicesPage(
     operatorName: opts.operatorName,
     search: opts.search,
     qualificationStatus: opts.qualificationStatus,
+    expandFrom: opts.expandFrom,
+    expandTo: opts.expandTo,
   });
 
   const sortMode = resolveXlvDeviceSortMode({
