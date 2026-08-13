@@ -571,19 +571,32 @@ export function classifyXlvAlert(device: {
   return "active";
 }
 
-/** 团队看板合规口径：已达标永久合规；未达标设备须健康考核中，或风险已完成当轮跟进 */
+/**
+ * 团队看板动态合规口径（按最新运营状态）：
+ * - 已达标永久合规；
+ * - 当前仍在考核期且活跃；
+ * - 跟进后产生新交易、且当前仍活跃（包括已过考核期但被唤醒的设备）。
+ *
+ * 仅完成跟进不代表恢复使用；设备再次沉睡后立即退出合规。
+ */
 export function isXlvDeviceCompliant(input: {
   qualificationStatus: XlvQualificationStatus;
   sleepDays: number;
   cumulativeTxns: number;
   followUpDone: boolean;
+  followUpAt: Date | null;
+  lastTxnDate: Date | null;
 }) {
   if (input.qualificationStatus === "qualified") return true;
-  const alert = classifyXlvAlert(input);
-  if (alert === "active") {
-    return input.qualificationStatus === "in_progress";
-  }
-  return input.followUpDone;
+  if (classifyXlvAlert(input) !== "active") return false;
+  if (input.qualificationStatus === "in_progress") return true;
+
+  return Boolean(
+    input.followUpDone &&
+      input.followUpAt &&
+      input.lastTxnDate &&
+      input.lastTxnDate.getTime() > input.followUpAt.getTime()
+  );
 }
 
 /** 用户可见预警类型：已达标设备不再标沉睡 */
