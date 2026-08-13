@@ -20,6 +20,8 @@ import {
 import type { XlvBoardRow } from "@/services/xlv/board";
 import { parseXlvQualificationStatus } from "@/lib/xlv-rules";
 
+type ManagerBoardSort = "compliance" | "pending" | "follow_up" | "wake_rate";
+
 interface ApiResponse {
   rows: XlvBoardRow[];
   summary: {
@@ -40,6 +42,13 @@ export function XlvManagerBoard() {
   const searchParams = useSearchParams();
   const search = searchParams.get("search") ?? "";
   const statusFilter = parseXlvQualificationStatus(searchParams.get("status"));
+  const rawSort = searchParams.get("sort");
+  const sort: ManagerBoardSort =
+    rawSort === "pending" ||
+    rawSort === "follow_up" ||
+    rawSort === "wake_rate"
+      ? rawSort
+      : "compliance";
 
   const [data, setData] = useState<ApiResponse | null>(null);
   const [error, setError] = useState("");
@@ -48,7 +57,11 @@ export function XlvManagerBoard() {
 
   useRestoreListScroll(pathname, !loading && !!data);
 
-  function pushQuery(patch: { search?: string; status?: string | null }) {
+  function pushQuery(patch: {
+    search?: string;
+    status?: string | null;
+    sort?: ManagerBoardSort | null;
+  }) {
     const params = new URLSearchParams(searchParams.toString());
     if (patch.search != null) {
       if (patch.search) params.set("search", patch.search);
@@ -58,10 +71,19 @@ export function XlvManagerBoard() {
       if (patch.status) params.set("status", patch.status);
       else params.delete("status");
     }
+    if (patch.sort !== undefined) {
+      if (patch.sort && patch.sort !== "compliance") {
+        params.set("sort", patch.sort);
+      } else {
+        params.delete("sort");
+      }
+    }
     router.replace(`${xlvPath("/board")}?${params.toString()}`, { scroll: false });
   }
 
   useEffect(() => {
+    // URL search is the source of truth when navigating browser history.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSearchDraft(search);
   }, [search]);
 
@@ -80,17 +102,17 @@ export function XlvManagerBoard() {
     const url = `/api/xlv/board?${params}`;
 
     const cached = readXlvApiCache<ApiResponse>(url);
-    if (cached) {
-      setData(cached);
-      setLoading(false);
-      setError("");
-    } else {
-      setLoading(true);
-      setError("");
-    }
-
     const delayMs = cached ? 0 : 200;
     const startTimer = window.setTimeout(() => {
+      if (cached) {
+        setData(cached);
+        setLoading(false);
+        setError("");
+        return;
+      }
+
+      setLoading(true);
+      setError("");
       fetchXlvJson<ApiResponse>(url, {
         context: "加载经理榜",
         maxAttempts: 3,
@@ -123,6 +145,33 @@ export function XlvManagerBoard() {
       if (statusFilter === "invalid") return r.invalidCount > 0;
       return true;
     }) ?? [];
+  const sortedRows = [...filteredRows].sort((a, b) => {
+    if (sort === "pending") {
+      return (
+        b.pendingFollowUpCount - a.pendingFollowUpCount ||
+        b.singleSilenceCount - a.singleSilenceCount ||
+        b.dormantCount - a.dormantCount
+      );
+    }
+    if (sort === "follow_up") {
+      return (
+        b.monthFollowUpCount - a.monthFollowUpCount ||
+        b.monthWakeUpCount - a.monthWakeUpCount
+      );
+    }
+    if (sort === "wake_rate") {
+      return (
+        b.monthWakeUpRate - a.monthWakeUpRate ||
+        b.monthWakeUpCount - a.monthWakeUpCount ||
+        b.monthFollowUpCount - a.monthFollowUpCount
+      );
+    }
+    return (
+      b.complianceRate - a.complianceRate ||
+      b.compliantCount - a.compliantCount ||
+      b.qualifiedCount - a.qualifiedCount
+    );
+  });
 
   return (
     <PageShell>
@@ -131,7 +180,7 @@ export function XlvManagerBoard() {
         kicker="微信小绿盒"
         meta={
           <div className="space-y-1 text-sm text-[#64748b]">
-            <p>按经理看沉睡与单笔沉默；点击经理下钻到队员排行。</p>
+            <p>看各经理团队的业绩、风险与本月跟进结果；点击指标可查看明细。</p>
             {statusFilter ? (
               <p>
                 <button
@@ -166,9 +215,35 @@ export function XlvManagerBoard() {
         <p className="text-sm text-[#94a3b8] py-8 text-center">加载中…</p>
       ) : data ? (
         <div className="space-y-4">
-          <XlvSummaryStrip summary={data.summary} />
+          <XlvSummaryStrip summary={data.summary} showInvalid={false} />
+          <div
+            className="grid grid-cols-4 overflow-hidden rounded-[12px] border border-[#e2e8f0] bg-white"
+            aria-label="经理排行方式"
+          >
+            {(
+              [
+                ["compliance", "合规率"],
+                ["pending", "待跟进"],
+                ["follow_up", "本月跟进"],
+                ["wake_rate", "唤醒率"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => pushQuery({ sort: value })}
+                className={`min-h-10 border-l border-[#e2e8f0] px-2 py-2 text-xs font-medium first:border-l-0 sm:text-sm ${
+                  sort === value
+                    ? "bg-[#2563eb] text-white"
+                    : "text-[#475569] hover:bg-[#f8fafc]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <XlvLeaderboardTable
-            rows={filteredRows}
+            rows={sortedRows}
             mode="managers"
             statusFilter={statusFilter}
           />

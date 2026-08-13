@@ -28,6 +28,7 @@ import {
   type SnapshotWrite,
   type XlvImportProgress,
 } from "@/services/import/xlv-raw-bulk";
+import { reopenXlvFollowUpsAfterSnapshot } from "@/services/xlv/follow-up";
 import { recomputeXlvQualificationForDevices } from "@/services/xlv/recompute-qualification";
 
 function createId() {
@@ -208,6 +209,7 @@ async function importRawRows(
       );
     },
   });
+  await reopenXlvFollowUpsAfterSnapshot([...allSns]);
 
   return {
     snapshotRows: snapshotRowCount,

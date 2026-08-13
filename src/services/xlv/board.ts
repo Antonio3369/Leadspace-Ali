@@ -1,11 +1,14 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
+import { getCurrentMonthRange } from "@/lib/n7-date";
 import type { SessionUser } from "@/lib/permissions";
+import { detectXlvWakeUpDate } from "@/lib/xlv-wake-up";
 import {
-  classifyXlvAlert,
+  isXlvDeviceCompliant,
   isXlvInventoryManagerKey,
   isXlvUnassignedManager,
   type XlvQualificationStatus,
+  XLV_COMPLIANCE_TARGET_RATE,
   xlvEffectiveAlertKind,
   xlvManagerDisplayName,
   xlvQualificationGapLine,
@@ -46,6 +49,14 @@ export type XlvBoardRow = {
   invalidCount: number;
   dormantCount: number;
   singleSilenceCount: number;
+  pendingFollowUpCount: number;
+  monthFollowUpCount: number;
+  monthWakeUpCount: number;
+  monthWakeUpRate: number;
+  compliantCount: number;
+  complianceRate: number;
+  complianceGapCount: number;
+  toleranceRemainingCount: number;
 };
 
 const BOARD_DEVICE_SELECT = {
@@ -59,6 +70,10 @@ const BOARD_DEVICE_SELECT = {
   cumulativeUsers: true,
   firstTxnDate: true,
   qualificationStatus: true,
+  followUpDone: true,
+  followUpAt: true,
+  lastTxnDate: true,
+  statDate: true,
 } as const;
 
 type BoardDeviceRow = {
@@ -72,6 +87,10 @@ type BoardDeviceRow = {
   cumulativeUsers: number;
   firstTxnDate: Date | null;
   qualificationStatus: XlvQualificationStatus;
+  followUpDone: boolean;
+  followUpAt: Date | null;
+  lastTxnDate: Date | null;
+  statDate: Date | null;
 };
 
 const BOARD_BATCH_SIZE = 800;
@@ -110,10 +129,21 @@ function addDeviceToBoardMap(
       invalidCount: 0,
       dormantCount: 0,
       singleSilenceCount: 0,
+      pendingFollowUpCount: 0,
+      monthFollowUpCount: 0,
+      monthWakeUpCount: 0,
+      monthWakeUpRate: 0,
+      compliantCount: 0,
+      complianceRate: 0,
+      complianceGapCount: 0,
+      toleranceRemainingCount: 0,
     };
     map.set(key, row);
   }
   row.deviceCount += 1;
+  if (isXlvDeviceCompliant(d)) {
+    row.compliantCount += 1;
+  }
   if (!isXlvUnassignedManager(d)) {
     if (d.qualificationStatus === "qualified") row.qualifiedCount += 1;
     if (d.qualificationStatus === "in_progress") row.inProgressCount += 1;
@@ -122,13 +152,20 @@ function addDeviceToBoardMap(
   const alert = xlvEffectiveAlertKind(d);
   if (alert === "dormant") row.dormantCount += 1;
   if (alert === "single_silence") row.singleSilenceCount += 1;
+  if (
+    !d.followUpDone &&
+    (alert === "dormant" || alert === "single_silence")
+  ) {
+    row.pendingFollowUpCount += 1;
+  }
 }
 
 async function aggregateBoardDevices(
   where: Prisma.XlvDeviceRecordWhereInput,
   keyFn: (d: BoardDeviceRow) => string,
   nameFn: (d: BoardDeviceRow) => string,
-  userIdFn: (d: BoardDeviceRow) => string | null
+  userIdFn: (d: BoardDeviceRow) => string | null,
+  opts?: { includeFollowUpMetrics?: boolean }
 ) {
   const map = new Map<string, XlvBoardRow>();
   let deviceCount = 0;
@@ -137,6 +174,8 @@ async function aggregateBoardDevices(
   let inProgressCount = 0;
   let invalidCount = 0;
   let cursor: string | undefined;
+  const { from: monthFrom, to: monthTo } = getCurrentMonthRange();
+  const monthFollowed: BoardDeviceRow[] = [];
 
   for (;;) {
     const batch = await db.xlvDeviceRecord.findMany({
@@ -150,6 +189,15 @@ async function aggregateBoardDevices(
 
     for (const d of batch) {
       addDeviceToBoardMap(map, d, keyFn, nameFn, userIdFn);
+      if (
+        opts?.includeFollowUpMetrics &&
+        d.followUpAt &&
+        d.followUpAt >= monthFrom &&
+        d.followUpAt <= monthTo
+      ) {
+        map.get(keyFn(d))!.monthFollowUpCount += 1;
+        monthFollowed.push(d);
+      }
       deviceCount += 1;
       if (isXlvUnassignedManager(d)) {
         inventoryCount += 1;
@@ -162,6 +210,46 @@ async function aggregateBoardDevices(
 
     cursor = batch[batch.length - 1]!.deviceSn;
     if (batch.length < BOARD_BATCH_SIZE) break;
+  }
+
+  if (opts?.includeFollowUpMetrics && monthFollowed.length > 0) {
+    const snapshotMap = await loadXlvSnapshotMap(
+      [...new Set(monthFollowed.map((d) => d.deviceSn))]
+    );
+    for (const d of monthFollowed) {
+      const wakeUpDate = detectXlvWakeUpDate(
+        d,
+        d.followUpAt!,
+        snapshotMap.get(d.deviceSn) ?? []
+      );
+      if (wakeUpDate) {
+        map.get(keyFn(d))!.monthWakeUpCount += 1;
+      }
+    }
+  }
+
+  for (const row of map.values()) {
+    row.monthWakeUpRate =
+      row.monthFollowUpCount > 0
+        ? Math.round(
+            (row.monthWakeUpCount / row.monthFollowUpCount) * 1000
+          ) / 10
+        : 0;
+    const requiredCompliantCount = Math.ceil(
+      row.deviceCount * (XLV_COMPLIANCE_TARGET_RATE / 100)
+    );
+    row.complianceRate =
+      row.deviceCount > 0
+        ? Math.round((row.compliantCount / row.deviceCount) * 1000) / 10
+        : 0;
+    row.complianceGapCount = Math.max(
+      0,
+      requiredCompliantCount - row.compliantCount
+    );
+    row.toleranceRemainingCount = Math.max(
+      0,
+      row.compliantCount - requiredCompliantCount
+    );
   }
 
   const deployedCount = deviceCount - inventoryCount;
@@ -192,7 +280,8 @@ export async function getXlvManagerBoard(user: SessionUser) {
       roleWhere,
       (d) => xlvManagerKeyOf(d),
       (d) => xlvManagerDisplayName(d.managerName),
-      (d) => d.managerUserId
+      (d) => d.managerUserId,
+      { includeFollowUpMetrics: true }
     );
 
     const filteredRows = rows.filter((r) => !isXlvInventoryManagerKey(r.key));
@@ -224,7 +313,8 @@ export async function getXlvStaffBoard(
         { AND: [roleWhere, managerWhere] },
         (d) => xlvStaffKeyOf(d),
         (d) => d.operatorName || "未分配",
-        (d) => d.salesUserId
+        (d) => d.salesUserId,
+        { includeFollowUpMetrics: true }
       );
 
       const sample = await db.xlvDeviceRecord.findFirst({

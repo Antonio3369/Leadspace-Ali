@@ -1,12 +1,14 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import type { SessionUser } from "@/lib/permissions";
+import { xlvStatDateKey } from "@/lib/xlv-stat-date";
 import {
   classifyXlvAlert,
   classifyXlvTodayPriority,
   getXlvAssessmentDaysRemaining,
   type XlvAlertKind,
   type XlvTodayPriority,
+  XLV_SLEEP_THRESHOLD_DAYS,
   xlvEffectiveAlertKind,
   xlvQualificationGapLine,
 } from "@/lib/xlv-rules";
@@ -28,6 +30,8 @@ export type XlvFollowFilter = "pending" | "done" | "all";
 /** 与今日待办 P0/P1 对齐的回访筛选 */
 export type XlvFollowUpPriority = Extract<XlvTodayPriority, "P0" | "P1">;
 
+const REOPEN_LOOKUP_CHUNK = 800;
+
 export type XlvFollowUpDeviceItem = XlvDeviceListItem & {
   followUpDone: boolean;
   followUpNote: string | null;
@@ -38,6 +42,70 @@ export type XlvFollowUpDeviceItem = XlvDeviceListItem & {
 
 function isoDate(d: Date | null | undefined) {
   return d ? d.toISOString().slice(0, 10) : null;
+}
+
+export function shouldReopenXlvFollowUp(input: {
+  qualificationStatus: "qualified" | "in_progress" | "invalid";
+  followUpDone: boolean;
+  followUpAt: Date | null;
+  statDate: Date | null;
+  sleepDays: number;
+  cumulativeTxns: number;
+}) {
+  if (
+    input.qualificationStatus === "qualified" ||
+    !input.followUpDone ||
+    !input.followUpAt ||
+    !input.statDate ||
+    xlvStatDateKey(input.statDate) <= xlvStatDateKey(input.followUpAt)
+  ) {
+    return false;
+  }
+  return classifyXlvAlert(input) !== "active";
+}
+
+/**
+ * 新运营快照仍显示风险时，上一轮跟进失效并重新进入待跟进。
+ * 已达标设备已取得结算资格，不重开；保留旧跟进内容供回看，新跟进会覆盖当前记录。
+ */
+export async function reopenXlvFollowUpsAfterSnapshot(deviceSns: string[]) {
+  const uniqueSns = [...new Set(deviceSns)];
+  let reopened = 0;
+
+  for (let i = 0; i < uniqueSns.length; i += REOPEN_LOOKUP_CHUNK) {
+    const rows = await db.xlvDeviceRecord.findMany({
+      where: {
+        deviceSn: { in: uniqueSns.slice(i, i + REOPEN_LOOKUP_CHUNK) },
+        followUpDone: true,
+        followUpAt: { not: null },
+        qualificationStatus: { not: "qualified" },
+        sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS },
+      },
+      select: {
+        id: true,
+        statDate: true,
+        followUpAt: true,
+        sleepDays: true,
+        cumulativeTxns: true,
+        qualificationStatus: true,
+        followUpDone: true,
+      },
+    });
+
+    const ids = rows
+      .filter(shouldReopenXlvFollowUp)
+      .map((row) => row.id);
+
+    if (ids.length > 0) {
+      const result = await db.xlvDeviceRecord.updateMany({
+        where: { id: { in: ids } },
+        data: { followUpDone: false },
+      });
+      reopened += result.count;
+    }
+  }
+
+  return reopened;
 }
 
 function buildFollowUpWhere(

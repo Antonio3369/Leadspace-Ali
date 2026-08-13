@@ -5,6 +5,9 @@ import { computeXlvMonthAssessmentTotals } from "@/services/xlv/snapshot-daily";
 
 export const XLV_SLEEP_THRESHOLD_DAYS = 2;
 
+/** 团队执行合规线：已铺设设备中至少 90% 达标、健康考核中或风险已跟进 */
+export const XLV_COMPLIANCE_TARGET_RATE = 90;
+
 /** 今日待办：沉睡 ≥N 天未回访升 P0 */
 export const XLV_TODAY_URGENT_SLEEP_DAYS = 7;
 
@@ -566,6 +569,21 @@ export function classifyXlvAlert(device: {
     return "dormant";
   }
   return "active";
+}
+
+/** 团队看板合规口径：已达标永久合规；未达标设备须健康考核中，或风险已完成当轮跟进 */
+export function isXlvDeviceCompliant(input: {
+  qualificationStatus: XlvQualificationStatus;
+  sleepDays: number;
+  cumulativeTxns: number;
+  followUpDone: boolean;
+}) {
+  if (input.qualificationStatus === "qualified") return true;
+  const alert = classifyXlvAlert(input);
+  if (alert === "active") {
+    return input.qualificationStatus === "in_progress";
+  }
+  return input.followUpDone;
 }
 
 /** 用户可见预警类型：已达标设备不再标沉睡 */

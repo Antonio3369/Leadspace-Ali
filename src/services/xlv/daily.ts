@@ -102,7 +102,6 @@ export async function getXlvDailyPerformance(
       AND: [
         buildXlvRoleWhere(user),
         buildXlvAssignedDeviceWhere(),
-        { followUpDone: true },
         { followUpAt: { not: null } },
       ],
     },
