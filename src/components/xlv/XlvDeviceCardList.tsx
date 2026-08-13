@@ -109,10 +109,14 @@ export function XlvDeviceCardList({
             };
             const right = xlvDeviceCardRightLabel(display, hideQualificationBadge);
             const gap = gapLine(d);
+            const alertKind = xlvEffectiveAlertKind(d);
+            const showFollowUp =
+              showFollowUpStatus &&
+              "followUpDone" in d &&
+              (alertKind === "single_silence" || alertKind === "dormant");
             const detailHref = xlvPath(
               `/devices/${encodeURIComponent(d.deviceSn)}${
-                showFollowUpStatus &&
-                "followUpDone" in d &&
+                showFollowUp &&
                 !(d as XlvDeviceListItem & { followUpDone?: boolean }).followUpDone
                   ? "#xlv-follow-up"
                   : ""
@@ -252,7 +256,7 @@ export function XlvDeviceCardList({
                       showFollowUpStatus ? "flex flex-col items-center" : "text-right"
                     }`}
                   >
-                    {showFollowUpStatus && "followUpDone" in d ? (
+                    {showFollowUp ? (
                       <XlvFollowUpStatusCell
                         deviceSn={d.deviceSn}
                         done={Boolean((d as XlvDeviceListItem & { followUpDone?: boolean }).followUpDone)}

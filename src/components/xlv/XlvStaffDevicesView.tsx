@@ -47,6 +47,7 @@ interface ApiDevice {
   firstTxnDate: string | null;
   qualificationStatus: XlvQualificationStatus;
   qualificationGap?: { usersGap: number; txnsGap: number; line: string };
+  followUpDone?: boolean;
 }
 
 interface ApiResponse {
@@ -133,7 +134,6 @@ export function XlvStaffDevicesView({
   const allDevices = (data?.devices ?? []).map(mapDevice);
   const filtered = (data?.devices ?? []).filter((d) => {
     if (status === "qualified") return d.qualificationStatus === "qualified";
-    if (status === "invalid") return d.qualificationStatus === "invalid";
     if (status === "in_progress") return isXlvQualificationInProgressActive(d);
     if (alert !== "all") return xlvEffectiveAlertKind(d) === alert;
     return true;
@@ -149,7 +149,6 @@ export function XlvStaffDevicesView({
       .length,
     in_progress: allDevices.filter((d) => isXlvQualificationInProgressActive(d))
       .length,
-    invalid: allDevices.filter((d) => d.qualificationStatus === "invalid").length,
     single_silence: allDevices.filter((d) => d.alertKind === "single_silence").length,
     dormant: allDevices.filter((d) => d.alertKind === "dormant").length,
     active: allDevices.filter((d) => d.alertKind === "active").length,
@@ -216,17 +215,6 @@ export function XlvStaffDevicesView({
             active={status === "in_progress"}
           />
         </button>
-        <button
-          type="button"
-          onClick={() => setStatusFilter("invalid")}
-          className={`${xlvFilterChipBaseClass()} ${xlvTabButtonClass(status === "invalid")}`}
-        >
-          <XlvFilterChipText
-            label="无效用户"
-            count={counts.invalid}
-            active={status === "invalid"}
-          />
-        </button>
         {XLV_SLEEP_ALERT_FILTERS.map((item) => (
           <button
             key={item.id}
@@ -254,6 +242,7 @@ export function XlvStaffDevicesView({
           showManager={false}
           emptyText={isSelfView ? "暂无设备" : "该队员暂无设备"}
           linkToDetail
+          showFollowUpStatus
           activeShortcut={status ?? (alert !== "all" ? alert : null)}
         />
       )}

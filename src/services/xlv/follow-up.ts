@@ -176,7 +176,11 @@ export async function getXlvFollowUpDevices(
   }
 ) {
   assertCanViewXlv(user);
-  const where = buildFollowUpWhere(user, opts);
+  const follow = opts.follow ?? "pending";
+  const where = buildFollowUpWhere(user, {
+    ...opts,
+    follow: opts.priority ? "all" : follow,
+  });
 
   const rows = await db.xlvDeviceRecord.findMany({
     where,
@@ -207,6 +211,9 @@ export async function getXlvFollowUpDevices(
   const sorted = sortXlvDevices(enriched, "risk");
 
   const devices: XlvFollowUpDeviceItem[] = [];
+  let priorityPending = 0;
+  let priorityDone = 0;
+
   for (const row of sorted) {
     const snapshots = snapshotMap.get(row.deviceSn) ?? [];
     const asOf =
@@ -224,7 +231,14 @@ export async function getXlvFollowUpDevices(
       firstTxnDate: row.firstTxnDate,
       assessmentDaysLeft,
     });
-    if (opts.priority && todayPriority !== opts.priority) continue;
+
+    if (opts.priority) {
+      if (todayPriority !== opts.priority) continue;
+      if (row.followUpDone) priorityDone += 1;
+      else priorityPending += 1;
+      if (follow === "pending" && row.followUpDone) continue;
+      if (follow === "done" && !row.followUpDone) continue;
+    }
 
     const detail = row.qualificationDetail;
     devices.push({
@@ -255,11 +269,18 @@ export async function getXlvFollowUpDevices(
   }
 
   const counts = await getXlvFollowUpCounts(user);
+  const displayCounts = opts.priority
+    ? {
+        pending: priorityPending,
+        done: priorityDone,
+        all: priorityPending + priorityDone,
+      }
+    : counts;
 
   return {
-    follow: opts.follow ?? "pending",
+    follow,
     priority: opts.priority ?? null,
-    counts,
+    counts: displayCounts,
     devices,
   };
 }

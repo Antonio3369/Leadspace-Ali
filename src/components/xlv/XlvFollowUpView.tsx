@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { fetchJsonWithRetry, readResponseJson } from "@/lib/fetch-json";
@@ -14,6 +13,7 @@ import {
   PageHeader,
   PageShell,
 } from "@/components/ui/notion";
+import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 import { XlvDeviceCardList } from "@/components/xlv/XlvDeviceCardList";
 import type { XlvFollowUpDeviceItem } from "@/services/xlv/follow-up";
 
@@ -177,6 +177,14 @@ export function XlvFollowUpView({ role }: { role: string }) {
       <PageHeader
         title="沉睡回访"
         kicker="微信小绿盒"
+        meta={
+          <HistoryBackLink
+            label="← 返回"
+            fallbackHref={xlvPath()}
+            preferHistoryBack
+            className="inline-flex text-sm font-medium text-[#2563eb] hover:text-[#1d4ed8]"
+          />
+        }
       />
 
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
@@ -189,7 +197,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
           [
             ["pending", `待回访${data ? ` (${data.counts.pending})` : ""}`],
             ["done", `已回访${data ? ` (${data.counts.done})` : ""}`],
-            ["all", `全部沉睡${data ? ` (${data.counts.all})` : ""}`],
+            ["all", `全部${data ? ` (${data.counts.all})` : ""}`],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -226,7 +234,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
                 : "border-amber-200 bg-amber-50 text-amber-900"
             }`}
           >
-            {priority === "P0" ? "仅优先催办" : "仅一般沉睡"}
+            {priority === "P0" ? "优先催办" : "疑似沉睡"}
           </span>
           <button
             type="button"
@@ -310,8 +318,8 @@ export function XlvFollowUpView({ role }: { role: string }) {
           当前筛选：
           {priority === "P0"
             ? "优先催办（单笔沉默或沉睡≥7天）"
-            : "一般沉睡（沉睡<7天）"}
-          ，共 {data.devices.length} 台。
+            : "疑似沉睡（2 天≤沉睡＜7 天）"}
+          ，共 {data.counts.pending} 台。
         </NotionCallout>
       ) : null}
 
@@ -329,7 +337,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
               ? priority === "P0"
                 ? "暂无优先催办设备"
                 : priority === "P1"
-                  ? "暂无一般沉睡待回访"
+                  ? "暂无疑似沉睡待回访"
                   : "暂无待回访设备"
               : follow === "done"
                 ? "暂无已回访记录"

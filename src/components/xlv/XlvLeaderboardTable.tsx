@@ -60,6 +60,7 @@ function BoardMetricChip({
 export function XlvSummaryStrip({
   summary,
   showInvalid = true,
+  complianceLabel = "合规率",
 }: {
   summary: {
     managerCount?: number;
@@ -71,11 +72,24 @@ export function XlvSummaryStrip({
     inProgressCount?: number;
     invalidCount?: number;
     qualifyRate?: number;
+    compliantCount?: number;
+    complianceRate?: number;
+    complianceGapCount?: number;
+    toleranceRemainingCount?: number;
   };
   showInvalid?: boolean;
+  complianceLabel?: string;
 }) {
+  const hasCompliance = summary.complianceRate != null;
+  const useFiveColumns =
+    hasCompliance && (summary.inventoryCount ?? 0) > 0;
+
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-[14px] border border-[#eef2f7] bg-white px-3 py-3 text-xs">
+    <div
+      className={`grid grid-cols-2 gap-2 rounded-[14px] border border-[#eef2f7] bg-white px-3 py-3 text-xs ${
+        useFiveColumns ? "sm:grid-cols-5" : "sm:grid-cols-4"
+      }`}
+    >
       {summary.managerCount != null ? (
         <div>
           <p className="text-[#94a3b8]">经理数</p>
@@ -135,6 +149,37 @@ export function XlvSummaryStrip({
           </p>
         ) : null}
       </div>
+      {hasCompliance ? (
+        <div>
+          <p className="text-[#94a3b8]">{complianceLabel}</p>
+          <p
+            className={`text-lg font-bold tabular-nums ${
+              (summary.complianceGapCount ?? 0) === 0
+                ? "text-emerald-700"
+                : "text-[#b91c1c]"
+            }`}
+          >
+            {summary.complianceRate}%
+            <span className="ml-1 text-xs font-semibold">
+              {(summary.complianceGapCount ?? 0) === 0 ? "✓" : ""}
+            </span>
+          </p>
+          <p className="text-[10px] text-[#64748b] mt-0.5 tabular-nums">
+            合规 {summary.compliantCount ?? 0}/{summary.deployedCount}
+          </p>
+          <p
+            className={`text-[10px] mt-1 tabular-nums ${
+              (summary.complianceGapCount ?? 0) === 0
+                ? "text-emerald-700"
+                : "font-medium text-[#b91c1c]"
+            }`}
+          >
+            {(summary.complianceGapCount ?? 0) > 0
+              ? `距离 ${XLV_COMPLIANCE_TARGET_RATE}% 还差 ${summary.complianceGapCount} 台`
+              : `容错剩余 ${summary.toleranceRemainingCount ?? 0} 台`}
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -34,6 +34,10 @@ interface ApiResponse {
     inProgressCount?: number;
     invalidCount?: number;
     qualifyRate: number;
+    compliantCount: number;
+    complianceRate: number;
+    complianceGapCount: number;
+    toleranceRemainingCount: number;
   };
 }
 
@@ -199,7 +203,11 @@ export function XlvStaffBoard({
         <p className="text-sm text-[#94a3b8] py-8 text-center">加载中…</p>
       ) : data ? (
         <div className="space-y-4">
-          <XlvSummaryStrip summary={data.summary} showInvalid={false} />
+          <XlvSummaryStrip
+            summary={data.summary}
+            showInvalid={false}
+            complianceLabel="团队合规率"
+          />
           <div
             className="grid grid-cols-4 overflow-hidden rounded-[12px] border border-[#e2e8f0] bg-white"
             aria-label="队员排行方式"

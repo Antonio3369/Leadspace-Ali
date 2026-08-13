@@ -173,6 +173,7 @@ async function aggregateBoardDevices(
   let qualifiedCount = 0;
   let inProgressCount = 0;
   let invalidCount = 0;
+  let compliantCount = 0;
   let cursor: string | undefined;
   const { from: monthFrom, to: monthTo } = getCurrentMonthRange();
   const monthFollowed: BoardDeviceRow[] = [];
@@ -203,6 +204,7 @@ async function aggregateBoardDevices(
         inventoryCount += 1;
         continue;
       }
+      if (isXlvDeviceCompliant(d)) compliantCount += 1;
       if (d.qualificationStatus === "qualified") qualifiedCount += 1;
       else if (d.qualificationStatus === "in_progress") inProgressCount += 1;
       else if (d.qualificationStatus === "invalid") invalidCount += 1;
@@ -257,6 +259,13 @@ async function aggregateBoardDevices(
     deployedCount > 0
       ? Math.round((qualifiedCount / deployedCount) * 1000) / 10
       : 0;
+  const requiredCompliantCount = Math.ceil(
+    deployedCount * (XLV_COMPLIANCE_TARGET_RATE / 100)
+  );
+  const complianceRate =
+    deployedCount > 0
+      ? Math.round((compliantCount / deployedCount) * 1000) / 10
+      : 0;
 
   return {
     rows: sortBoardRows([...map.values()]),
@@ -268,6 +277,13 @@ async function aggregateBoardDevices(
       inProgressCount,
       invalidCount,
       qualifyRate,
+      compliantCount,
+      complianceRate,
+      complianceGapCount: Math.max(0, requiredCompliantCount - compliantCount),
+      toleranceRemainingCount: Math.max(
+        0,
+        compliantCount - requiredCompliantCount
+      ),
     },
   };
 }
@@ -417,6 +433,7 @@ export async function getXlvStaffDevices(
         txnsGap: d.qualificationDetail.txnsGap,
         line: xlvQualificationGapLine(d.qualificationDetail),
       },
+      followUpDone: d.followUpDone,
     })),
   };
 }

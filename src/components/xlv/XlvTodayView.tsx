@@ -206,9 +206,9 @@ export function XlvTodayView({
         },
         {
           id: "p1",
-          label: "一般沉睡",
+          label: "疑似沉睡",
           value: data.counts.P1,
-          hint: "沉睡<7天待回访",
+          hint: "2 天≤沉睡＜7 天",
           href: `${xlvPath("/follow-up")}?follow=pending&priority=P1`,
           tone: "amber" as const,
         },
@@ -252,10 +252,10 @@ export function XlvTodayView({
         },
         {
           key: "P1",
-          title: "沉睡待回访",
+          title: "疑似沉睡",
           count: data.counts.P1,
           devices: data.queues.P1,
-          empty: "暂无一般沉睡待回访",
+          empty: "暂无疑似沉睡待回访",
           showFollowUp: true,
           showQualification: false,
           more: moreLink(
