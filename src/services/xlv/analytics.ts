@@ -27,7 +27,6 @@ import {
 } from "@/services/xlv/assessment";
 import { syncXlvQualificationStatuses } from "@/services/xlv/recompute-qualification";
 import { countXlvQualificationSummary } from "@/services/xlv/recompute-qualification";
-import { withXlvHeavyGate } from "@/services/xlv/xlv-heavy-gate";
 import {
   resolveXlvDeviceSortMode,
   sortXlvDevices,
@@ -285,7 +284,7 @@ type XlvDashboardListOpts = {
   expandTo?: Date | null;
 };
 
-/** 看板设备列表（分页）：默认先 enrich 当前页，减轻首屏内存 */
+/** 看板设备列表（分页）：仅拉当前页，不走重查询队列（避免被「今日待办」全量扫描堵住） */
 export async function getXlvDashboardDevicesPage(
   user: SessionUser,
   opts: XlvDashboardListOpts & {
@@ -297,7 +296,7 @@ export async function getXlvDashboardDevicesPage(
   devices: XlvDeviceListItem[];
   hasMore: boolean;
 }> {
-  return withXlvHeavyGate(() => loadXlvDashboardDevicesPage(user, opts));
+  return loadXlvDashboardDevicesPage(user, opts);
 }
 
 async function loadXlvDashboardDevicesPage(
