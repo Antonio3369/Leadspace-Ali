@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { readResponseJson } from "@/lib/fetch-json";
+import { readResponseJson, getFetchErrorMessage } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import { EnableSuccessModal } from "@/components/admin/EnableSuccessModal";
 import {
@@ -84,7 +84,7 @@ export function XlvManagerTeamPanel({ backHref }: { backHref?: string }) {
       setRosterRows(Number(json.rosterRows) || 0);
       if (json.backfillHint) setMessage(json.backfillHint);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(getFetchErrorMessage(err, "加载失败"));
     } finally {
       setLoading(false);
     }

@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -192,7 +193,7 @@ export function N7FollowUpView({
         if (!cancelled) setData(json);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
+        if (!cancelled) setError(getFetchErrorMessage(err, "加载失败"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -322,7 +323,7 @@ export function N7FollowUpView({
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : "导出失败");
+      setExportError(getFetchErrorMessage(err, "导出失败"));
     } finally {
       setExporting(false);
     }

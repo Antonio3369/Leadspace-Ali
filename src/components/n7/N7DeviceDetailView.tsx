@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import { useEffect, useState } from "react";
 import { n7Path } from "@/lib/business-lines";
@@ -94,7 +95,7 @@ export function N7DeviceDetailView({
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "加载失败");
+          setError(getFetchErrorMessage(err, "加载失败"));
         }
       });
     return () => {

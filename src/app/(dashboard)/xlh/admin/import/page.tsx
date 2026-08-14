@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import { useEffect, useRef, useState } from "react";
 import { formatRetentionLabel, getMerchantRetentionCutoff } from "@/lib/merchant-retention";
@@ -135,7 +136,7 @@ export default function ImportPage() {
         if (isImportRestartInterrupted(err)) {
           setInterrupted(err.context);
         } else {
-          setError(err instanceof Error ? err.message : "上传失败");
+          setError(getFetchErrorMessage(err, "上传失败"));
         }
         setProgress(0);
         setProgressLabel("");

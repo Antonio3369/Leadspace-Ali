@@ -26,7 +26,7 @@ import type { XlvFollowUpPatchResult, XlvFollowUpReviewResult } from "@/lib/xlv-
 import { XlvTxnActivityChart } from "@/components/xlv/XlvTxnActivityChart";
 import type { XlvTxnActivityPoint } from "@/services/xlv/snapshot-daily";
 import type { XlvQualificationDetail } from "@/lib/xlv-rules";
-import { readResponseJson } from "@/lib/fetch-json";
+import { readResponseJson, getFetchErrorMessage } from "@/lib/fetch-json";
 import { emitXlvNotificationsChanged } from "@/lib/xlv-notifications-client";
 
 interface Device {
@@ -129,7 +129,7 @@ export function XlvDeviceDetailView({
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "加载失败");
+          setError(getFetchErrorMessage(err, "加载失败"));
         }
       });
     return () => {

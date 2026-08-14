@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   fetchJsonWithRetry,
   fetchRetryNotice,
+  getFetchErrorMessage,
   readResponseJson,
 } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
@@ -119,7 +120,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "加载失败");
+          setError(getFetchErrorMessage(err, "加载失败"));
           setRetryLabel("");
         }
       })
@@ -170,7 +171,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : "导出失败");
+      setExportError(getFetchErrorMessage(err, "导出失败"));
     } finally {
       setExporting(false);
     }

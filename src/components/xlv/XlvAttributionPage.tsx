@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { readResponseJson } from "@/lib/fetch-json";
+import { readResponseJson, getFetchErrorMessage } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import {
   NotionAlert,
@@ -126,7 +126,7 @@ export function XlvAttributionPage() {
     Promise.all([loadReport(), loadLookup()])
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "加载失败");
+          setError(getFetchErrorMessage(err, "加载失败"));
         }
       })
       .finally(() => {
@@ -140,7 +140,7 @@ export function XlvAttributionPage() {
   useEffect(() => {
     if (tab !== "devices") return;
     loadDevices().catch((err) => {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(getFetchErrorMessage(err, "加载失败"));
     });
   }, [tab, loadDevices]);
 
@@ -196,7 +196,7 @@ export function XlvAttributionPage() {
       );
       if (tab === "devices") await loadDevices();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "同步失败");
+      setError(getFetchErrorMessage(err, "同步失败"));
     } finally {
       setSyncing(false);
     }
@@ -228,7 +228,7 @@ export function XlvAttributionPage() {
       setMessage(`已更新 ${editing.deviceSn} 的归属姓名`);
       await Promise.all([loadReport(), loadDevices()]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(getFetchErrorMessage(err, "保存失败"));
     } finally {
       setSaving(false);
     }

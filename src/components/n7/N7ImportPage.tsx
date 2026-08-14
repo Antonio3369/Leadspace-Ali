@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import { useEffect, useRef, useState } from "react";
 import { EnableSuccessModal } from "@/components/admin/EnableSuccessModal";
@@ -137,7 +138,7 @@ export function N7ImportPage() {
             if (isImportRestartInterrupted(err)) {
               setInterrupted(err.context);
             } else {
-              setError(err instanceof Error ? err.message : "导入失败");
+              setError(getFetchErrorMessage(err, "导入失败"));
             }
           }
           return;
@@ -200,7 +201,7 @@ export function N7ImportPage() {
         if (isImportRestartInterrupted(err)) {
           setInterrupted(err.context);
         } else {
-          setError(err instanceof Error ? err.message : "上传失败");
+          setError(getFetchErrorMessage(err, "上传失败"));
         }
         setProgress(0);
         setProgressLabel("");

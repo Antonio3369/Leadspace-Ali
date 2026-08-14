@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -112,7 +113,7 @@ export function N7StaffBoard({
         if (!cancelled) setData(json);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
+        if (!cancelled) setError(getFetchErrorMessage(err, "加载失败"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

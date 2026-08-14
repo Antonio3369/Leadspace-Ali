@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -279,7 +280,7 @@ export function LedgerView({
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : "导出失败");
+      setExportError(getFetchErrorMessage(err, "导出失败"));
     } finally {
       setExporting(false);
     }

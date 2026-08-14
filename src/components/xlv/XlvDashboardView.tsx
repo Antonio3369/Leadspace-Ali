@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { xlvPath } from "@/lib/business-lines";
 import { formatDateInput } from "@/lib/ledger-date";
 import { getCurrentMonthRange, n7DateRangeQuery } from "@/lib/n7-date";
-import { fetchRetryNotice } from "@/lib/fetch-json";
+import { fetchRetryNotice, getFetchErrorMessage } from "@/lib/fetch-json";
 import { readXlvApiCache } from "@/lib/xlv-api-cache";
 import { fetchXlvJson } from "@/lib/xlv-fetch";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
@@ -250,7 +250,7 @@ export function XlvDashboardView({
       })
       .catch((err) => {
         if (!cancelled && !hasCached && !controller.signal.aborted) {
-          setError(err instanceof Error ? err.message : "加载失败");
+          setError(getFetchErrorMessage(err, "加载失败"));
           setRetryLabel("");
           setLoading(false);
         }
@@ -309,7 +309,7 @@ export function XlvDashboardView({
       setMatchedCount(json.matchedCount);
       setHasMore(json.hasMore);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载更多失败");
+      setError(getFetchErrorMessage(err, "加载更多失败"));
     } finally {
       setLoadingMore(false);
     }

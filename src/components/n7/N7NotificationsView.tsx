@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -65,7 +66,7 @@ export function N7NotificationsView({
       })
       .catch((err) => {
         if (!opts?.silent) {
-          setError(err instanceof Error ? err.message : "加载失败");
+          setError(getFetchErrorMessage(err, "加载失败"));
         }
       })
       .finally(() => {
@@ -112,7 +113,7 @@ export function N7NotificationsView({
       setUnread(0);
       emitN7NotificationsChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "操作失败");
+      setError(getFetchErrorMessage(err, "操作失败"));
     } finally {
       setBusy(false);
     }

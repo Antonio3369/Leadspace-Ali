@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { readResponseJson } from "@/lib/fetch-json";
+import { readResponseJson, getFetchErrorMessage } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import {
   applyN7DateRangeToParams,
@@ -73,7 +73,7 @@ export function XlvStaffMonthlyPerformanceView({
         if (!cancelled) setData(json);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
+        if (!cancelled) setError(getFetchErrorMessage(err, "加载失败"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

@@ -2,7 +2,11 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
-import { authConfig } from "@/lib/auth.config";
+import {
+  authConfig,
+  DEFAULT_SESSION_MAX_AGE,
+  REMEMBER_ME_MAX_AGE,
+} from "@/lib/auth.config";
 import { db } from "@/lib/db";
 import { canSignIn, needsOnboarding } from "@/lib/account-lifecycle";
 import {
@@ -16,6 +20,15 @@ import { findXlvMemberByUsername } from "@/services/xlv/member-accounts";
 
 function mapXlvMemberRole(memberRole: string): SessionUser["role"] {
   return memberRole === "MANAGER" ? "MANAGER" : "SALES";
+}
+
+function parseRememberMe(value: unknown): boolean {
+  return value === "true" || value === true;
+}
+
+function sessionExpiry(rememberMe: boolean): number {
+  const maxAge = rememberMe ? REMEMBER_ME_MAX_AGE : DEFAULT_SESSION_MAX_AGE;
+  return Math.floor(Date.now() / 1000) + maxAge;
 }
 
 type LiveXlvMemberState = {
@@ -79,6 +92,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     ...authConfig.callbacks,
     async jwt({ token, user }) {
       if (user) {
+        const rememberMe = user.rememberMe ?? true;
         token.id = user.id!;
         token.username = user.email!;
         token.role = user.role;
@@ -91,6 +105,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.name = user.name ?? null;
         token.xlvManagerName = user.xlvManagerName ?? null;
         token.xlvOperatorName = user.xlvOperatorName ?? null;
+        token.exp = sessionExpiry(rememberMe);
         return token;
       }
 
@@ -109,10 +124,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: {
         username: { label: "账号", type: "text" },
         password: { label: "密码", type: "password" },
+        rememberMe: { label: "记住我", type: "text" },
       },
       async authorize(credentials) {
         const username = credentials?.username as string | undefined;
         const password = credentials?.password as string | undefined;
+        const rememberMe = parseRememberMe(credentials?.rememberMe);
 
         if (!username || !password) return null;
 
@@ -144,6 +161,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           authRealm: "alipay" as const,
           xlvManagerName: null,
           xlvOperatorName: null,
+          rememberMe,
         };
       },
     }),
@@ -152,10 +170,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: {
         username: { label: "账号", type: "text" },
         password: { label: "密码", type: "password" },
+        rememberMe: { label: "记住我", type: "text" },
       },
       async authorize(credentials) {
         const username = credentials?.username as string | undefined;
         const password = credentials?.password as string | undefined;
+        const rememberMe = parseRememberMe(credentials?.rememberMe);
 
         if (!username || !password) return null;
 
@@ -183,6 +203,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             xlvManagerName: member.managerName,
             xlvOperatorName:
               member.memberRole === "OPERATOR" ? member.operatorName : null,
+            rememberMe,
           };
         }
 
@@ -208,6 +229,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           authRealm: "xlv" as const,
           xlvManagerName: null,
           xlvOperatorName: null,
+          rememberMe,
         };
       },
     }),

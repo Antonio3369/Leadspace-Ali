@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import Link from "next/link";
 import { useRef, useState } from "react";
@@ -118,7 +119,7 @@ export function XlvFollowUpCloseForm({
       }
       setPhotoUrls(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "上传失败");
+      setError(getFetchErrorMessage(err, "上传失败"));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -158,7 +159,7 @@ export function XlvFollowUpCloseForm({
       onChanged?.(json);
       setMessage("跟进成功");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(getFetchErrorMessage(err, "保存失败"));
     } finally {
       setSaving(false);
     }
@@ -180,7 +181,7 @@ export function XlvFollowUpCloseForm({
       setPhotoUrls([]);
       setMessage("已改回待回访");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(getFetchErrorMessage(err, "保存失败"));
     } finally {
       setSaving(false);
     }

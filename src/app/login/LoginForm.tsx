@@ -17,6 +17,7 @@ export default function LoginForm() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   // 进页时锁住提示，避免清理 query 后闪一下就消失
@@ -67,6 +68,7 @@ export default function LoginForm() {
       const result = await signIn("alipay", {
         username,
         password,
+        rememberMe: rememberMe ? "true" : "false",
         redirect: false,
       });
 
@@ -141,6 +143,16 @@ export default function LoginForm() {
                 autoComplete="current-password"
               />
             </div>
+
+            <label className="inline-flex items-center gap-2 text-sm text-[#64748b] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="rounded border-[#cbd5e1]"
+              />
+              记住我，30 天内免登录
+            </label>
 
             {error && <NotionAlert tone="error">{error}</NotionAlert>}
 

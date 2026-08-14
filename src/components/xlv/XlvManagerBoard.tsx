@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -126,7 +127,7 @@ export function XlvManagerBoard() {
           if (!cancelled) setData(json);
         })
         .catch((err) => {
-          if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
+          if (!cancelled) setError(getFetchErrorMessage(err, "加载失败"));
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -183,9 +184,8 @@ export function XlvManagerBoard() {
         title="团队看板"
         kicker="微信小绿盒"
         meta={
-          <div className="space-y-1 text-sm text-[#64748b]">
-            <p>看各经理团队的业绩、风险与本月跟进结果；点击指标可查看明细。</p>
-            {statusFilter ? (
+          statusFilter ? (
+            <div className="space-y-1 text-sm text-[#64748b]">
               <p>
                 <button
                   type="button"
@@ -195,8 +195,8 @@ export function XlvManagerBoard() {
                   ← 清除考核筛选
                 </button>
               </p>
-            ) : null}
-          </div>
+            </div>
+          ) : undefined
         }
         actions={
           <NotionInput

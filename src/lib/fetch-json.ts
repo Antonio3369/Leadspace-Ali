@@ -4,6 +4,8 @@ const TRANSIENT_HTTP = new Set([502, 503, 504]);
 /** 与服务端重查询闸门对齐，避免 90s 客户端先超时再打出第二条重查询 */
 const DEFAULT_FETCH_TIMEOUT_MS = 120_000;
 
+export const FETCH_ABORTED_MESSAGE = "加载已取消，请刷新重试";
+
 export type FetchRetryReason = "timeout" | "http" | "network";
 
 /** 第一次失败先静默重试；避免刚登录被误报成「服务重启」 */
@@ -44,6 +46,26 @@ function isAbortError(err: unknown): boolean {
     err instanceof DOMException &&
     (err.name === "AbortError" || err.name === "TimeoutError")
   );
+}
+
+/** 请求被组件卸载、切换筛选等主动取消 */
+export function isFetchAbortedError(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === "AbortError") {
+    return true;
+  }
+  if (err instanceof Error && err.message === FETCH_ABORTED_MESSAGE) {
+    return true;
+  }
+  if (err instanceof Error && /signal is aborted|aborted without reason/i.test(err.message)) {
+    return true;
+  }
+  return false;
+}
+
+export function getFetchErrorMessage(err: unknown, fallback = "加载失败"): string {
+  if (isFetchAbortedError(err)) return FETCH_ABORTED_MESSAGE;
+  if (err instanceof Error) return err.message;
+  return fallback;
 }
 
 export async function readResponseJson<T = Record<string, unknown>>(
@@ -116,7 +138,7 @@ export async function fetchJsonWithRetry<T>(
       );
     } catch (err) {
       if (init?.signal?.aborted) {
-        throw err instanceof Error ? err : new Error(`${context}已取消`);
+        throw new Error(FETCH_ABORTED_MESSAGE);
       }
       const timedOut = isAbortError(err);
       lastError = timedOut

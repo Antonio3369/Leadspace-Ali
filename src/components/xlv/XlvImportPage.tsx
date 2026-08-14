@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -144,7 +145,7 @@ export function XlvImportPage() {
           setInterrupted(err.context);
         }
       } else {
-        setError(err instanceof Error ? err.message : "导入失败");
+        setError(getFetchErrorMessage(err, "导入失败"));
       }
       if (!isImportRestartInterrupted(err)) {
         await refreshActiveJobPeek();
@@ -238,7 +239,7 @@ export function XlvImportPage() {
       if (isImportRestartInterrupted(err)) {
         setInterrupted(err.context);
       } else {
-        setError(err instanceof Error ? err.message : "导入失败");
+        setError(getFetchErrorMessage(err, "导入失败"));
       }
     } finally {
       setUploading(false);

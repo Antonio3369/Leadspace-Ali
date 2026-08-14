@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import { useRef, useState } from "react";
 import {
@@ -121,7 +122,7 @@ export function N7FollowUpCloseForm({
       }
       setPhotoUrls(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "上传失败");
+      setError(getFetchErrorMessage(err, "上传失败"));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -167,7 +168,7 @@ export function N7FollowUpCloseForm({
         setMessage("关单成功");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(getFetchErrorMessage(err, "保存失败"));
     } finally {
       setSaving(false);
     }
@@ -189,7 +190,7 @@ export function N7FollowUpCloseForm({
       setPhotoUrls([]);
       setMessage("已改回未处理");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(getFetchErrorMessage(err, "保存失败"));
     } finally {
       setSaving(false);
     }

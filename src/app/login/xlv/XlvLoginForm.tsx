@@ -15,6 +15,7 @@ export default function XlvLoginForm() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -48,6 +49,7 @@ export default function XlvLoginForm() {
       const result = await signIn("xlv", {
         username,
         password,
+        rememberMe: rememberMe ? "true" : "false",
         redirect: false,
       });
 
@@ -78,11 +80,7 @@ export default function XlvLoginForm() {
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[#dcfce7] text-[#16a34a] text-lg font-bold mb-2">
             微
           </div>
-          <p className="text-[0.78rem] font-semibold tracking-wide uppercase text-[#94a3b8]">
-            微信业务
-          </p>
           <h1 className="text-2xl font-bold text-[#111827] tracking-tight">小绿盒登录</h1>
-          <p className="text-sm text-[#64748b]">组织名册导入后自动开号</p>
         </div>
 
         <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm p-6 sm:p-8 space-y-4">
@@ -110,6 +108,16 @@ export default function XlvLoginForm() {
               />
             </div>
 
+            <label className="inline-flex items-center gap-2 text-sm text-[#64748b] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="rounded border-[#cbd5e1]"
+              />
+              记住我，30 天内免登录
+            </label>
+
             {error && <NotionAlert tone="error">{error}</NotionAlert>}
 
             <NotionButton type="submit" disabled={loading} className="w-full">
@@ -122,9 +130,6 @@ export default function XlvLoginForm() {
           <Link href="/" className="text-[#16a34a] hover:underline">
             ← 返回平台选择
           </Link>
-          <span className="block mt-2">
-            管理员可使用全局 admin 账号登录管理导入
-          </span>
         </p>
       </div>
     </div>

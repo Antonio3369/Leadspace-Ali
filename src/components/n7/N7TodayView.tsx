@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -142,7 +143,7 @@ export function N7TodayView({
       })
       .catch((err) => {
         if (!cancelled && !silent) {
-          setError(err instanceof Error ? err.message : "加载失败");
+          setError(getFetchErrorMessage(err, "加载失败"));
         }
       })
       .finally(() => {

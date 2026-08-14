@@ -13,6 +13,11 @@ import type { AuthRealm } from "@/lib/permissions";
 import type { BusinessLineId } from "@/lib/business-lines";
 import { isXlvScopePath } from "@/lib/business-lines";
 
+/** 勾选「记住我」时的 session 有效期（秒） */
+export const REMEMBER_ME_MAX_AGE = 30 * 24 * 60 * 60;
+/** 未勾选时的 session 有效期（秒） */
+export const DEFAULT_SESSION_MAX_AGE = 24 * 60 * 60;
+
 declare module "next-auth" {
   interface User {
     role: UserRole;
@@ -24,6 +29,7 @@ declare module "next-auth" {
     authRealm: AuthRealm;
     xlvManagerName?: string | null;
     xlvOperatorName?: string | null;
+    rememberMe?: boolean;
   }
 
   interface Session {
@@ -67,6 +73,7 @@ export const authConfig = {
   },
   session: {
     strategy: "jwt",
+    maxAge: REMEMBER_ME_MAX_AGE,
   },
   callbacks: {
     authorized({ auth, request }) {

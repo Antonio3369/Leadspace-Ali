@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { fetchRetryNotice } from "@/lib/fetch-json";
+import { fetchRetryNotice, getFetchErrorMessage } from "@/lib/fetch-json";
 import { readXlvApiCache } from "@/lib/xlv-api-cache";
 import { fetchXlvJson } from "@/lib/xlv-fetch";
 import { xlvPath } from "@/lib/business-lines";
@@ -180,7 +180,7 @@ export function XlvTodayView({
       })
       .catch((err) => {
         if (!cancelled && !silent) {
-          setError(err instanceof Error ? err.message : "加载失败");
+          setError(getFetchErrorMessage(err, "加载失败"));
           setRetryLabel("");
         }
       })

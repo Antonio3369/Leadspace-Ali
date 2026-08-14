@@ -1,4 +1,5 @@
 "use client";
+import { getFetchErrorMessage } from "@/lib/fetch-json";
 
 import { useState } from "react";
 import {
@@ -45,7 +46,7 @@ export function N7FollowUpReviewPanel({
       emitN7NotificationsChanged();
       setMessage("已发送反馈，队员将收到站内通知");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(getFetchErrorMessage(err, "保存失败"));
     } finally {
       setSaving(false);
     }
