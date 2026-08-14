@@ -6,6 +6,10 @@ const MIN_REFRESH_MS = 20_000;
 
 const cache = new Map<string, { at: number; data: unknown }>();
 const inFlight = new Map<string, Promise<unknown>>();
+const inFlightStartedAt = new Map<string, number>();
+
+/** 进行中的同 URL 请求超过该时长则不再复用，避免永远卡在 loading */
+const IN_FLIGHT_STALE_MS = 90_000;
 
 const prefetchQueue: string[] = [];
 let prefetchRunning = false;
@@ -52,8 +56,16 @@ export function runXlvApiOnce<T>(
 ): Promise<T> {
   const key = xlvApiCacheKey(url);
   const existing = inFlight.get(key);
-  if (existing) return existing as Promise<T>;
+  if (existing) {
+    const started = inFlightStartedAt.get(key);
+    if (started == null || Date.now() - started < IN_FLIGHT_STALE_MS) {
+      return existing as Promise<T>;
+    }
+    inFlight.delete(key);
+    inFlightStartedAt.delete(key);
+  }
 
+  inFlightStartedAt.set(key, Date.now());
   const pending = loader()
     .then((data) => {
       writeXlvApiCache(url, data);
@@ -61,6 +73,7 @@ export function runXlvApiOnce<T>(
     })
     .finally(() => {
       inFlight.delete(key);
+      inFlightStartedAt.delete(key);
     });
 
   inFlight.set(key, pending);

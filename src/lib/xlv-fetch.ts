@@ -12,6 +12,8 @@ export async function fetchXlvJson<T>(
     context?: string;
     maxAttempts?: number;
     retryDelayMs?: number;
+    timeoutMs?: number;
+    signal?: AbortSignal;
     onRetry?: (attempt: number) => void;
     /** 设为 false 可跳过读缓存（强制刷新） */
     useCache?: boolean;
@@ -22,12 +24,17 @@ export async function fetchXlvJson<T>(
 
   const load = () =>
     runXlvApiOnce(url, () =>
-      fetchJsonWithRetry<T>(url, undefined, {
-        context: opts?.context,
-        maxAttempts: opts?.maxAttempts,
-        retryDelayMs: opts?.retryDelayMs,
-        onRetry: opts?.onRetry,
-      })
+      fetchJsonWithRetry<T>(
+        url,
+        opts?.signal ? { signal: opts.signal } : undefined,
+        {
+          context: opts?.context,
+          maxAttempts: opts?.maxAttempts,
+          retryDelayMs: opts?.retryDelayMs,
+          timeoutMs: opts?.timeoutMs,
+          onRetry: opts?.onRetry,
+        }
+      )
     );
 
   if (cached) {

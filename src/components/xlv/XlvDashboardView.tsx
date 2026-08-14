@@ -118,9 +118,10 @@ export function XlvDashboardView({
   const [retryLabel, setRetryLabel] = useState("");
   const [searchDraft, setSearchDraft] = useState(search);
 
-  useRestoreListScroll(pathname, active && !loading && devices.length > 0);
-
   const filterKey = `${alert}|${status}|${expandMonth}|${manager}|${operator}|${search}`;
+  const listLoading = loading && loadedFilterKey !== filterKey;
+
+  useRestoreListScroll(pathname, active && !listLoading && devices.length > 0);
 
   const pushQuery = useCallback(
     (patch: Record<string, string | null>) => {
@@ -189,6 +190,7 @@ export function XlvDashboardView({
 
   useEffect(() => {
     if (!active) return;
+    const controller = new AbortController();
     let cancelled = false;
     const listParams = buildListQuery(
       alert,
@@ -202,7 +204,10 @@ export function XlvDashboardView({
     const devicesUrl = `/api/xlv/dashboard/devices?${listParams.toString()}`;
 
     if (loadedFilterKey === filterKey) {
-      return;
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
     }
 
     const cachedDevices = readXlvApiCache<DevicesResponse>(devicesUrl);
@@ -225,6 +230,7 @@ export function XlvDashboardView({
 
     fetchXlvJson<DevicesResponse>(devicesUrl, {
       context: "加载商户列表",
+      signal: controller.signal,
       onRetry: (attempt) => {
         if (!cancelled && !hasCached) {
           setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
@@ -242,7 +248,7 @@ export function XlvDashboardView({
         }
       })
       .catch((err) => {
-        if (!cancelled && !hasCached) {
+        if (!cancelled && !hasCached && !controller.signal.aborted) {
           setError(err instanceof Error ? err.message : "加载失败");
           setRetryLabel("");
           setLoading(false);
@@ -251,6 +257,7 @@ export function XlvDashboardView({
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [active, alert, status, expandMonth, manager, operator, search, filterKey, loadedFilterKey]);
 
@@ -466,6 +473,12 @@ export function XlvDashboardView({
                 ? "剩余库存"
                 : "全部商户";
 
+  const showPulseGrid = Boolean(summary && summary.totalDevices > 0);
+  const showFilters =
+    showPulseGrid && (role === "DIRECTOR" || role === "MANAGER");
+  const showEmptyImportHint =
+    !listLoading && summary && summary.totalDevices === 0 && devices.length === 0;
+
   return (
     <PageShell>
       <PageHeader
@@ -504,123 +517,119 @@ export function XlvDashboardView({
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
       {retryLabel ? <NotionAlert tone="info">{retryLabel}</NotionAlert> : null}
 
-      {!loading && summary && summary.totalDevices === 0 ? (
+      {showEmptyImportHint ? (
         <NotionCallout>
           暂无设备数据。请先在「数据导入」上传运营原始表，再导入人员归属表补齐队员与经理。
         </NotionCallout>
       ) : null}
 
-      {summary && summary.totalDevices > 0 ? (
-        <>
-          <div className="grid grid-cols-3 gap-3">
-            {pulseCards.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => selectPulseCard(item.id)}
-                className={`rounded-[14px] border px-3 py-3 text-left transition-colors ${toneClass[item.tone]} ${
-                  activePulseCard === item.id ? "ring-2 ring-[#2563eb]/30" : ""
+      {showPulseGrid ? (
+        <div className="grid grid-cols-3 gap-3">
+          {pulseCards.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => selectPulseCard(item.id)}
+              className={`rounded-[14px] border px-3 py-3 text-left transition-colors ${toneClass[item.tone]} ${
+                activePulseCard === item.id ? "ring-2 ring-[#2563eb]/30" : ""
+              }`}
+            >
+              <p className="text-xs text-[#64748b]">{item.hint}</p>
+              <p
+                className={`mt-1 text-2xl font-bold tabular-nums ${
+                  item.valueClass ?? valueClass[item.tone]
                 }`}
               >
-                <p className="text-xs text-[#64748b]">{item.hint}</p>
-                <p
-                  className={`mt-1 text-2xl font-bold tabular-nums ${
-                    item.valueClass ?? valueClass[item.tone]
-                  }`}
-                >
-                  {item.value == null ? "…" : item.value}
-                </p>
-                <p className="text-sm font-medium text-[#334155]">{item.label}</p>
-              </button>
-            ))}
-          </div>
-
-          {(role === "DIRECTOR" || role === "MANAGER") && (
-            <div className="flex flex-col sm:flex-row gap-2">
-              {role === "DIRECTOR" ? (
-                <NotionSelect
-                  value={manager}
-                  onChange={(e) => {
-                    const next = e.target.value || null;
-                    pushQuery({
-                      manager: next,
-                      operator: null,
-                    });
-                  }}
-                  className="w-full sm:max-w-[200px]"
-                  aria-label="筛选经理"
-                >
-                  <option value="">全部经理</option>
-                  {filters.managers.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </NotionSelect>
-              ) : null}
-              <NotionSelect
-                value={operator}
-                onChange={(e) => pushQuery({ operator: e.target.value || null })}
-                className="w-full sm:max-w-[200px]"
-                aria-label={manager ? `${manager} 团队队员` : "筛选队员"}
-              >
-                <option value="">全部队员</option>
-                {filters.operators.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </NotionSelect>
-            </div>
-          )}
-
-          <section className="space-y-2">
-            <div className="flex items-baseline justify-between gap-2 px-0.5">
-              <h2 className="text-sm font-semibold text-[#111827]">{listTitle}</h2>
-              {!loading ? (
-                <span className="text-xs text-[#94a3b8] tabular-nums">
-                  已显示 {devices.length}
-                  {matchedCount > devices.length ? ` / ${matchedCount}` : ""} 条
-                </span>
-              ) : null}
-            </div>
-
-            {loading ? (
-              <p className="text-sm text-[#94a3b8] px-1 py-8 text-center">加载中…</p>
-            ) : (
-              <>
-                <XlvDeviceCardList
-                  devices={devices}
-                  showManager={showManager}
-                  linkToDetail
-                  activeShortcut={activeShortcut}
-                  emptyText={
-                    hasDrill ? "当前筛选下暂无设备" : "暂无数据，请先导入运营表"
-                  }
-                  onPickOperator={(name) => pushQuery({ operator: name })}
-                  onPickManager={(name) => pushQuery({ manager: name })}
-                />
-                {hasMore ? (
-                  <div className="pt-2 pb-1 text-center">
-                    <button
-                      type="button"
-                      onClick={() => void loadMore()}
-                      disabled={loadingMore}
-                      className="inline-flex min-h-[44px] items-center justify-center rounded-[12px] border border-[#e2e8f0] bg-white px-5 py-2.5 text-sm font-medium text-[#334155] shadow-sm transition-colors hover:bg-[#f8fafc] disabled:opacity-60"
-                    >
-                      {loadingMore
-                        ? "加载中…"
-                        : `加载更多（还剩 ${matchedCount - devices.length} 条）`}
-                    </button>
-                  </div>
-                ) : null}
-              </>
-            )}
-          </section>
-        </>
-      ) : loading ? (
-        <p className="text-sm text-[#94a3b8] py-8 text-center">加载中…</p>
+                {item.value == null ? "…" : item.value}
+              </p>
+              <p className="text-sm font-medium text-[#334155]">{item.label}</p>
+            </button>
+          ))}
+        </div>
       ) : null}
+
+      {showFilters ? (
+        <div className="flex flex-col sm:flex-row gap-2">
+          {role === "DIRECTOR" ? (
+            <NotionSelect
+              value={manager}
+              onChange={(e) => {
+                const next = e.target.value || null;
+                pushQuery({
+                  manager: next,
+                  operator: null,
+                });
+              }}
+              className="w-full sm:max-w-[200px]"
+              aria-label="筛选经理"
+            >
+              <option value="">全部经理</option>
+              {filters.managers.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </NotionSelect>
+          ) : null}
+          <NotionSelect
+            value={operator}
+            onChange={(e) => pushQuery({ operator: e.target.value || null })}
+            className="w-full sm:max-w-[200px]"
+            aria-label={manager ? `${manager} 团队队员` : "筛选队员"}
+          >
+            <option value="">全部队员</option>
+            {filters.operators.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </NotionSelect>
+        </div>
+      ) : null}
+
+      <section className="space-y-2">
+        <div className="flex items-baseline justify-between gap-2 px-0.5">
+          <h2 className="text-sm font-semibold text-[#111827]">{listTitle}</h2>
+          {!listLoading ? (
+            <span className="text-xs text-[#94a3b8] tabular-nums">
+              已显示 {devices.length}
+              {matchedCount > devices.length ? ` / ${matchedCount}` : ""} 条
+            </span>
+          ) : null}
+        </div>
+
+        {listLoading ? (
+          <p className="text-sm text-[#94a3b8] px-1 py-8 text-center">加载中…</p>
+        ) : (
+          <>
+            <XlvDeviceCardList
+              devices={devices}
+              showManager={showManager}
+              linkToDetail
+              activeShortcut={activeShortcut}
+              emptyText={
+                hasDrill ? "当前筛选下暂无设备" : "暂无数据，请先导入运营表"
+              }
+              onPickOperator={(name) => pushQuery({ operator: name })}
+              onPickManager={(name) => pushQuery({ manager: name })}
+            />
+            {hasMore ? (
+              <div className="pt-2 pb-1 text-center">
+                <button
+                  type="button"
+                  onClick={() => void loadMore()}
+                  disabled={loadingMore}
+                  className="inline-flex min-h-[44px] items-center justify-center rounded-[12px] border border-[#e2e8f0] bg-white px-5 py-2.5 text-sm font-medium text-[#334155] shadow-sm transition-colors hover:bg-[#f8fafc] disabled:opacity-60"
+                >
+                  {loadingMore
+                    ? "加载中…"
+                    : `加载更多（还剩 ${matchedCount - devices.length} 条）`}
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </section>
     </PageShell>
   );
 }
