@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { fetchRetryNotice } from "@/lib/fetch-json";
 import { readXlvApiCache } from "@/lib/xlv-api-cache";
 import { fetchXlvJson } from "@/lib/xlv-fetch";
 import { xlvPath } from "@/lib/business-lines";
@@ -80,6 +81,8 @@ export function XlvTodayView({
   const [mgrUnread, setMgrUnread] = useState<number | null>(null);
 
   const filterKey = `${manager}|${operator}`;
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   useRestoreListScroll(pathname, active && !loading && !!data);
 
@@ -97,9 +100,9 @@ export function XlvTodayView({
 
   useEffect(() => {
     function onVisible() {
-      if (document.visibilityState === "visible") {
-        setRefreshKey((k) => k + 1);
-      }
+      if (document.visibilityState !== "visible") return;
+      if (!dataRef.current) return;
+      setRefreshKey((k) => k + 1);
     }
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
@@ -159,9 +162,9 @@ export function XlvTodayView({
 
     fetchXlvJson<ApiResponse>(url, {
       context: "加载今日",
-      onRetry: (attempt) => {
+      onRetry: (attempt, reason) => {
         if (!cancelled && !silent) {
-          setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
+          setRetryLabel(fetchRetryNotice(attempt, reason));
         }
       },
     })
@@ -336,7 +339,9 @@ export function XlvTodayView({
       ) : null}
 
       {loading && !data ? (
-        <p className="text-sm text-[#94a3b8] py-8 text-center">加载中…</p>
+        <p className="text-sm text-[#94a3b8] py-8 text-center">
+          正在加载今日待办…
+        </p>
       ) : null}
 
       {data ? (

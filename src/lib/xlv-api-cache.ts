@@ -9,7 +9,7 @@ const inFlight = new Map<string, Promise<unknown>>();
 const inFlightStartedAt = new Map<string, number>();
 
 /** 进行中的同 URL 请求超过该时长则不再复用，避免永远卡在 loading */
-const IN_FLIGHT_STALE_MS = 90_000;
+const IN_FLIGHT_STALE_MS = 120_000;
 
 const prefetchQueue: string[] = [];
 let prefetchRunning = false;

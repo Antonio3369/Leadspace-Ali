@@ -12,14 +12,12 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const managerName = searchParams.get("manager");
-    const [data, filters] = await Promise.all([
-      getXlvTodayQueues(user, {
-        managerName,
-        operatorName: searchParams.get("operator"),
-        search: searchParams.get("q"),
-      }),
-      getXlvFilterOptions(user, { managerName }),
-    ]);
+    const data = await getXlvTodayQueues(user, {
+      managerName,
+      operatorName: searchParams.get("operator"),
+      search: searchParams.get("q"),
+    });
+    const filters = await getXlvFilterOptions(user, { managerName });
 
     return NextResponse.json({ ...data, filters });
   } catch (err) {

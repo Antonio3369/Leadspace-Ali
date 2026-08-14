@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { fetchJsonWithRetry, readResponseJson } from "@/lib/fetch-json";
+import {
+  fetchJsonWithRetry,
+  fetchRetryNotice,
+  readResponseJson,
+} from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
@@ -99,9 +103,9 @@ export function XlvFollowUpView({ role }: { role: string }) {
 
     fetchJsonWithRetry<ApiResponse>(`/api/xlv/follow-up?${params.toString()}`, undefined, {
       context: "加载回访",
-      onRetry: (attempt) => {
+      onRetry: (attempt, reason) => {
         if (!cancelled) {
-          setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
+          setRetryLabel(fetchRetryNotice(attempt, reason));
         }
       },
     })

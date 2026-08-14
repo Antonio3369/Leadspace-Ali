@@ -1,7 +1,22 @@
 /** 安全解析 fetch 响应（避免 Safari 在 HTML/502 上 json() 抛 "expected pattern"） */
 
 const TRANSIENT_HTTP = new Set([502, 503, 504]);
-const DEFAULT_FETCH_TIMEOUT_MS = 90_000;
+/** 与服务端重查询闸门对齐，避免 90s 客户端先超时再打出第二条重查询 */
+const DEFAULT_FETCH_TIMEOUT_MS = 120_000;
+
+export type FetchRetryReason = "timeout" | "http" | "network";
+
+/** 第一次失败先静默重试；避免刚登录被误报成「服务重启」 */
+export function fetchRetryNotice(attempt: number, reason: FetchRetryReason): string {
+  if (attempt < 2) return "";
+  if (reason === "http") {
+    return `服务暂时不可用，正在自动重连（${attempt}/8）…`;
+  }
+  if (reason === "timeout") {
+    return `加载时间较长，继续尝试（${attempt}/8）…`;
+  }
+  return `网络不稳，正在重试（${attempt}/8）…`;
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -79,7 +94,7 @@ export async function fetchJsonWithRetry<T>(
     maxAttempts?: number;
     retryDelayMs?: number;
     timeoutMs?: number;
-    onRetry?: (attempt: number) => void;
+    onRetry?: (attempt: number, reason: FetchRetryReason) => void;
   }
 ): Promise<T> {
   const context = opts?.context ?? "请求";
@@ -103,20 +118,21 @@ export async function fetchJsonWithRetry<T>(
       if (init?.signal?.aborted) {
         throw err instanceof Error ? err : new Error(`${context}已取消`);
       }
-      lastError = isAbortError(err)
+      const timedOut = isAbortError(err);
+      lastError = timedOut
         ? new Error(`${context}超时，请检查网络后重试。`)
         : new Error(`${context}时网络中断，请检查网络后重试。`);
       if (attempt < maxAttempts) {
-        opts?.onRetry?.(attempt);
-        await sleep(retryDelayMs);
+        opts?.onRetry?.(attempt, timedOut ? "timeout" : "network");
+        await sleep(attempt === 1 ? Math.min(retryDelayMs, 800) : retryDelayMs);
         continue;
       }
       throw lastError;
     }
 
     if (TRANSIENT_HTTP.has(res.status) && attempt < maxAttempts) {
-      opts?.onRetry?.(attempt);
-      await sleep(retryDelayMs);
+      opts?.onRetry?.(attempt, "http");
+      await sleep(attempt === 1 ? Math.min(retryDelayMs, 800) : retryDelayMs);
       continue;
     }
 

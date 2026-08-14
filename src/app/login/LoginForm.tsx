@@ -76,8 +76,11 @@ export default function LoginForm() {
         return;
       }
 
-      router.push(callbackUrl);
-      router.refresh();
+      const next =
+        callbackUrl.startsWith("/") && !callbackUrl.startsWith("//")
+          ? callbackUrl
+          : "/alipay";
+      window.location.assign(next);
     } catch {
       setError("登录失败，请稍后重试");
       setLoading(false);

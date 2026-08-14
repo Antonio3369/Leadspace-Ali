@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { xlvPath } from "@/lib/business-lines";
 import { formatDateInput } from "@/lib/ledger-date";
 import { getCurrentMonthRange, n7DateRangeQuery } from "@/lib/n7-date";
+import { fetchRetryNotice } from "@/lib/fetch-json";
 import { readXlvApiCache } from "@/lib/xlv-api-cache";
 import { fetchXlvJson } from "@/lib/xlv-fetch";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
@@ -231,9 +232,9 @@ export function XlvDashboardView({
     fetchXlvJson<DevicesResponse>(devicesUrl, {
       context: "加载商户列表",
       signal: controller.signal,
-      onRetry: (attempt) => {
+      onRetry: (attempt, reason) => {
         if (!cancelled && !hasCached) {
-          setRetryLabel(`服务重启中，正在重试（${attempt}/8）…`);
+          setRetryLabel(fetchRetryNotice(attempt, reason));
         }
       },
     })

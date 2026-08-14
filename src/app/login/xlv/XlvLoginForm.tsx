@@ -57,8 +57,11 @@ export default function XlvLoginForm() {
         return;
       }
 
-      router.push(callbackUrl);
-      router.refresh();
+      const next =
+        callbackUrl.startsWith("/") && !callbackUrl.startsWith("//")
+          ? callbackUrl
+          : xlvPath();
+      window.location.assign(next);
     } catch {
       setError("登录失败，请稍后重试");
       setLoading(false);

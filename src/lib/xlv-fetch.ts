@@ -1,4 +1,7 @@
-import { fetchJsonWithRetry } from "@/lib/fetch-json";
+import {
+  fetchJsonWithRetry,
+  type FetchRetryReason,
+} from "@/lib/fetch-json";
 import {
   readXlvApiCache,
   runXlvApiOnce,
@@ -14,7 +17,7 @@ export async function fetchXlvJson<T>(
     retryDelayMs?: number;
     timeoutMs?: number;
     signal?: AbortSignal;
-    onRetry?: (attempt: number) => void;
+    onRetry?: (attempt: number, reason: FetchRetryReason) => void;
     /** 设为 false 可跳过读缓存（强制刷新） */
     useCache?: boolean;
   }
