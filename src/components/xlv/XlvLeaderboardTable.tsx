@@ -8,7 +8,6 @@ import { n7DateRangeQuery } from "@/lib/n7-date";
 import {
   isXlvInventoryManagerKey,
   XLV_COMPLIANCE_TARGET_RATE,
-  XLV_INVENTORY_MANAGER_LABEL,
   type XlvQualificationStatus,
 } from "@/lib/xlv-rules";
 import {
@@ -81,15 +80,9 @@ export function XlvSummaryStrip({
   complianceLabel?: string;
 }) {
   const hasCompliance = summary.complianceRate != null;
-  const useFiveColumns =
-    hasCompliance && (summary.inventoryCount ?? 0) > 0;
 
   return (
-    <div
-      className={`grid grid-cols-2 gap-2 rounded-[14px] border border-[#eef2f7] bg-white px-3 py-3 text-xs ${
-        useFiveColumns ? "sm:grid-cols-5" : "sm:grid-cols-4"
-      }`}
-    >
+    <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-[#eef2f7] bg-white px-3 py-3 text-xs sm:grid-cols-4">
       {summary.managerCount != null ? (
         <div>
           <p className="text-[#94a3b8]">经理数</p>
@@ -112,22 +105,6 @@ export function XlvSummaryStrip({
           {summary.deployedCount}
         </p>
       </div>
-      {(summary.inventoryCount ?? 0) > 0 ? (
-        <div>
-          <p className="text-[#94a3b8]">剩余库存</p>
-          <p className="text-lg font-bold tabular-nums text-[#64748b]">
-            <Link
-              href={xlvPath(
-                `/?manager=${encodeURIComponent(XLV_INVENTORY_MANAGER_LABEL)}`
-              )}
-              className="hover:text-[#475569]"
-              title="查看未挂经理的库存设备"
-            >
-              {summary.deviceCount}/{summary.inventoryCount}
-            </Link>
-          </p>
-        </div>
-      ) : null}
       <div>
         <p className="text-[#94a3b8]">已达标</p>
         <p className="text-lg font-bold tabular-nums text-emerald-700">
@@ -275,17 +252,19 @@ export function XlvLeaderboardTable({
                   )}
                 </div>
                 <div className="min-w-0 flex-1 space-y-2">
-                  <Link
-                    href={rowNameHref}
-                    className={`block truncate text-base font-semibold ${
-                      isInventory
-                        ? "text-[#64748b] hover:text-[#475569]"
-                        : "text-[#2563eb] hover:text-[#1d4ed8]"
-                    }`}
-                    title={isInventory ? "未挂经理的库存设备" : undefined}
-                  >
-                    {row.name}
-                  </Link>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+                    <Link
+                      href={rowNameHref}
+                      className={`truncate text-base font-semibold ${
+                        isInventory
+                          ? "text-[#64748b] hover:text-[#475569]"
+                          : "text-[#2563eb] hover:text-[#1d4ed8]"
+                      }`}
+                      title={isInventory ? "未挂经理的库存设备" : undefined}
+                    >
+                      {row.name}
+                    </Link>
+                  </div>
                   <div className="space-y-2 text-sm">
                       <div
                         className={`rounded-[10px] border px-3 py-2.5 ${
@@ -357,7 +336,7 @@ export function XlvLeaderboardTable({
                           业绩
                         </span>
                         <BoardMetricChip
-                          label="设备"
+                          label="已铺设"
                           count={row.deviceCount}
                           href={devicesHref ?? undefined}
                           className={xlvBoardMetricNeutralClass()}

@@ -292,13 +292,14 @@ export async function getXlvManagerBoard(user: SessionUser) {
   return withXlvBoardCache(`mgr:${user.id}:${user.role}`, () =>
     withXlvHeavyGate(async () => {
     const roleWhere = buildXlvRoleWhere(user);
-    const { rows, summary } = await aggregateBoardDevices(
+    const boardResult = await aggregateBoardDevices(
       roleWhere,
       (d) => xlvManagerKeyOf(d),
       (d) => xlvManagerDisplayName(d.managerName),
       (d) => d.managerUserId,
       { includeFollowUpMetrics: true }
     );
+    const { rows, summary } = boardResult;
 
     const filteredRows = rows.filter((r) => !isXlvInventoryManagerKey(r.key));
 
@@ -325,14 +326,6 @@ export async function getXlvStaffBoard(
       const managerWhere = await buildXlvManagerDeviceWhere(opts.managerKey);
       const roleWhere = buildXlvRoleWhere(user);
 
-      const { rows, summary } = await aggregateBoardDevices(
-        { AND: [roleWhere, managerWhere] },
-        (d) => xlvStaffKeyOf(d),
-        (d) => d.operatorName || "未分配",
-        (d) => d.salesUserId,
-        { includeFollowUpMetrics: true }
-      );
-
       const sample = await db.xlvDeviceRecord.findFirst({
         where: { AND: [roleWhere, managerWhere] },
         select: { managerName: true, managerUserId: true },
@@ -351,6 +344,16 @@ export async function getXlvStaffBoard(
         : sample?.managerName?.trim() ||
           managerUser?.name ||
           opts.managerKey.slice(5);
+
+      const boardResult = await aggregateBoardDevices(
+          { AND: [roleWhere, managerWhere] },
+          (d) => xlvStaffKeyOf(d),
+          (d) => d.operatorName || "未分配",
+          (d) => d.salesUserId,
+          { includeFollowUpMetrics: true }
+      );
+
+      const { rows, summary } = boardResult;
 
       return {
         manager: {
@@ -471,4 +474,42 @@ export async function getXlvDeviceDetail(user: SessionUser, deviceSn: string) {
   );
 
   return { device, qualificationDetail, txnTrend };
+}
+
+export type XlvManagerComplianceSnapshot = {
+  complianceRate: number;
+  compliantCount: number;
+  deviceCount: number;
+  complianceGapCount: number;
+};
+
+/** 按经理姓名汇总运营合规率（供库存补货决策，与团队看板口径一致） */
+export async function loadXlvManagerComplianceByName(
+  forManagerName?: string | null
+): Promise<Map<string, XlvManagerComplianceSnapshot>> {
+  return withXlvHeavyGate(async () => {
+    const scope = forManagerName?.trim();
+    const where: Prisma.XlvDeviceRecordWhereInput = scope
+      ? { managerName: scope }
+      : { managerName: { not: "" } };
+
+    const { rows } = await aggregateBoardDevices(
+      where,
+      (d) => xlvManagerKeyOf(d),
+      (d) => xlvManagerDisplayName(d.managerName),
+      (d) => d.managerUserId
+    );
+
+    const map = new Map<string, XlvManagerComplianceSnapshot>();
+    for (const row of rows) {
+      if (isXlvInventoryManagerKey(row.key)) continue;
+      map.set(row.name, {
+        complianceRate: row.complianceRate,
+        compliantCount: row.compliantCount,
+        deviceCount: row.deviceCount,
+        complianceGapCount: row.complianceGapCount,
+      });
+    }
+    return map;
+  });
 }

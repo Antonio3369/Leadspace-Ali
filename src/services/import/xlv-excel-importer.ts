@@ -24,10 +24,17 @@ import {
 import { provisionXlvAccountsFromRoster } from "@/services/xlv/member-accounts";
 import {
   bulkUpdateDevicesFromRaw,
+  bulkUpsertAssignmentDevices,
   upsertSnapshotsBulk,
+  type AssignmentDeviceWrite,
   type SnapshotWrite,
   type XlvImportProgress,
 } from "@/services/import/xlv-raw-bulk";
+import {
+  buildUserLookupIndexes,
+  findManagerInIndexes,
+  findUserInIndexes,
+} from "@/services/org/user-matcher";
 import { reopenXlvFollowUpsAfterSnapshot } from "@/services/xlv/follow-up";
 import { recomputeXlvQualificationForDevices } from "@/services/xlv/recompute-qualification";
 
@@ -303,16 +310,57 @@ async function importRosterRows(rows: ParsedXlvRosterRow[], _importBatchId: stri
 
 async function importAssignmentRows(
   rows: ParsedXlvAssignmentRow[],
-  importBatchId: string
+  importBatchId: string,
+  onProgress?: XlvImportProgress
 ) {
-  let createdDevices = 0;
-  let updatedDevices = 0;
   let managersInferredFromRoster = 0;
   const unmatchedOperators = new Set<string>();
   const rosterEntries = await loadXlvRosterEntries();
   const rosterByOperator = buildXlvRosterIndex(rosterEntries);
   const rosterPairs = buildXlvRosterPairSet(rosterEntries);
   const snapshotsToWrite: SnapshotWrite[] = [];
+  const indexes = await buildUserLookupIndexes();
+
+  await onProgress?.(22, `准备写入 SN 归属 ${rows.length.toLocaleString()} 行…`);
+
+  const uniqueSns = [...new Set(rows.map((r) => r.deviceSn))];
+  const existingBySn = new Map<
+    string,
+    {
+      deviceSn: string;
+      statDate: Date | null;
+      cumulativeUsers: number;
+      cumulativeTxns: number;
+      cumulativeAmount: number;
+      lastTxnDate: Date | null;
+      sleepDays: number;
+      isActivated: boolean;
+      firstTxnDate: Date | null;
+    }
+  >();
+
+  const LOOKUP_CHUNK = 1000;
+  for (let i = 0; i < uniqueSns.length; i += LOOKUP_CHUNK) {
+    const slice = uniqueSns.slice(i, i + LOOKUP_CHUNK);
+    const found = await db.xlvDeviceRecord.findMany({
+      where: { deviceSn: { in: slice } },
+      select: {
+        deviceSn: true,
+        statDate: true,
+        cumulativeUsers: true,
+        cumulativeTxns: true,
+        cumulativeAmount: true,
+        lastTxnDate: true,
+        sleepDays: true,
+        isActivated: true,
+        firstTxnDate: true,
+      },
+    });
+    for (const row of found) existingBySn.set(row.deviceSn, row);
+  }
+
+  const creates: AssignmentDeviceWrite[] = [];
+  const updates: AssignmentDeviceWrite[] = [];
 
   for (const row of rows) {
     let managerName = row.managerName.trim();
@@ -343,15 +391,19 @@ async function importAssignmentRows(
       }
     }
 
-    const existing = await db.xlvDeviceRecord.findUnique({
-      where: { deviceSn: row.deviceSn },
-    });
+    const existing = existingBySn.get(row.deviceSn);
+    const salesUser = findUserInIndexes(indexes, operatorName);
+    const managerUser = findManagerInIndexes(indexes, managerName);
 
-    const data = {
+    const write: AssignmentDeviceWrite = {
+      id: createId(),
+      deviceSn: row.deviceSn,
       operatorName: row.operatorName,
       managerName,
       companyName,
       merchantName: row.merchantName,
+      salesUserId: salesUser?.id ?? null,
+      managerUserId: managerUser?.id ?? null,
       statDate: row.statDate ?? existing?.statDate ?? null,
       cumulativeUsers: row.cumulativeUsers || existing?.cumulativeUsers || 0,
       cumulativeTxns: row.cumulativeTxns || existing?.cumulativeTxns || 0,
@@ -363,22 +415,8 @@ async function importAssignmentRows(
       importBatchId,
     };
 
-    if (existing) {
-      await db.xlvDeviceRecord.update({
-        where: { deviceSn: row.deviceSn },
-        data,
-      });
-      updatedDevices++;
-    } else {
-      await db.xlvDeviceRecord.create({
-        data: {
-          id: createId(),
-          deviceSn: row.deviceSn,
-          ...data,
-        },
-      });
-      createdDevices++;
-    }
+    if (existing) updates.push(write);
+    else creates.push(write);
 
     if (row.statDate) {
       snapshotsToWrite.push({
@@ -399,28 +437,38 @@ async function importAssignmentRows(
     }
   }
 
+  await bulkUpsertAssignmentDevices(creates, updates, onProgress);
+
   let snapshotRows = 0;
   if (snapshotsToWrite.length > 0) {
-    await upsertSnapshotsBulk(snapshotsToWrite, importBatchId);
+    await onProgress?.(86, `写入快照 ${snapshotsToWrite.length.toLocaleString()} 条…`);
+    await upsertSnapshotsBulk(snapshotsToWrite, importBatchId, onProgress);
     snapshotRows = snapshotsToWrite.length;
+    const affectedSns = [...new Set(rows.map((r) => r.deviceSn))];
+    await onProgress?.(90, `重算考核 ${affectedSns.length.toLocaleString()} 台…`);
+    await recomputeXlvQualificationForDevices(affectedSns, {
+      onProgress: async (done, total) => {
+        const pct = 90 + Math.round((done / Math.max(total, 1)) * 8);
+        await onProgress?.(Math.min(pct, 98), `重算考核 ${done.toLocaleString()} / ${total.toLocaleString()}…`);
+      },
+    });
+  } else {
+    await onProgress?.(92, "归属写入完成（跳过考核重算）");
   }
-
-  const affectedSns = [...new Set(rows.map((r) => r.deviceSn))];
-  await recomputeXlvQualificationForDevices(affectedSns);
 
   return {
     snapshotRows,
-    createdDevices,
-    updatedDevices,
+    createdDevices: creates.length,
+    updatedDevices: updates.length,
     rosterRowsWritten: 0,
     rosterCreated: 0,
     rosterUpdated: 0,
     uniqueOperators: 0,
     devicesBackfilledFromRoster: 0,
     managersInferredFromRoster,
-    unmatchedManagers: [],
+    unmatchedManagers: [] as string[],
     unmatchedOperators: [...unmatchedOperators].sort(),
-    uniqueDevices: new Set(rows.map((r) => r.deviceSn)).size,
+    uniqueDevices: uniqueSns.length,
   };
 }
 
@@ -457,6 +505,7 @@ async function importXlvExcelBuffer(
   await onProgress?.(16, "正在解析 Excel…");
 
   const parsed = parseXlvExcelBuffer(buffer);
+  await onProgress?.(18, `解析完成 ${parsed.rows.length.toLocaleString()} 行…`);
   if (parsed.errors.length && parsed.rows.length === 0) {
     return {
       format: parsed.format,
@@ -538,7 +587,12 @@ async function importXlvExcelBuffer(
       unmatchedOperators: result.unmatchedOperators,
     };
   } else {
-    const result = await importAssignmentRows(assignmentRows, importLog.id);
+    await onProgress?.(20, `解析完成，写入 SN 归属 ${assignmentRows.length.toLocaleString()} 行…`);
+    const result = await importAssignmentRows(
+      assignmentRows,
+      importLog.id,
+      onProgress
+    );
     createdDevices = result.createdDevices;
     updatedDevices = result.updatedDevices;
     snapshotRows = result.snapshotRows;

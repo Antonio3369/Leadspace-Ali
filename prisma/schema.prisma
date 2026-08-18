@@ -47,6 +47,30 @@ enum XlvQualificationStatus {
   invalid
 }
 
+/** 小绿盒库存：设备持有状态 */
+enum XlvInventoryStatus {
+  admin_stock
+  pending_mgr_confirm
+  manager_stock
+  sales_stock
+  deployed
+}
+
+enum XlvInventoryTransferType {
+  inbound_admin
+  allocate_to_manager
+  confirm_manager_receipt
+  allocate_to_sales
+  deploy
+  withdraw
+  opening_balance
+}
+
+enum XlvInventoryDeployedBy {
+  manager
+  sales
+}
+
 enum PhotoStatus {
   PENDING
   APPROVED
@@ -505,6 +529,7 @@ model XlvDeviceRecord {
   importBatchId          String?
   importBatch            ImportLog?          @relation(fields: [importBatchId], references: [id])
   snapshots              XlvDeviceSnapshot[]
+  inventory              XlvInventoryDevice?
   createdAt              DateTime            @default(now())
   updatedAt              DateTime            @updatedAt
 
@@ -517,6 +542,54 @@ model XlvDeviceRecord {
   @@index([firstTxnDate])
   @@index([followUpDone])
   @@index([qualificationStatus])
+}
+
+/** 小绿盒：设备库存主档（一台 SN 一行） */
+model XlvInventoryDevice {
+  id                String                  @id @default(cuid())
+  deviceSn          String                  @unique
+  channel           String?
+  status            XlvInventoryStatus      @default(admin_stock)
+  managerName       String                  @default("")
+  operatorName      String                  @default("")
+  managerUserId     String?
+  salesUserId       String?
+  deployedByRole    XlvInventoryDeployedBy?
+  deployedStoreName String?
+  deployedAt        DateTime?
+  importBatchId     String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  deviceRecord      XlvDeviceRecord?        @relation(fields: [deviceSn], references: [deviceSn])
+  transfers         XlvInventoryTransfer[]
+
+  @@index([status])
+  @@index([managerName])
+  @@index([operatorName])
+  @@index([managerUserId])
+}
+
+/** 小绿盒：库存调拨流水（只追加） */
+model XlvInventoryTransfer {
+  id               String                   @id @default(cuid())
+  deviceSn         String
+  device           XlvInventoryDevice       @relation(fields: [deviceSn], references: [deviceSn], onDelete: Cascade)
+  transferType     XlvInventoryTransferType
+  fromStatus       XlvInventoryStatus?
+  toStatus         XlvInventoryStatus
+  fromManagerName  String?
+  fromOperatorName String?
+  toManagerName    String?
+  toOperatorName   String?
+  batchId          String?
+  operatorUserId   String?
+  note             String?
+  meta             Json?
+  createdAt        DateTime                 @default(now())
+
+  @@index([deviceSn])
+  @@index([batchId])
+  @@index([transferType, createdAt])
 }
 
 /** 微信小绿盒：组织名册（作业员 → 经理，无 SN） */

@@ -309,3 +309,125 @@ export async function bulkUpdateDevicesFromRaw(
 
   return { createdDevices, updatedDevices };
 }
+
+export type AssignmentDeviceWrite = {
+  id: string;
+  deviceSn: string;
+  operatorName: string;
+  managerName: string;
+  companyName: string | null;
+  merchantName: string | null;
+  salesUserId: string | null;
+  managerUserId: string | null;
+  statDate: Date | null;
+  cumulativeUsers: number;
+  cumulativeTxns: number;
+  cumulativeAmount: number;
+  lastTxnDate: Date | null;
+  sleepDays: number;
+  isActivated: boolean;
+  firstTxnDate: Date | null;
+  importBatchId: string;
+};
+
+const ASSIGNMENT_CREATE_CHUNK = 300;
+const ASSIGNMENT_UPDATE_CHUNK = 150;
+
+export async function bulkUpsertAssignmentDevices(
+  creates: AssignmentDeviceWrite[],
+  updates: AssignmentDeviceWrite[],
+  onProgress?: XlvImportProgress
+) {
+  for (let i = 0; i < creates.length; i += ASSIGNMENT_CREATE_CHUNK) {
+    const slice = creates.slice(i, i + ASSIGNMENT_CREATE_CHUNK);
+    await db.xlvDeviceRecord.createMany({
+      data: slice.map((r) => ({
+        id: r.id,
+        deviceSn: r.deviceSn,
+        operatorName: r.operatorName,
+        managerName: r.managerName,
+        companyName: r.companyName,
+        merchantName: r.merchantName,
+        salesUserId: r.salesUserId,
+        managerUserId: r.managerUserId,
+        statDate: r.statDate,
+        cumulativeUsers: r.cumulativeUsers,
+        cumulativeTxns: r.cumulativeTxns,
+        cumulativeAmount: r.cumulativeAmount,
+        lastTxnDate: r.lastTxnDate,
+        sleepDays: r.sleepDays,
+        isActivated: r.isActivated,
+        firstTxnDate: r.firstTxnDate,
+        sourceMode: "MANUAL_UPLOAD" as const,
+        importBatchId: r.importBatchId,
+      })),
+      skipDuplicates: true,
+    });
+    const pct = 30 + Math.round(((i + slice.length) / Math.max(creates.length, 1)) * 25);
+    await onProgress?.(
+      Math.min(pct, 55),
+      `新建设备 ${Math.min(i + slice.length, creates.length).toLocaleString()} / ${creates.length.toLocaleString()}…`
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+
+  for (let i = 0; i < updates.length; i += ASSIGNMENT_UPDATE_CHUNK) {
+    const chunk = updates.slice(i, i + ASSIGNMENT_UPDATE_CHUNK);
+    await db.$executeRaw`
+      UPDATE "XlvDeviceRecord" AS d
+      SET
+        "operatorName" = v."operatorName"::text,
+        "managerName" = v."managerName"::text,
+        "companyName" = NULLIF(v."companyName", '')::text,
+        "merchantName" = NULLIF(v."merchantName", '')::text,
+        "salesUserId" = NULLIF(v."salesUserId", '')::text,
+        "managerUserId" = NULLIF(v."managerUserId", '')::text,
+        "statDate" = NULLIF(v."statDate", '')::timestamptz,
+        "cumulativeUsers" = v."cumulativeUsers"::integer,
+        "cumulativeTxns" = v."cumulativeTxns"::integer,
+        "cumulativeAmount" = v."cumulativeAmount"::double precision,
+        "lastTxnDate" = NULLIF(v."lastTxnDate", '')::timestamptz,
+        "sleepDays" = v."sleepDays"::integer,
+        "isActivated" = v."isActivated"::boolean,
+        "firstTxnDate" = NULLIF(v."firstTxnDate", '')::timestamptz,
+        "importBatchId" = NULLIF(v."importBatchId", '')::text,
+        "updatedAt" = NOW()
+      FROM (VALUES ${Prisma.join(
+        chunk.map(
+          (r) =>
+            Prisma.sql`(
+              ${r.deviceSn},
+              ${r.operatorName},
+              ${r.managerName},
+              ${r.companyName ?? ""},
+              ${r.merchantName ?? ""},
+              ${r.salesUserId ?? ""},
+              ${r.managerUserId ?? ""},
+              ${isoOrEmpty(r.statDate)},
+              ${r.cumulativeUsers},
+              ${r.cumulativeTxns},
+              ${r.cumulativeAmount},
+              ${isoOrEmpty(r.lastTxnDate)},
+              ${r.sleepDays},
+              ${r.isActivated},
+              ${isoOrEmpty(r.firstTxnDate)},
+              ${r.importBatchId}
+            )`
+        )
+      )}) AS v(
+        "deviceSn", "operatorName", "managerName", "companyName", "merchantName",
+        "salesUserId", "managerUserId", "statDate",
+        "cumulativeUsers", "cumulativeTxns", "cumulativeAmount",
+        "lastTxnDate", "sleepDays", "isActivated", "firstTxnDate", "importBatchId"
+      )
+      WHERE d."deviceSn" = v."deviceSn"::text
+    `;
+    const done = i + chunk.length;
+    const pct = 55 + Math.round((done / Math.max(updates.length, 1)) * 30);
+    await onProgress?.(
+      Math.min(pct, 85),
+      `更新归属 ${done.toLocaleString()} / ${updates.length.toLocaleString()}…`
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}

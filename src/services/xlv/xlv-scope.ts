@@ -84,10 +84,24 @@ export function buildXlvAssignedDeviceWhere(): Prisma.XlvDeviceRecordWhereInput 
   return { NOT: buildXlvInventoryDeviceWhere() };
 }
 
+/** 库存台账：已铺设（无台账记录视为兼容旧数据） */
+export function buildXlvInventoryDeployedWhere(): Prisma.XlvDeviceRecordWhereInput {
+  return {
+    OR: [{ inventory: { status: "deployed" } }, { inventory: { is: null } }],
+  };
+}
+
+/** 运营列表默认：已挂归属且库存态为已铺设 */
+export function buildXlvOperationalDeviceWhere(): Prisma.XlvDeviceRecordWhereInput {
+  return {
+    AND: [buildXlvAssignedDeviceWhere(), buildXlvInventoryDeployedWhere()],
+  };
+}
+
 export function buildXlvSleepAlertWhere(): Prisma.XlvDeviceRecordWhereInput {
   return {
     AND: [
-      buildXlvAssignedDeviceWhere(),
+      buildXlvOperationalDeviceWhere(),
       { sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS } },
       {
         OR: [
@@ -108,7 +122,7 @@ export function buildXlvAlertWhere(
   if (alert === "single_silence") {
     return {
       AND: [
-        buildXlvAssignedDeviceWhere(),
+        buildXlvOperationalDeviceWhere(),
         {
           cumulativeTxns: 1,
           sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS },
@@ -119,7 +133,7 @@ export function buildXlvAlertWhere(
   if (alert === "dormant") {
     return {
       AND: [
-        buildXlvAssignedDeviceWhere(),
+        buildXlvOperationalDeviceWhere(),
         { sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS } },
         { NOT: { cumulativeTxns: 1 } },
         { NOT: { qualificationStatus: "qualified" } },
@@ -129,7 +143,7 @@ export function buildXlvAlertWhere(
   if (alert === "active") {
     return {
       AND: [
-        buildXlvAssignedDeviceWhere(),
+        buildXlvOperationalDeviceWhere(),
         { sleepDays: { lt: XLV_SLEEP_THRESHOLD_DAYS } },
       ],
     };
@@ -158,8 +172,8 @@ export function buildXlvDeviceWhere(
   if (opts?.alert && opts.alert !== "all") {
     parts.push(buildXlvAlertWhere(opts.alert));
   } else if (!viewingInventory) {
-    // 默认列表只看已铺设（排除剩余库存）
-    parts.push(buildXlvAssignedDeviceWhere());
+    // 默认列表：已挂归属且库存为已铺设（撤机回库后排除）
+    parts.push(buildXlvOperationalDeviceWhere());
   }
 
   if (user.role === "DIRECTOR" && managerFilter) {
@@ -195,7 +209,7 @@ export function buildXlvDeviceWhere(
         AND: [
           { qualificationStatus: "in_progress" },
           { sleepDays: { lt: XLV_SLEEP_THRESHOLD_DAYS } },
-          buildXlvAssignedDeviceWhere(),
+          buildXlvOperationalDeviceWhere(),
         ],
       });
     } else {
