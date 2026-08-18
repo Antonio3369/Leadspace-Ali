@@ -63,12 +63,19 @@ enum XlvInventoryTransferType {
   allocate_to_sales
   deploy
   withdraw
+  recall_to_admin
   opening_balance
 }
 
 enum XlvInventoryDeployedBy {
   manager
   sales
+}
+
+enum XlvWithdrawRequestStatus {
+  pending
+  approved
+  rejected
 }
 
 enum PhotoStatus {
@@ -592,6 +599,31 @@ model XlvInventoryTransfer {
   @@index([transferType, createdAt])
 }
 
+/** 撤机待确认：运营上传移机明细后，归属人同意才执行撤机与运营清零 */
+model XlvWithdrawRequest {
+  id                       String                   @id @default(cuid())
+  deviceSn                 String
+  status                   XlvWithdrawRequestStatus @default(pending)
+  batchId                  String
+  merchantName             String?
+  storeName                String?
+  withdrawManagerName      String                   @default("")
+  withdrawOperatorName     String                   @default("")
+  entryDate                DateTime?
+  recipientMemberAccountId String?
+  recipientMemberAccount   XlvMemberAccount?        @relation(fields: [recipientMemberAccountId], references: [id], onDelete: SetNull)
+  uploadedByUserId         String
+  decidedByMemberAccountId String?
+  decidedAt                DateTime?
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+
+  @@index([deviceSn, status])
+  @@index([recipientMemberAccountId, status])
+  @@index([batchId])
+  @@index([status, createdAt])
+}
+
 /** 微信小绿盒：组织名册（作业员 → 经理，无 SN） */
 model XlvTeamRoster {
   id            String     @id @default(cuid())
@@ -628,6 +660,7 @@ model XlvMemberAccount {
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   notifications      XlvNotification[]
+  withdrawRequests     XlvWithdrawRequest[]
 
   @@unique([memberRole, managerName, operatorName])
   @@index([managerName])

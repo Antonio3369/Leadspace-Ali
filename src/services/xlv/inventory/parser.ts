@@ -46,6 +46,12 @@ export type ParsedOpeningRow = {
   operatorName: string;
   rowIndex: number;
 };
+export type ParsedRecallToAdminRow = {
+  deviceSn: string;
+  note: string | null;
+  rowIndex: number;
+};
+
 export type ParsedWithdrawRow = {
   deviceSn: string;
   entryDate: Date | null;
@@ -206,6 +212,30 @@ export function parseWithdrawExcel(buffer: Buffer) {
       managerName: mgrIdx >= 0 ? String(values[mgrIdx] ?? "").trim() : "",
       storeName:
         storeIdx >= 0 ? String(values[storeIdx] ?? "").trim() || null : null,
+      rowIndex: i + 2,
+    });
+  });
+
+  return { sheetName, rows: parsed, errors: [] as string[] };
+}
+
+export function parseRecallToAdminExcel(buffer: Buffer) {
+  const { sheetName, rows, headers } = readSheetRows(buffer);
+  const snIdx = findColumn(headers, ["设备SN", "SN", "设备SN 号扫一扫"]);
+  const noteIdx = findColumn(headers, ["备注", "说明", "note"]);
+  const parsed: ParsedRecallToAdminRow[] = [];
+
+  if (snIdx < 0) {
+    return { sheetName, rows: parsed, errors: ["缺少列：设备SN"] };
+  }
+
+  rows.forEach((row, i) => {
+    const values = Object.values(row);
+    const deviceSn = String(values[snIdx] ?? "").trim();
+    if (!deviceSn) return;
+    parsed.push({
+      deviceSn,
+      note: noteIdx >= 0 ? String(values[noteIdx] ?? "").trim() || null : null,
       rowIndex: i + 2,
     });
   });

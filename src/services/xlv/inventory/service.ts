@@ -516,18 +516,121 @@ export async function importOpeningBalanceRows(
   };
 }
 
+/** 撤机：清空运营考核/门店/回访等状态；保留经理/队员归属 */
+export async function clearXlvOperationalStateOnWithdraw(deviceSn: string) {
+  await db.xlvDeviceRecord.updateMany({
+    where: { deviceSn },
+    data: {
+      merchantName: "",
+      activationMerchantName: null,
+      cumulativeUsers: 0,
+      cumulativeTxns: 0,
+      cumulativeAmount: 0,
+      dailyUsers: 0,
+      dailyTxns: 0,
+      dailyAmount: 0,
+      sleepDays: 0,
+      lastTxnDate: null,
+      firstTxnDate: null,
+      isActivated: false,
+      statDate: null,
+      qualificationStatus: "in_progress",
+      qualificationAssessedAt: new Date(),
+      followUpDone: false,
+      followUpNote: null,
+      followUpAt: null,
+      followUpById: null,
+      followUpConnectStatus: null,
+      followUpFlags: [],
+      followUpPhotoUrls: [],
+      followUpReviewNote: null,
+      followUpReviewAt: null,
+      followUpReviewById: null,
+      followUpReviewByName: null,
+    },
+  });
+}
+
+export async function executeWithdrawDevice(
+  existing: {
+    deviceSn: string;
+    deployedByRole: import("@/generated/prisma/client").XlvInventoryDeployedBy | null;
+    managerName: string;
+    operatorName: string;
+  },
+  row: {
+    deviceSn: string;
+    operatorName: string;
+    managerName: string;
+    storeName: string | null;
+  },
+  operatorUserId: string,
+  batchId: string
+) {
+  const returnStatus = xlvWithdrawReturnStatus(existing.deployedByRole);
+  const returnOperator =
+    returnStatus === "sales_stock"
+      ? existing.operatorName
+      : isXlvManagerSelfSale(existing.managerName, existing.operatorName)
+        ? existing.managerName
+        : "";
+
+  await applyTransition(
+    row.deviceSn,
+    {
+      status: returnStatus,
+      managerName: existing.managerName,
+      operatorName: returnOperator,
+      deployedByRole: null,
+      deployedStoreName: null,
+      deployedAt: null,
+    },
+    {
+      type: "withdraw",
+      batchId,
+      operatorUserId,
+      note: row.storeName ? `撤机：${row.storeName}` : "撤机",
+      meta: {
+        withdrawManager: row.managerName,
+        withdrawOperator: row.operatorName,
+        storeName: row.storeName,
+      },
+    }
+  );
+  await clearXlvOperationalStateOnWithdraw(row.deviceSn);
+}
+
 export async function importWithdrawRows(
   rows: {
     deviceSn: string;
     operatorName: string;
     managerName: string;
     storeName: string | null;
+    entryDate?: Date | null;
   }[],
   operatorUserId: string,
   opts: {
     isAdmin: boolean;
     managerScope: string | null;
   }
+): Promise<InventoryImportResult> {
+  const { createPendingWithdrawRequests } = await import("./withdraw-request");
+  return createPendingWithdrawRequests(
+    rows.map((r) => ({
+      deviceSn: r.deviceSn,
+      operatorName: r.operatorName,
+      managerName: r.managerName,
+      storeName: r.storeName,
+      entryDate: r.entryDate ?? null,
+    })),
+    operatorUserId,
+    opts
+  );
+}
+
+export async function importRecallToAdminRows(
+  rows: { deviceSn: string; note: string | null }[],
+  operatorUserId: string
 ): Promise<InventoryImportResult> {
   const batchId = createBatchId();
   const warnings: string[] = [];
@@ -539,54 +642,55 @@ export async function importWithdrawRows(
       where: { deviceSn: row.deviceSn },
     });
 
-    if (!opts.isAdmin && opts.managerScope) {
-      const scope = opts.managerScope.trim();
-      if (row.managerName.trim() !== scope) {
-        skippedRows++;
-        warnings.push(`${row.deviceSn}：非本团队，跳过`);
-        continue;
-      }
-    }
-
     if (!existing) {
       skippedRows++;
-      warnings.push(`${row.deviceSn}：无库存记录，跳过（请先期初或入库）`);
+      warnings.push(`${row.deviceSn}：无库存记录，跳过`);
       continue;
     }
 
-    if (existing.status !== "deployed") {
+    if (existing.status === "admin_stock") {
       skippedRows++;
-      warnings.push(`${row.deviceSn}：非已铺设状态，跳过`);
+      warnings.push(`${row.deviceSn}：已在事业部库存，跳过`);
       continue;
     }
 
-    const returnStatus = xlvWithdrawReturnStatus(existing.deployedByRole);
-    const returnOperator =
-      returnStatus === "sales_stock"
-        ? existing.operatorName
-        : isXlvManagerSelfSale(existing.managerName, existing.operatorName)
-          ? existing.managerName
-          : "";
+    if (existing.status === "pending_mgr_confirm") {
+      skippedRows++;
+      warnings.push(`${row.deviceSn}：待经理确认，请重导划拨改目标经理`);
+      continue;
+    }
+
+    if (existing.status === "deployed") {
+      skippedRows++;
+      warnings.push(`${row.deviceSn}：请先撤机`);
+      continue;
+    }
+
+    if (!["manager_stock", "sales_stock"].includes(existing.status)) {
+      skippedRows++;
+      warnings.push(`${row.deviceSn}：当前状态不可收回，跳过`);
+      continue;
+    }
 
     await applyTransition(
       row.deviceSn,
       {
-        status: returnStatus,
-        managerName: existing.managerName,
-        operatorName: returnOperator,
+        status: "admin_stock",
+        managerName: "",
+        operatorName: "",
         deployedByRole: null,
         deployedStoreName: null,
         deployedAt: null,
       },
       {
-        type: "withdraw",
+        type: "recall_to_admin",
         batchId,
         operatorUserId,
-        note: row.storeName ? `移机：${row.storeName}` : "移机撤机",
+        note: row.note ?? "回拨机具",
         meta: {
-          withdrawManager: row.managerName,
-          withdrawOperator: row.operatorName,
-          storeName: row.storeName,
+          previousManager: existing.managerName,
+          previousOperator: existing.operatorName,
+          note: row.note,
         },
       }
     );
@@ -910,4 +1014,40 @@ export async function listPendingReceipts(managerName: string) {
     orderBy: { updatedAt: "desc" },
     take: 500,
   });
+}
+
+export type SalesStockDeviceRow = {
+  deviceSn: string;
+  channel: string | null;
+  updatedAt: string;
+};
+
+/** 队员名下未铺设库存（sales_stock） */
+export async function loadSalesStockForOperator(
+  managerName: string,
+  operatorName: string
+): Promise<SalesStockDeviceRow[]> {
+  const mgr = managerName.trim();
+  const op = operatorName.trim();
+  if (!mgr || !op) return [];
+
+  const rows = await db.xlvInventoryDevice.findMany({
+    where: {
+      managerName: mgr,
+      operatorName: op,
+      status: "sales_stock",
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      deviceSn: true,
+      channel: true,
+      updatedAt: true,
+    },
+  });
+
+  return rows.map((r) => ({
+    deviceSn: r.deviceSn,
+    channel: r.channel,
+    updatedAt: r.updatedAt.toISOString(),
+  }));
 }

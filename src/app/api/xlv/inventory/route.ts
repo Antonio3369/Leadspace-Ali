@@ -11,6 +11,8 @@ import {
   type InventoryOverview,
 } from "@/services/xlv/inventory/service";
 
+export const maxDuration = 120;
+
 export const GET = auth(async (request) => {
   const user = request.auth?.user;
   if (!user || !canLogin(user.status)) {
@@ -30,12 +32,12 @@ export const GET = auth(async (request) => {
   }
 
   const summary = await getInventorySummary(managerScope);
-  const [managersRaw, complianceByName] = await Promise.all([
-    loadInventoryManagerReport(user.role === "MANAGER" ? managerScope : null),
-    loadXlvManagerComplianceByName(
-      user.role === "MANAGER" ? managerScope : null
-    ),
-  ]);
+  const managersRaw = await loadInventoryManagerReport(
+    user.role === "MANAGER" ? managerScope : null
+  );
+  const complianceByName = await loadXlvManagerComplianceByName(
+    user.role === "MANAGER" ? managerScope : null
+  );
   const managers = enrichManagerReportWithCompliance(
     managersRaw,
     complianceByName

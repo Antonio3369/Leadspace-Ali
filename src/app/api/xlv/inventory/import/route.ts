@@ -9,6 +9,7 @@ import {
   parseAllocateSalesExcel,
   parseInboundExcel,
   parseOpeningExcel,
+  parseRecallToAdminExcel,
   parseWithdrawExcel,
 } from "@/services/xlv/inventory/parser";
 import {
@@ -16,6 +17,7 @@ import {
   importAllocateToSalesRows,
   importInboundRows,
   importOpeningBalanceRows,
+  importRecallToAdminRows,
   importWithdrawRows,
 } from "@/services/xlv/inventory/service";
 
@@ -24,6 +26,7 @@ export const maxDuration = 120;
 const IMPORT_KINDS = [
   "inbound",
   "allocate-manager",
+  "recall-to-admin",
   "allocate-sales",
   "withdraw",
   "opening",
@@ -48,7 +51,7 @@ export const POST = auth(async (request) => {
 
   if (!kind) {
     return NextResponse.json(
-      { error: "缺少 kind：inbound | allocate-manager | allocate-sales | withdraw | opening" },
+      { error: "缺少 kind：inbound | allocate-manager | recall-to-admin | allocate-sales | withdraw | opening" },
       { status: 400 }
     );
   }
@@ -61,7 +64,7 @@ export const POST = auth(async (request) => {
         : user.name.trim()
       : "";
 
-  const directorOnly = ["inbound", "allocate-manager", "opening"].includes(kind);
+  const directorOnly = ["inbound", "allocate-manager", "recall-to-admin", "opening"].includes(kind);
   if (directorOnly && !canImportExcel(user.role)) {
     return NextResponse.json({ error: "仅管理员可执行此导入" }, { status: 403 });
   }
@@ -71,7 +74,7 @@ export const POST = auth(async (request) => {
   }
 
   if (kind === "withdraw" && user.role !== "MANAGER" && !canImportExcel(user.role)) {
-    return NextResponse.json({ error: "仅经理或管理员可上传移机明细" }, { status: 403 });
+    return NextResponse.json({ error: "仅经理或管理员可上传撤机（移机明细）" }, { status: 403 });
   }
 
   let formData: FormData;
@@ -107,6 +110,15 @@ export const POST = auth(async (request) => {
         return NextResponse.json({ error: parsed.errors.join("；") }, { status: 400 });
       }
       const result = await importAllocateToManagerRows(parsed.rows, user.id);
+      return NextResponse.json({ kind, sheetName: parsed.sheetName, ...result });
+    }
+
+    if (kind === "recall-to-admin") {
+      const parsed = parseRecallToAdminExcel(buffer);
+      if (parsed.errors.length) {
+        return NextResponse.json({ error: parsed.errors.join("；") }, { status: 400 });
+      }
+      const result = await importRecallToAdminRows(parsed.rows, user.id);
       return NextResponse.json({ kind, sheetName: parsed.sheetName, ...result });
     }
 

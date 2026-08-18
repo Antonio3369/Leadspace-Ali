@@ -71,8 +71,8 @@ export function XlvInventoryOverview({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-        {isAdmin && scopeSummary.adminStock > 0 ? (
-          <Metric label="事业部库存" value={scopeSummary.adminStock} />
+        {isAdmin ? (
+          <Metric label="事业部库存" value={scopeSummary.adminStock} sub="待划拨总库" />
         ) : null}
         <Metric label="收到" value={scopeSummary.ledgerTotal} sub="物流账入账" />
         <Metric label="已铺设" value={scopeSummary.deployed} />
@@ -206,7 +206,7 @@ export function XlvInventoryOverview({
           {staff && staff.length > 0 ? (
             <NotionPanel className="overflow-hidden p-0">
               <div className="px-4 py-3 border-b border-[#eef2f7]">
-                <p className="text-sm font-medium text-[#111827]">队员手持未铺</p>
+                <p className="text-sm font-medium text-[#111827]">队员库存未铺设</p>
               </div>
               <ul className="divide-y divide-[#f1f5f9]">
                 {staff.map((s) => (

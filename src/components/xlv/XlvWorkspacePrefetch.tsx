@@ -30,12 +30,14 @@ export function XlvWorkspacePrefetch({
     const timer = window.setTimeout(() => {
       if (
         hasXlvApiInFlightPrefix("/api/xlv/today") ||
-        hasXlvApiInFlightPrefix("/api/xlv/dashboard/devices")
+        hasXlvApiInFlightPrefix("/api/xlv/dashboard/devices") ||
+        hasXlvApiInFlightPrefix("/api/xlv/board") ||
+        hasXlvApiInFlightPrefix("/api/xlv/inventory")
       ) {
         return;
       }
       prefetchXlvApi(boardUrl);
-    }, 6000);
+    }, 12000);
 
     return () => window.clearTimeout(timer);
   }, [pathname, boardUrl]);

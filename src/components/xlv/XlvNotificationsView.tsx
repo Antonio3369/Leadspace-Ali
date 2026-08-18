@@ -15,6 +15,7 @@ import {
   PageShell,
 } from "@/components/ui/notion";
 import { XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW, xlvNotificationTitle } from "@/lib/xlv-follow-up";
+import { XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING } from "@/lib/xlv-withdraw";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 
 type NotifItem = {
@@ -29,6 +30,9 @@ type NotifItem = {
     flags?: string[];
     followUpAt?: string;
     reviewNote?: string;
+    requestId?: string;
+    merchantName?: string | null;
+    storeName?: string | null;
   } | null;
   read: boolean;
   createdAt: string;
@@ -117,6 +121,7 @@ export function XlvNotificationsView({
   }
 
   function openItem(item: NotifItem) {
+    if (item.type === XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING) return;
     if (item.read) return;
     setItems((prev) =>
       prev.map((it) => (it.id === item.id ? { ...it, read: true } : it))
@@ -128,6 +133,39 @@ export function XlvNotificationsView({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: item.id }),
     });
+  }
+
+  async function respondWithdraw(
+    item: NotifItem,
+    action: "approve" | "reject"
+  ) {
+    const requestId = item.meta?.requestId;
+    if (!requestId || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/xlv/inventory/withdraw-requests/${encodeURIComponent(requestId)}/respond`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        }
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "操作失败");
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === item.id ? { ...it, read: true } : it
+        )
+      );
+      setUnread((n) => Math.max(0, n - (item.read ? 0 : 1)));
+      emitXlvNotificationsChanged();
+    } catch (err) {
+      setError(getFetchErrorMessage(err, "操作失败"));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -167,12 +205,11 @@ export function XlvNotificationsView({
       )}
 
       <ul className="space-y-2 max-w-2xl">
-        {items.map((item) => (
-          <li key={item.id}>
-            <Link
-              href={xlvPath(`/devices/${encodeURIComponent(item.deviceSn)}`)}
-              onClick={() => openItem(item)}
-              className={`block rounded-[14px] border px-4 py-3 transition-colors ${
+        {items.map((item) =>
+          item.type === XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING ? (
+            <li
+              key={item.id}
+              className={`rounded-[14px] border px-4 py-3 ${
                 item.read
                   ? "border-[#eef2f7] bg-white"
                   : "border-sky-200 bg-sky-50/60"
@@ -183,31 +220,94 @@ export function XlvNotificationsView({
                   {xlvNotificationTitle(item.type)}
                   {!item.read ? (
                     <span className="inline-flex items-center justify-center rounded-full bg-[#ef4444] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                      未读
+                      待确认
                     </span>
-                  ) : (
-                    <span className="inline-flex items-center justify-center rounded-full bg-[#e2e8f0] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#64748b]">
-                      已读
-                    </span>
-                  )}
+                  ) : null}
                 </p>
                 <span className="shrink-0 text-[0.7rem] text-[#94a3b8] tabular-nums">
                   {fmt(item.createdAt)}
                 </span>
               </div>
               <p className="mt-1 text-sm text-[#64748b]">{item.body}</p>
-              {item.type === XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW ? (
-                <p className="mt-1 text-xs text-[#94a3b8]">点进详情查看反馈并改进回访</p>
-              ) : item.meta?.photoUrls && item.meta.photoUrls.length > 0 ? (
-                <p className="mt-1 text-xs text-[#94a3b8]">
-                  含 {item.meta.photoUrls.length} 张跟进图 · 点进详情审阅
-                </p>
-              ) : (
-                <p className="mt-1 text-xs text-[#94a3b8]">点进详情审阅</p>
-              )}
-            </Link>
-          </li>
-        ))}
+              <p className="mt-1 font-mono text-xs text-[#475569]">
+                SN {item.deviceSn}
+              </p>
+              {!item.read && item.meta?.requestId ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <NotionButton
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void respondWithdraw(item, "approve")}
+                    className="min-h-[40px]"
+                  >
+                    同意撤机
+                  </NotionButton>
+                  <NotionButton
+                    type="button"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => void respondWithdraw(item, "reject")}
+                    className="min-h-[40px]"
+                  >
+                    拒绝
+                  </NotionButton>
+                  <Link
+                    href={xlvPath(
+                      `/devices/${encodeURIComponent(item.deviceSn)}`
+                    )}
+                    className="inline-flex items-center text-sm text-[#2563eb] hover:text-[#1d4ed8] px-2"
+                  >
+                    查看设备
+                  </Link>
+                </div>
+              ) : item.read ? (
+                <p className="mt-2 text-xs text-[#94a3b8]">已处理</p>
+              ) : null}
+            </li>
+          ) : (
+            <li key={item.id}>
+              <Link
+                href={xlvPath(`/devices/${encodeURIComponent(item.deviceSn)}`)}
+                onClick={() => openItem(item)}
+                className={`block rounded-[14px] border px-4 py-3 transition-colors ${
+                  item.read
+                    ? "border-[#eef2f7] bg-white"
+                    : "border-sky-200 bg-sky-50/60"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="flex items-center gap-2 text-sm font-medium text-[#111827]">
+                    {xlvNotificationTitle(item.type)}
+                    {!item.read ? (
+                      <span className="inline-flex items-center justify-center rounded-full bg-[#ef4444] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                        未读
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center justify-center rounded-full bg-[#e2e8f0] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#64748b]">
+                        已读
+                      </span>
+                    )}
+                  </p>
+                  <span className="shrink-0 text-[0.7rem] text-[#94a3b8] tabular-nums">
+                    {fmt(item.createdAt)}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-[#64748b]">{item.body}</p>
+                {item.type === XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW ? (
+                  <p className="mt-1 text-xs text-[#94a3b8]">
+                    点进详情查看反馈并改进回访
+                  </p>
+                ) : item.meta?.photoUrls && item.meta.photoUrls.length > 0 ? (
+                  <p className="mt-1 text-xs text-[#94a3b8]">
+                    含 {item.meta.photoUrls.length} 张跟进图 · 点进详情审阅
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-[#94a3b8]">点进详情审阅</p>
+                )}
+              </Link>
+            </li>
+          )
+        )}
       </ul>
     </PageShell>
   );

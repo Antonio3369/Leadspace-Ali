@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { xlvPath } from "@/lib/business-lines";
 import { formatDateInput } from "@/lib/ledger-date";
 import { getCurrentMonthRange, n7DateRangeQuery } from "@/lib/n7-date";
-import { fetchRetryNotice, getFetchErrorMessage } from "@/lib/fetch-json";
+import { fetchRetryNotice, getFetchErrorMessage, isFetchAbortedError } from "@/lib/fetch-json";
 import { readXlvApiCache } from "@/lib/xlv-api-cache";
 import { fetchXlvJson } from "@/lib/xlv-fetch";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
@@ -191,7 +191,6 @@ export function XlvDashboardView({
 
   useEffect(() => {
     if (!active) return;
-    const controller = new AbortController();
     let cancelled = false;
     const listParams = buildListQuery(
       alert,
@@ -207,7 +206,6 @@ export function XlvDashboardView({
     if (loadedFilterKey === filterKey) {
       return () => {
         cancelled = true;
-        controller.abort();
       };
     }
 
@@ -231,7 +229,6 @@ export function XlvDashboardView({
 
     fetchXlvJson<DevicesResponse>(devicesUrl, {
       context: "加载商户列表",
-      signal: controller.signal,
       onRetry: (attempt, reason) => {
         if (!cancelled && !hasCached) {
           setRetryLabel(fetchRetryNotice(attempt, reason));
@@ -249,7 +246,8 @@ export function XlvDashboardView({
         }
       })
       .catch((err) => {
-        if (!cancelled && !hasCached && !controller.signal.aborted) {
+        if (cancelled || isFetchAbortedError(err)) return;
+        if (!hasCached) {
           setError(getFetchErrorMessage(err, "加载失败"));
           setRetryLabel("");
           setLoading(false);
@@ -258,7 +256,6 @@ export function XlvDashboardView({
 
     return () => {
       cancelled = true;
-      controller.abort();
     };
   }, [active, alert, status, expandMonth, manager, operator, search, filterKey, loadedFilterKey]);
 

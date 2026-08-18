@@ -24,6 +24,7 @@ import {
   assertCanViewXlvStaffScope,
   assertManagerOwnsXlvKey,
   buildXlvManagerDeviceWhere,
+  buildXlvOperationalDeviceWhere,
   buildXlvRoleWhere,
   buildXlvStaffDeviceWhere,
   xlvManagerKeyOf,
@@ -34,6 +35,7 @@ import { enrichXlvSnapshotDailyMetrics, buildXlvTxnActivityTrend } from "./snaps
 import { normalizeXlvStatDate } from "@/lib/xlv-stat-date";
 import { withXlvBoardCache } from "./board-cache";
 import { withXlvHeavyGate } from "./xlv-heavy-gate";
+import { loadSalesStockForOperator } from "./inventory/service";
 
 function isoDate(d: Date | null | undefined) {
   return d ? d.toISOString().slice(0, 10) : null;
@@ -409,15 +411,30 @@ export async function getXlvStaffDevices(
         select: { name: true },
       });
 
+  const managerName =
+    devices[0]?.managerName ??
+    managerUser?.name ??
+    (opts.managerKey.startsWith("name:") ? opts.managerKey.slice(5) : "—");
+  const staffName =
+    devices[0]?.operatorName ??
+    staffUser?.name ??
+    (opts.staffKey.startsWith("name:") ? opts.staffKey.slice(5) : "—");
+
+  const undeployedStock = await loadSalesStockForOperator(
+    managerName,
+    staffName
+  );
+
   return {
     manager: {
       key: opts.managerKey,
-      name: devices[0]?.managerName ?? managerUser?.name ?? "—",
+      name: managerName,
     },
     staff: {
       key: opts.staffKey,
-      name: devices[0]?.operatorName ?? staffUser?.name ?? "—",
+      name: staffName,
     },
+    undeployedStock,
     devices: withStatus.map((d) => ({
       deviceSn: d.deviceSn,
       merchantName: d.merchantName,
@@ -487,29 +504,39 @@ export type XlvManagerComplianceSnapshot = {
 export async function loadXlvManagerComplianceByName(
   forManagerName?: string | null
 ): Promise<Map<string, XlvManagerComplianceSnapshot>> {
-  return withXlvHeavyGate(async () => {
-    const scope = forManagerName?.trim();
-    const where: Prisma.XlvDeviceRecordWhereInput = scope
-      ? { managerName: scope }
-      : { managerName: { not: "" } };
+  const cacheKey = `compliance:${forManagerName?.trim() || "all"}`;
+  return withXlvBoardCache(cacheKey, () =>
+    withXlvHeavyGate(async () => {
+      const scope = forManagerName?.trim();
+      const where: Prisma.XlvDeviceRecordWhereInput = scope
+        ? {
+            AND: [{ managerName: scope }, buildXlvOperationalDeviceWhere()],
+          }
+        : {
+            AND: [
+              { managerName: { not: "" } },
+              buildXlvOperationalDeviceWhere(),
+            ],
+          };
 
-    const { rows } = await aggregateBoardDevices(
-      where,
-      (d) => xlvManagerKeyOf(d),
-      (d) => xlvManagerDisplayName(d.managerName),
-      (d) => d.managerUserId
-    );
+      const { rows } = await aggregateBoardDevices(
+        where,
+        (d) => xlvManagerKeyOf(d),
+        (d) => xlvManagerDisplayName(d.managerName),
+        (d) => d.managerUserId
+      );
 
-    const map = new Map<string, XlvManagerComplianceSnapshot>();
-    for (const row of rows) {
-      if (isXlvInventoryManagerKey(row.key)) continue;
-      map.set(row.name, {
-        complianceRate: row.complianceRate,
-        compliantCount: row.compliantCount,
-        deviceCount: row.deviceCount,
-        complianceGapCount: row.complianceGapCount,
-      });
-    }
-    return map;
-  });
+      const map = new Map<string, XlvManagerComplianceSnapshot>();
+      for (const row of rows) {
+        if (isXlvInventoryManagerKey(row.key)) continue;
+        map.set(row.name, {
+          complianceRate: row.complianceRate,
+          compliantCount: row.compliantCount,
+          deviceCount: row.deviceCount,
+          complianceGapCount: row.complianceGapCount,
+        });
+      }
+      return map;
+    })
+  );
 }

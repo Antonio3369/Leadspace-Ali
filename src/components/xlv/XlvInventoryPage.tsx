@@ -19,6 +19,7 @@ import {
 type InventoryKind =
   | "inbound"
   | "allocate-manager"
+  | "recall-to-admin"
   | "allocate-sales"
   | "withdraw"
   | "opening";
@@ -47,9 +48,10 @@ type PendingItem = { deviceSn: string; channel: string | null; updatedAt: string
 const ADMIN_TABS: { id: InventoryKind | "receipts" | "overview"; label: string }[] = [
   { id: "overview", label: "库存看板" },
   { id: "opening", label: "期初盘点" },
-  { id: "inbound", label: "Admin 入库" },
-  { id: "allocate-manager", label: "划拨经理" },
-  { id: "withdraw", label: "移机撤机" },
+  { id: "inbound", label: "新增入库" },
+  { id: "recall-to-admin", label: "回拨机具" },
+  { id: "allocate-manager", label: "划拨下级" },
+  { id: "withdraw", label: "撤机" },
   { id: "receipts", label: "待收货确认" },
 ];
 
@@ -57,23 +59,25 @@ const MANAGER_TABS: { id: InventoryKind | "receipts" | "overview"; label: string
   { id: "overview", label: "库存看板" },
   { id: "receipts", label: "待收货确认" },
   { id: "allocate-sales", label: "分给队员" },
-  { id: "withdraw", label: "移机撤机" },
+  { id: "withdraw", label: "撤机" },
 ];
 
 const KIND_HINT: Record<InventoryKind, string> = {
   inbound: "列：设备SN（必填）、渠道（可选）",
+  "recall-to-admin": "列：设备SN（必填）、备注（可选）；从经理/队员库存回拨至事业部总库，已铺设须先撤机",
   "allocate-manager": "列：设备SN、所属经理；可选渠道",
   "allocate-sales": "列：设备SN、作业员（或所属业务员）",
   withdraw:
-    "运营移机明细：进件日期、设备SN、所属业务员、所属经理、门店名称；同 SN 取最新进件日期",
+    "撤机（移机明细表）：进件日期、设备SN、所属业务员、所属经理、门店名称；同 SN 取最新进件日期；提交后通知归属人确认，同意后才回库并清零运营态",
   opening: "期初表：设备SN、所属经理、渠道、作业员；须先导入 SN 归属表；在归属表内=已铺设，表外=库存",
 };
 
 const KIND_BUTTON: Record<InventoryKind, string> = {
   inbound: "入库",
-  "allocate-manager": "划拨经理",
+  "recall-to-admin": "回拨机具",
+  "allocate-manager": "划拨下级",
   "allocate-sales": "分给队员",
-  withdraw: "导入移机撤机",
+  withdraw: "导入撤机",
   opening: "导入期初盘点",
 };
 
@@ -258,7 +262,7 @@ export function XlvInventoryPage({ isAdmin }: { isAdmin: boolean }) {
     <PageShell>
       <PageHeader
         title="设备库存"
-        meta="入库 · 分货 · 移机撤机（物流账）；运营考核仍走数据导入"
+        meta="入库 · 分货 · 撤机（物流账）；运营考核仍走数据导入"
       />
 
       {summary && tab !== "overview" && (

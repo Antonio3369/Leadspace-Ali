@@ -1,8 +1,22 @@
 /** 小绿盒 Tab 切换：短时缓存 + 去重/串行请求，避免并发打爆服务端 */
 
 const TTL_MS = 60_000;
-/** 缓存仍有效时跳过后台刷新，减少切换 Tab 时的并发峰值 */
-const MIN_REFRESH_MS = 20_000;
+/** 轻量接口：缓存有效期内不重复后台刷新 */
+const MIN_REFRESH_MS = 30_000;
+
+/** 重接口：仅缓存过期后才后台刷新，避免切 Tab 时 20s 触发新一轮全表扫描 */
+const HEAVY_API_PREFIXES = [
+  "/api/xlv/board",
+  "/api/xlv/today",
+  "/api/xlv/inventory",
+  "/api/xlv/follow-up",
+  "/api/xlv/managers/",
+  "/api/xlv/dashboard/summary",
+];
+
+function isHeavyXlvApi(url: string) {
+  return HEAVY_API_PREFIXES.some((p) => url.startsWith(p));
+}
 
 const cache = new Map<string, { at: number; data: unknown }>();
 const inFlight = new Map<string, Promise<unknown>>();
@@ -71,6 +85,11 @@ export function runXlvApiOnce<T>(
       writeXlvApiCache(url, data);
       return data;
     })
+    .catch((err) => {
+      inFlight.delete(key);
+      inFlightStartedAt.delete(key);
+      throw err;
+    })
     .finally(() => {
       inFlight.delete(key);
       inFlightStartedAt.delete(key);
@@ -120,5 +139,9 @@ export function prefetchXlvApisSequential(urls: string[]) {
 
 export function shouldBackgroundRefreshXlvApi(url: string) {
   const age = cacheAgeMs(url);
-  return age == null || age >= MIN_REFRESH_MS;
+  if (age == null) return true;
+  if (isHeavyXlvApi(url)) {
+    return age >= TTL_MS - 2_000;
+  }
+  return age >= MIN_REFRESH_MS;
 }

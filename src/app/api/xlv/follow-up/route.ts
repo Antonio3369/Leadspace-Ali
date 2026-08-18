@@ -10,6 +10,8 @@ import {
 import { assertCanViewXlv } from "@/services/xlv/xlv-scope";
 import type { XlvAlertKind } from "@/lib/xlv-rules";
 
+export const maxDuration = 120;
+
 const FOLLOW_FILTERS = new Set<XlvFollowFilter>(["pending", "done", "all"]);
 const ALERT_FILTERS = new Set(["all", "single_silence", "dormant"]);
 const PRIORITY_FILTERS = new Set<XlvFollowUpPriority>(["P0", "P1"]);

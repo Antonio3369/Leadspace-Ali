@@ -5,6 +5,8 @@ import { getXlvFilterOptions } from "@/services/xlv/analytics";
 import { getXlvTodayQueues } from "@/services/xlv/today";
 import { assertCanViewXlv } from "@/services/xlv/xlv-scope";
 
+export const maxDuration = 120;
+
 export async function GET(request: Request) {
   try {
     const user = await requireSessionUser();

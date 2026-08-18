@@ -1,5 +1,6 @@
 import {
   fetchJsonWithRetry,
+  isFetchAbortedError,
   type FetchRetryReason,
 } from "@/lib/fetch-json";
 import {
@@ -47,5 +48,13 @@ export async function fetchXlvJson<T>(
     return cached;
   }
 
-  return load();
+  try {
+    return await load();
+  } catch (err) {
+    if (isFetchAbortedError(err)) {
+      const hit = readXlvApiCache<T>(url);
+      if (hit) return hit;
+    }
+    throw err;
+  }
 }

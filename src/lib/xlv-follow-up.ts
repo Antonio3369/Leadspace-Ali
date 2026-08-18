@@ -1,5 +1,7 @@
 /** 微信小绿盒沉睡回访跟进：接通互斥 + 可叠加项 + 必传图 */
 
+import { XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING } from "@/lib/xlv-withdraw";
+
 export const XLV_FOLLOW_UP_CONNECT = ["connected", "not_connected"] as const;
 export type XlvFollowUpConnectStatus = (typeof XLV_FOLLOW_UP_CONNECT)[number];
 
@@ -11,6 +13,7 @@ export const XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW = "manager_follow_up_review"
 
 export function xlvNotificationTitle(type: string): string {
   if (type === XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW) return "经理反馈";
+  if (type === XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING) return "撤机待确认";
   return "队员已处理";
 }
 

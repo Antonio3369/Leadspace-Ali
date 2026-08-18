@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { readResponseJson, getFetchErrorMessage } from "@/lib/fetch-json";
@@ -54,6 +55,7 @@ interface ApiResponse {
   manager: { key: string; name: string };
   staff: { key: string; name: string };
   devices: ApiDevice[];
+  undeployedStock: { deviceSn: string; channel: string | null; updatedAt: string }[];
 }
 
 function mapDevice(d: ApiDevice): XlvDeviceListItem {
@@ -80,6 +82,7 @@ export function XlvStaffDevicesView({
   const searchParams = useSearchParams();
   const alert = parseXlvAlertKind(searchParams.get("alert"));
   const status = parseXlvQualificationStatus(searchParams.get("status"));
+  const stockUndeployed = searchParams.get("stock") === "undeployed";
 
   const [data, setData] = useState<ApiResponse | null>(null);
   const [error, setError] = useState("");
@@ -87,8 +90,21 @@ export function XlvStaffDevicesView({
 
   useRestoreListScroll(pathname, !loading && !!data);
 
+  function setStockFilter(active: boolean) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (active) {
+      params.set("stock", "undeployed");
+      params.delete("status");
+      params.delete("alert");
+    } else {
+      params.delete("stock");
+    }
+    router.replace(`${pathname}?${params}`, { scroll: false });
+  }
+
   function setStatusFilter(next: XlvQualificationStatus | null) {
     const params = new URLSearchParams(searchParams.toString());
+    params.delete("stock");
     if (!next) params.delete("status");
     else {
       params.set("status", next);
@@ -99,6 +115,7 @@ export function XlvStaffDevicesView({
 
   function setAlertFilter(next: XlvAlertKind) {
     const params = new URLSearchParams(searchParams.toString());
+    params.delete("stock");
     if (next === "all") params.delete("alert");
     else params.set("alert", next);
     params.delete("status");
@@ -130,6 +147,9 @@ export function XlvStaffDevicesView({
       cancelled = true;
     };
   }, [managerKey, staffKey]);
+
+  const undeployedStock = data?.undeployedStock ?? [];
+  const undeployedCount = undeployedStock.length;
 
   const allDevices = (data?.devices ?? []).map(mapDevice);
   const filtered = (data?.devices ?? []).filter((d) => {
@@ -186,12 +206,15 @@ export function XlvStaffDevicesView({
         <button
           type="button"
           onClick={() => {
-            setStatusFilter(null);
-            setAlertFilter("all");
+            const params = new URLSearchParams(searchParams.toString());
+            params.delete("status");
+            params.delete("alert");
+            params.delete("stock");
+            router.replace(`${pathname}?${params}`, { scroll: false });
           }}
-          className={`${xlvFilterChipBaseClass()} ${xlvTabButtonClass(alert === "all" && !status)}`}
+          className={`${xlvFilterChipBaseClass()} ${xlvTabButtonClass(alert === "all" && !status && !stockUndeployed)}`}
         >
-          <XlvFilterChipText label="全部" count={counts.all} active={alert === "all" && !status} />
+          <XlvFilterChipText label="全部" count={counts.all} active={alert === "all" && !status && !stockUndeployed} />
         </button>
         <button
           type="button"
@@ -232,10 +255,50 @@ export function XlvStaffDevicesView({
             />
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => setStockFilter(!stockUndeployed)}
+          className={`${xlvFilterChipBaseClass()} ${
+            stockUndeployed
+              ? "bg-violet-600 text-white border-violet-600"
+              : "bg-violet-50 text-violet-800 border-violet-200 hover:bg-violet-100"
+          }`}
+        >
+          <XlvFilterChipText
+            label="未铺设"
+            count={`${undeployedCount} 台`}
+            active={stockUndeployed}
+          />
+        </button>
       </div>
 
       {loading ? (
         <p className="text-sm text-[#94a3b8] py-8 text-center">加载中…</p>
+      ) : stockUndeployed ? (
+        undeployedStock.length === 0 ? (
+          <p className="text-sm text-[#94a3b8] py-8 text-center">
+            暂无未铺设库存
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {undeployedStock.map((item) => (
+              <li
+                key={item.deviceSn}
+                className="rounded-[12px] border border-[#eef2f7] bg-white px-4 py-3 text-sm"
+              >
+                <Link
+                  href={xlvPath(`/devices/${encodeURIComponent(item.deviceSn)}`)}
+                  className="font-mono text-[#2563eb] hover:text-[#1d4ed8] font-medium"
+                >
+                  {item.deviceSn}
+                </Link>
+                {item.channel ? (
+                  <p className="text-xs text-[#94a3b8] mt-1">{item.channel}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )
       ) : (
         <XlvDeviceCardList
           devices={devices}
