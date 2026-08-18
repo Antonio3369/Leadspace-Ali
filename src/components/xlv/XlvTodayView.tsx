@@ -357,7 +357,7 @@ export function XlvTodayView({
               }`}
             >
               <span className="flex items-center gap-2">
-                {role === "SALES" ? "经理反馈" : "队员已处理"}
+                系统通知
                 {mgrUnread > 0 ? (
                   <span className="inline-flex min-w-[1.35rem] items-center justify-center rounded-full bg-[#ef4444] px-1.5 py-0.5 text-center text-xs font-semibold leading-none text-white tabular-nums">
                     {mgrUnread > 99 ? "99+" : mgrUnread}

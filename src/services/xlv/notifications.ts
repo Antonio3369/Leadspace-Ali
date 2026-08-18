@@ -4,6 +4,7 @@ import {
   XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW,
   summarizeFollowUpResult,
 } from "@/lib/xlv-follow-up";
+import { XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING } from "@/lib/xlv-withdraw";
 import { xlvMerchantLabel } from "@/lib/xlv-rules";
 import type { SessionUser } from "@/lib/permissions";
 import type { Prisma } from "@/generated/prisma/client";
@@ -112,7 +113,7 @@ function buildFollowUpNotificationContent(opts: XlvFollowUpNotificationPayload) 
       merchantName: opts.merchantName,
       activationMerchantName: opts.activationMerchantName,
     }) || opts.deviceSn;
-  const title = "队员已处理";
+  const title = "队员已跟进";
   const body = `${opts.followUpByName || opts.operatorName} · ${store} · ${summary}`;
 
   const meta: Prisma.InputJsonValue = {
@@ -261,8 +262,75 @@ export function canViewXlvFollowUpNotifications(user: SessionUser) {
   return canViewXlvNotifications(user);
 }
 
+/** 撤机待确认须归属人显式同意/拒绝，不可因查看设备或批量已读而关闭 */
+const autoReadExcludedTypes = [XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING] as const;
+
+function withdrawRequestIdFromMeta(meta: unknown): string | null {
+  if (!meta || typeof meta !== "object") return null;
+  const id = (meta as Record<string, unknown>).requestId;
+  return typeof id === "string" && id.trim() ? id.trim() : null;
+}
+
+/** 历史 bug：查看设备曾误标已读；若撤机单仍为 pending 则自动恢复为待确认 */
+export async function reopenMisreadWithdrawNotifications(user: SessionUser) {
+  if (!canViewXlvNotifications(user)) return;
+  if (user.authRealm !== "xlv") return;
+
+  const misread = await db.xlvNotification.findMany({
+    where: {
+      ...recipientWhere(user),
+      type: XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING,
+      read: true,
+    },
+    select: { id: true, deviceSn: true },
+  });
+  if (misread.length === 0) return;
+
+  const pendingSns = new Set(
+    (
+      await db.xlvWithdrawRequest.findMany({
+        where: {
+          deviceSn: { in: misread.map((m) => m.deviceSn) },
+          status: "pending",
+          recipientMemberAccountId: user.id,
+        },
+        select: { deviceSn: true },
+      })
+    ).map((r) => r.deviceSn)
+  );
+
+  const ids = misread.filter((m) => pendingSns.has(m.deviceSn)).map((m) => m.id);
+  if (ids.length === 0) return;
+
+  await db.xlvNotification.updateMany({
+    where: { id: { in: ids } },
+    data: { read: false, readAt: null },
+  });
+}
+
+export type XlvNotificationWithdrawStatus = "pending" | "approved" | "rejected";
+
+export async function loadWithdrawStatusByRequestId(
+  requestIds: string[]
+): Promise<Map<string, XlvNotificationWithdrawStatus>> {
+  if (requestIds.length === 0) return new Map();
+  const rows = await db.xlvWithdrawRequest.findMany({
+    where: { id: { in: requestIds } },
+    select: { id: true, status: true },
+  });
+  return new Map(rows.map((r) => [r.id, r.status]));
+}
+
+export type EnrichedXlvNotification = Awaited<
+  ReturnType<typeof db.xlvNotification.findMany>
+>[number] & {
+  withdrawStatus?: XlvNotificationWithdrawStatus | null;
+  needsWithdrawAction?: boolean;
+};
+
 export async function countUnreadXlvNotifications(user: SessionUser) {
   if (!canViewXlvNotifications(user)) return 0;
+  await reopenMisreadWithdrawNotifications(user);
   return db.xlvNotification.count({
     where: { ...recipientWhere(user), read: false },
   });
@@ -271,15 +339,39 @@ export async function countUnreadXlvNotifications(user: SessionUser) {
 export async function listXlvNotifications(
   user: SessionUser,
   opts?: { limit?: number; unreadOnly?: boolean }
-) {
+): Promise<EnrichedXlvNotification[]> {
+  await reopenMisreadWithdrawNotifications(user);
+
   const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
-  return db.xlvNotification.findMany({
+  const rows = await db.xlvNotification.findMany({
     where: {
       ...recipientWhere(user),
       ...(opts?.unreadOnly ? { read: false } : {}),
     },
     orderBy: { createdAt: "desc" },
     take: limit,
+  });
+
+  const withdrawRequestIds = rows
+    .filter((r) => r.type === XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING)
+    .map((r) => withdrawRequestIdFromMeta(r.meta))
+    .filter((id): id is string => Boolean(id));
+
+  const statusByRequestId = await loadWithdrawStatusByRequestId(withdrawRequestIds);
+
+  return rows.map((row) => {
+    if (row.type !== XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING) {
+      return row;
+    }
+    const requestId = withdrawRequestIdFromMeta(row.meta);
+    const withdrawStatus = requestId
+      ? (statusByRequestId.get(requestId) ?? null)
+      : null;
+    return {
+      ...row,
+      withdrawStatus,
+      needsWithdrawAction: withdrawStatus === "pending",
+    };
   });
 }
 
@@ -292,6 +384,7 @@ export async function markXlvNotificationRead(
   });
   if (!row) return null;
   if (row.read) return row;
+  if (row.type === XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING) return row;
   return db.xlvNotification.update({
     where: { id: notificationId },
     data: { read: true, readAt: new Date() },
@@ -305,7 +398,12 @@ export async function markXlvNotificationsReadByDevice(
   if (!canViewXlvNotifications(user)) return;
   const now = new Date();
   await db.xlvNotification.updateMany({
-    where: { ...recipientWhere(user), deviceSn, read: false },
+    where: {
+      ...recipientWhere(user),
+      deviceSn,
+      read: false,
+      type: { notIn: [...autoReadExcludedTypes] },
+    },
     data: { read: true, readAt: now },
   });
 }
@@ -313,7 +411,11 @@ export async function markXlvNotificationsReadByDevice(
 export async function markAllXlvNotificationsRead(user: SessionUser) {
   const now = new Date();
   await db.xlvNotification.updateMany({
-    where: { ...recipientWhere(user), read: false },
+    where: {
+      ...recipientWhere(user),
+      read: false,
+      type: { notIn: [...autoReadExcludedTypes] },
+    },
     data: { read: true, readAt: now },
   });
 }

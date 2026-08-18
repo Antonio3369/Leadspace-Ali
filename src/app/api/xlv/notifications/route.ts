@@ -56,6 +56,8 @@ export async function GET(request: Request) {
         read: r.read,
         readAt: r.readAt?.toISOString() ?? null,
         createdAt: r.createdAt.toISOString(),
+        withdrawStatus: r.withdrawStatus ?? null,
+        needsWithdrawAction: r.needsWithdrawAction ?? false,
       })),
     });
   } catch (err) {

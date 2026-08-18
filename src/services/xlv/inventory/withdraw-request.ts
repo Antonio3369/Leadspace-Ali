@@ -146,6 +146,27 @@ export async function createPendingWithdrawRequests(
   };
 }
 
+/** 当前归属人待确认的撤机单（查看设备详情时用，不含写操作） */
+export async function findPendingWithdrawRequestForRecipient(
+  deviceSn: string,
+  recipientMemberAccountId: string
+) {
+  return db.xlvWithdrawRequest.findFirst({
+    where: {
+      deviceSn,
+      status: "pending",
+      recipientMemberAccountId,
+    },
+    select: {
+      id: true,
+      storeName: true,
+      withdrawManagerName: true,
+      withdrawOperatorName: true,
+      createdAt: true,
+    },
+  });
+}
+
 export async function approveWithdrawRequest(
   requestId: string,
   deciderMemberAccountId: string

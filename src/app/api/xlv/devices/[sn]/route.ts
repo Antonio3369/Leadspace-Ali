@@ -8,8 +8,10 @@ import {
 } from "@/lib/xlv-follow-up";
 import { getXlvDeviceDetail } from "@/services/xlv/board";
 import { updateXlvDeviceFollowUp } from "@/services/xlv/follow-up";
-import { markXlvNotificationsReadByDevice } from "@/services/xlv/notifications";
+import { markXlvNotificationsReadByDevice, reopenMisreadWithdrawNotifications } from "@/services/xlv/notifications";
+import { findPendingWithdrawRequestForRecipient } from "@/services/xlv/inventory/withdraw-request";
 import { assertCanViewXlvDevice } from "@/services/xlv/xlv-scope";
+import { sessionAuthRealm } from "@/lib/auth-realm";
 
 const followUpSchema = z.object({
   followUpDone: z.boolean(),
@@ -32,7 +34,35 @@ export async function GET(_req: Request, { params }: Params) {
       await markXlvNotificationsReadByDevice(user, deviceSn);
     }
 
-    return NextResponse.json(data);
+    let pendingWithdraw: {
+      requestId: string;
+      storeName: string | null;
+      withdrawManagerName: string;
+      withdrawOperatorName: string;
+      createdAt: string;
+    } | null = null;
+
+    if (
+      sessionAuthRealm(user) === "xlv" &&
+      (user.role === "MANAGER" || user.role === "SALES")
+    ) {
+      await reopenMisreadWithdrawNotifications(user);
+      const pending = await findPendingWithdrawRequestForRecipient(
+        deviceSn,
+        user.id
+      );
+      if (pending) {
+        pendingWithdraw = {
+          requestId: pending.id,
+          storeName: pending.storeName,
+          withdrawManagerName: pending.withdrawManagerName,
+          withdrawOperatorName: pending.withdrawOperatorName,
+          createdAt: pending.createdAt.toISOString(),
+        };
+      }
+    }
+
+    return NextResponse.json({ ...data, pendingWithdraw });
   } catch (err) {
     if (err instanceof PermissionError) {
       return NextResponse.json({ error: err.message }, { status: 403 });

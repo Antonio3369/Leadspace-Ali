@@ -73,7 +73,7 @@ const XLV_MANAGER_NAV_ITEMS = [
   ...XLV_NAV_ITEMS,
   { href: xlvPath("/inventory"), label: "设备库存", icon: "📦" },
   { href: xlvPath("/me/team"), label: "队员管理", icon: "👥" },
-  { href: xlvPath("/notifications"), label: "队员已处理", icon: "✉️" },
+  { href: xlvPath("/notifications"), label: "系统通知", icon: "✉️" },
   { href: xlvPath("/me"), label: "我的", icon: "👤" },
 ];
 
@@ -82,13 +82,13 @@ const XLV_SALES_NAV_ITEMS = [
   { href: xlvPath("/alerts"), label: "设备", icon: "📱" },
   { href: xlvPath("/board"), label: "设备看板", icon: "📊" },
   { href: xlvPath("/daily"), label: "回访情况", icon: "📈" },
-  { href: xlvPath("/notifications"), label: "经理反馈", icon: "✉️" },
+  { href: xlvPath("/notifications"), label: "系统通知", icon: "✉️" },
   { href: xlvPath("/me"), label: "我的", icon: "👤" },
 ];
 
 const XLV_DIRECTOR_NAV_ITEMS = [
   ...XLV_NAV_ITEMS,
-  { href: xlvPath("/notifications"), label: "队员已处理", icon: "✉️" },
+  { href: xlvPath("/notifications"), label: "系统通知", icon: "✉️" },
   { href: xlvPath("/admin/import"), label: "数据导入", icon: "⬆️" },
   { href: xlvPath("/admin/inventory"), label: "设备库存", icon: "📦" },
   { href: xlvPath("/admin/attribution"), label: "人员归属", icon: "🔗" },

@@ -12,14 +12,6 @@ export default async function XlvNotificationsPage() {
   if (!canViewXlvNotifications(user)) redirect(xlvPath());
 
   return (
-    <XlvNotificationsView
-      pageTitle={
-        user.role === "SALES"
-          ? "经理反馈"
-          : user.role === "MANAGER"
-            ? "队员已处理"
-            : "消息通知"
-      }
-    />
+    <XlvNotificationsView pageTitle="系统通知" />
   );
 }

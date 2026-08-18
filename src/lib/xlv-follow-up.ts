@@ -14,7 +14,7 @@ export const XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW = "manager_follow_up_review"
 export function xlvNotificationTitle(type: string): string {
   if (type === XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW) return "经理反馈";
   if (type === XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING) return "撤机待确认";
-  return "队员已处理";
+  return "队员已跟进";
 }
 
 export function connectStatusLabel(status: string | null | undefined): string {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { xlvPath } from "@/lib/business-lines";
 import {
   xlvMerchantLabel,
@@ -14,6 +14,7 @@ import {
 } from "@/lib/xlv-device-display";
 import {
   NotionAlert,
+  NotionButton,
   PageHeader,
   PageShell,
 } from "@/components/ui/notion";
@@ -57,6 +58,14 @@ interface Device {
   followUpReviewByName?: string | null;
 }
 
+type PendingWithdraw = {
+  requestId: string;
+  storeName: string | null;
+  withdrawManagerName: string;
+  withdrawOperatorName: string;
+  createdAt: string;
+};
+
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
   return iso.slice(0, 10);
@@ -86,56 +95,61 @@ export function XlvDeviceDetailView({
     at: null as string | null,
     byName: null as string | null,
   });
+  const [pendingWithdraw, setPendingWithdraw] = useState<PendingWithdraw | null>(
+    null
+  );
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const loadDevice = useCallback(async () => {
+    setError("");
+    const res = await fetch(`/api/xlv/devices/${encodeURIComponent(sn)}`);
+    const json = await readResponseJson<{
+      error?: string;
+      device?: Device;
+      qualificationDetail?: XlvQualificationDetail;
+      txnTrend?: XlvTxnActivityPoint[];
+      pendingWithdraw?: PendingWithdraw | null;
+    }>(res, "加载设备");
+    if (!res.ok) throw new Error(json.error || "加载失败");
+    const d = json.device;
+    if (!d) throw new Error("设备数据为空");
+    setDevice({
+      ...d,
+      lastTxnDate: d.lastTxnDate ? String(d.lastTxnDate).slice(0, 10) : null,
+      firstTxnDate: d.firstTxnDate ? String(d.firstTxnDate).slice(0, 10) : null,
+      statDate: d.statDate ? String(d.statDate).slice(0, 10) : null,
+    });
+    setQualificationDetail(json.qualificationDetail ?? null);
+    setTxnTrend(json.txnTrend ?? []);
+    setFollowUp({
+      done: Boolean(d.followUpDone),
+      note: d.followUpNote ?? "",
+      connectStatus: d.followUpConnectStatus ?? null,
+      flags: d.followUpFlags ?? [],
+      photoUrls: d.followUpPhotoUrls ?? [],
+      at: d.followUpAt ? String(d.followUpAt) : null,
+    });
+    setReview({
+      note: d.followUpReviewNote ?? null,
+      at: d.followUpReviewAt ? String(d.followUpReviewAt) : null,
+      byName: d.followUpReviewByName ?? null,
+    });
+    setPendingWithdraw(json.pendingWithdraw ?? null);
+    emitXlvNotificationsChanged();
+  }, [sn]);
 
   useEffect(() => {
     let cancelled = false;
-    setError("");
-    fetch(`/api/xlv/devices/${encodeURIComponent(sn)}`)
-      .then(async (res) => {
-        const json = await readResponseJson<{
-          error?: string;
-          device?: Device;
-          qualificationDetail?: XlvQualificationDetail;
-          txnTrend?: XlvTxnActivityPoint[];
-        }>(res, "加载设备");
-        if (!res.ok) throw new Error(json.error || "加载失败");
-        const d = json.device;
-        if (!d) throw new Error("设备数据为空");
-        if (!cancelled) {
-          setDevice({
-            ...d,
-            lastTxnDate: d.lastTxnDate ? String(d.lastTxnDate).slice(0, 10) : null,
-            firstTxnDate: d.firstTxnDate ? String(d.firstTxnDate).slice(0, 10) : null,
-            statDate: d.statDate ? String(d.statDate).slice(0, 10) : null,
-          });
-          setQualificationDetail(json.qualificationDetail ?? null);
-          setTxnTrend(json.txnTrend ?? []);
-          setFollowUp({
-            done: Boolean(d.followUpDone),
-            note: d.followUpNote ?? "",
-            connectStatus: d.followUpConnectStatus ?? null,
-            flags: d.followUpFlags ?? [],
-            photoUrls: d.followUpPhotoUrls ?? [],
-            at: d.followUpAt ? String(d.followUpAt) : null,
-          });
-          setReview({
-            note: d.followUpReviewNote ?? null,
-            at: d.followUpReviewAt ? String(d.followUpReviewAt) : null,
-            byName: d.followUpReviewByName ?? null,
-          });
-          emitXlvNotificationsChanged();
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(getFetchErrorMessage(err, "加载失败"));
-        }
-      });
+    void loadDevice().catch((err) => {
+      if (!cancelled) {
+        setError(getFetchErrorMessage(err, "加载失败"));
+      }
+    });
     return () => {
       cancelled = true;
     };
-  }, [sn]);
+  }, [loadDevice]);
 
   if (!device && !error) {
     return (
@@ -187,6 +201,34 @@ export function XlvDeviceDetailView({
     });
   }
 
+  async function respondWithdraw(action: "approve" | "reject") {
+    if (!pendingWithdraw || withdrawBusy) return;
+    setWithdrawBusy(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/xlv/inventory/withdraw-requests/${encodeURIComponent(pendingWithdraw.requestId)}/respond`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        }
+      );
+      const json = await readResponseJson<{ error?: string }>(res, "撤机确认");
+      if (!res.ok) throw new Error(json.error || "操作失败");
+      if (action === "approve") {
+        await loadDevice();
+      } else {
+        setPendingWithdraw(null);
+        emitXlvNotificationsChanged();
+      }
+    } catch (err) {
+      setError(getFetchErrorMessage(err, "操作失败"));
+    } finally {
+      setWithdrawBusy(false);
+    }
+  }
+
   return (
     <PageShell>
       <PageHeader
@@ -211,6 +253,39 @@ export function XlvDeviceDetailView({
 
       {device ? (
         <div className="flex flex-col gap-4">
+          {pendingWithdraw ? (
+            <div className="rounded-[14px] border border-sky-200 bg-sky-50/60 p-4 shadow-sm space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-[#111827]">撤机待确认</p>
+                <p className="mt-1 text-sm text-[#64748b]">
+                  运营已登记移机明细，请核实设备情况后确认是否同意撤机。
+                  {pendingWithdraw.storeName
+                    ? ` 门店：${pendingWithdraw.storeName}`
+                    : null}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <NotionButton
+                  type="button"
+                  disabled={withdrawBusy}
+                  onClick={() => void respondWithdraw("approve")}
+                  className="min-h-[40px]"
+                >
+                  同意撤机
+                </NotionButton>
+                <NotionButton
+                  type="button"
+                  variant="secondary"
+                  disabled={withdrawBusy}
+                  onClick={() => void respondWithdraw("reject")}
+                  className="min-h-[40px]"
+                >
+                  拒绝
+                </NotionButton>
+              </div>
+            </div>
+          ) : null}
+
           <div className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               {xlvShouldShowSleepAlertBadge(displayInput) && sleepLabel ? (
