@@ -61,6 +61,11 @@ services:
       # N7 关单外推企微群；未设置则跳过
       N7_OUTBOUND_WEBHOOK_URL: ${N7_OUTBOUND_WEBHOOK_URL:-}
       N7_PUBLIC_BASE_URL: ${N7_PUBLIC_BASE_URL:-${AUTH_URL:-https://ali.orblead.com}}
+      # 小绿盒企微外推（关单 / 撤机 / 运维告警）；未设置则跳过
+      XLV_OUTBOUND_WEBHOOK_URL: ${XLV_OUTBOUND_WEBHOOK_URL:-}
+      XLV_PUBLIC_BASE_URL: ${XLV_PUBLIC_BASE_URL:-${AUTH_URL:-https://ali.orblead.com}}
+      XLV_OPS_CRON_SECRET: ${XLV_OPS_CRON_SECRET:-}
+      XLV_OPS_MEM_WARN_MB: ${XLV_OPS_MEM_WARN_MB:-1200}
 
   db-init:
     build:

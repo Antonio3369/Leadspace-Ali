@@ -175,6 +175,15 @@ export async function notifyFollowUpDoneRecipients(opts: {
   }
 
   await Promise.all(tasks);
+
+  try {
+    const { notifyXlvOutboundFollowUpDone } = await import(
+      "./outbound-notifier"
+    );
+    await notifyXlvOutboundFollowUpDone(opts.payload);
+  } catch (err) {
+    console.error("[xlv-outbound] follow-up done:", err);
+  }
 }
 
 export type XlvFollowUpReviewNotificationPayload = {

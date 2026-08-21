@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# 运维紧急告警 → 企微群机器人 Webhook
-# 用法：./deploy/ops-alert.sh "标题" "详情 markdown 行"
-# 未配置 OPS_ALERT_WEBHOOK_URL（或 N7_OUTBOUND_WEBHOOK_URL）时只写日志，不报错
+# 站点级紧急告警（容器挂了 / login 不通）→ 企微
+# 优先 XLV_OUTBOUND_WEBHOOK_URL，其次 OPS_ALERT / N7_OUTBOUND
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 STATE_DIR="${OPS_ALERT_STATE_DIR:-/var/log/leadspace-ops}"
-COOLDOWN_SEC="${OPS_ALERT_COOLDOWN_SEC:-1800}"  # 同类告警默认 30 分钟内不重复
+COOLDOWN_SEC="${OPS_ALERT_COOLDOWN_SEC:-1800}"
 
 title="${1:-运维告警}"
 body="${2:-}"
@@ -26,14 +25,10 @@ fi
 
 webhook=""
 if [[ -f "${APP_DIR}/.env" ]]; then
-  webhook="$(
-    grep -E '^OPS_ALERT_WEBHOOK_URL=' "${APP_DIR}/.env" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true
-  )"
-  if [[ -z "${webhook}" ]]; then
-    webhook="$(
-      grep -E '^N7_OUTBOUND_WEBHOOK_URL=' "${APP_DIR}/.env" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true
-    )"
-  fi
+  for key in XLV_OUTBOUND_WEBHOOK_URL OPS_ALERT_WEBHOOK_URL N7_OUTBOUND_WEBHOOK_URL; do
+    webhook="$(grep -E "^${key}=" "${APP_DIR}/.env" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)"
+    [[ -n "${webhook}" ]] && break
+  done
 fi
 
 content="$(cat <<EOF
@@ -61,7 +56,7 @@ http_code="$(
 )"
 
 if [[ "${http_code}" != "200" ]]; then
-  echo "$(date -Iseconds) [ops-alert] 发送失败 http=${http_code} $(head -c 200 /tmp/leadspace-ops-alert-resp.txt 2>/dev/null)"
+  echo "$(date -Iseconds) [ops-alert] 发送失败 http=${http_code}"
   exit 1
 fi
 

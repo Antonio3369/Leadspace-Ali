@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-08-21（运维：定时重启 + 企微紧急告警）
+**最后更新**：2026-08-21（小绿盒企微外推：关单 / 撤机 / 运维告警）
 
 ---
 
@@ -53,7 +53,8 @@
 | 小绿盒设备库存 | `/xlv/admin/inventory`（Admin）/ `/xlv/inventory`（经理）：**库存看板**（收到 / 已铺设 / 剩余 / 铺设率 + **合规率** 供补货决策）；入库 / 划拨 / 期初 / **撤机**（移机明细表）；与团队看板分离，见 §6.2d |
 | 小绿盒今日待办 | `/xlv`（首页）：P0 **优先催办**（单笔沉默或沉睡≥7天未回访）、P1 **疑似沉睡**（2天≤沉睡＜7天且未回访）、P2 考核将到期（两月窗口剩≤15天仍未达标）；与沉睡预警分工见 §6.2c |
 | 小绿盒沉睡回访 | 对齐 N7 V1 跟进表单（界面称「跟进」）：接通/未接通、可叠加「不愿配合」「已答应继续使用」、**跟进图（至少一张）**；Excel 重导保留跟进内容，唯一例外是未达标设备在下一日运营快照仍沉睡时将 `followUpDone` 重开为待跟进；台账 `/xlv/follow-up`（无侧栏入口，从待办钻取）；标题下 **← 返回**；Tab 为待回访 / 已回访 / 全部；`priority=P0\|P1` 时 Tab 计数与列表同为该档口径 |
-| 小绿盒关单回告经理 | 队员关单成功后，所属经理收**站内通知**（`XlvNotification` → `XlvMemberAccount`）；**同时抄送全局 `admin` 管理员**（`User`）；按设备 `managerName` 匹配经理账号；经理本人代记不通知；入口：今日待办「队员已处理」、侧栏、`/xlv/notifications`、经理待办底栏角标；点开设备详情即已读；企微外推 Phase 2 |
+| 小绿盒关单回告经理 | 队员关单成功后，所属经理收**站内通知**（`XlvNotification` → `XlvMemberAccount`）；**同时抄送全局 `admin` 管理员**（`User`）；按设备 `managerName` 匹配经理账号；经理本人代记不通知；入口：今日待办「队员已处理」、侧栏、`/xlv/notifications`、经理待办底栏角标；点开设备详情即已读；**企微外推**（配 `XLV_OUTBOUND_WEBHOOK_URL`）：队员跟进成功旁路推群，含设备详情链接 |
+| 小绿盒撤机企微 | 运营导入移机明细 → 归属人收站内「撤机待确认」；**同时**推企微群（同上 Webhook） |
 | 小绿盒经理/队员手机底栏 | **经理**：待办 · 设备 · 团队 · 回访 · 我的；**队员**：待办 · 设备 · 回访 · 我的（无团队）；设备详情藏底栏 |
 | 小绿盒设备状态文案 | 列表/详情/导出统一 `xlv-device-display.ts`：沉睡优先；已达标/考核中；用户侧不出现「正常」「未收款」 |
 | 小绿盒唤醒 | 已回访后，导入数据自动判定：`sleepDays < 2` 或 `lastTxnDate` 晚于 `followUpAt` → **已唤醒**；见 `src/lib/xlv-wake-up.ts`、§6.2c `/xlv/daily`（**回访情况**） |
@@ -61,7 +62,7 @@
 ### 1.2 本阶段停在哪里
 
 生产 https://ali.orblead.com。已上线：N7 底栏、队员开号与登录、系统催办与 V1 关单回告、设备按姓名+经理挂靠、人员管理停用/彻底删除、本队同名空号去重、**设备搜索**、**运营名单按考核期 / 看板按注册日**；**微信小绿盒阶段 1–4**（独立开号、沉睡回访、今日待办、回访情况、队员月绩效、**关单回告经理**）。  
-**其它待部署**：N7 关单企微外推 MVP-A（代码在 GitHub，见 §16.1；生产未配 Webhook，先测再上）；小绿盒关单企微外推 Phase 2。
+**其它待部署**：N7 关单企微外推 MVP-A（代码在 GitHub，见 §16.1；生产未配 Webhook，先测再上）。
 
 ---
 
@@ -1029,11 +1030,11 @@ ssh sales-cloud '/opt/leadspace-alipay/deploy/restart-app.sh'
 # 安装定时重启（默认每天 03:00；改时间：CRON_SCHEDULE="30 4 * * *" bash ...）
 ssh sales-cloud 'bash /opt/leadspace-alipay/deploy/install-scheduled-restart.sh'
 
-# 安装健康巡检 + 企微紧急告警（每 10 分钟；须先在服务器 .env 配 OPS_ALERT_WEBHOOK_URL）
+# 安装健康巡检 + 企微紧急告警（每 10 分钟；须 .env 配 XLV_OUTBOUND_WEBHOOK_URL + XLV_OPS_CRON_SECRET）
 ssh sales-cloud 'bash /opt/leadspace-alipay/deploy/install-health-check-cron.sh'
 
-# 手动发一条测试告警
-ssh sales-cloud '/opt/leadspace-alipay/deploy/ops-alert.sh "测试" "> 这是一条测试告警" test'
+# 手动测企微（站内逻辑，须已部署且 .env 已配 Webhook）
+ssh sales-cloud 'curl -sS -H "Authorization: Bearer $(grep XLV_OPS_CRON_SECRET /opt/leadspace-alipay/.env | cut -d= -f2)" http://127.0.0.1:3001/api/xlv/ops/health'
 
 # 首次 SSL（DNS 生效后）
 ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/setup-ssl.sh'
@@ -1049,7 +1050,7 @@ ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/setup-ssl.sh'
 | 容器内存上限 | `docker-compose.prod.yml`：app **2G**、postgres 768M；超限 OOM Kill 后 Docker 自动重启 |
 | Node 堆上限 | `NODE_OPTIONS=--max-old-space-size=1536`（须小于 app 容器上限） |
 | **定时重启 app** | `deploy/restart-app.sh` + cron **每天 03:00**；导入进行中跳过；日志 `/var/log/leadspace-restart.log` |
-| **紧急告警** | `deploy/health-check.sh` 每 **10 分钟**巡检；异常推 **企微群**（`.env` 配 `OPS_ALERT_WEBHOOK_URL`）；30 分钟冷却防刷屏 |
+| **紧急告警** | 小绿盒 `outbound-notifier.ts` + `/api/xlv/ops/health`；`.env` 配 `XLV_OUTBOUND_WEBHOOK_URL` + `XLV_OPS_CRON_SECRET`；cron 每 10 分钟；30 分钟冷却 |
 | 导入互斥 | 同时只允许一个重导入；看数/登录不限 |
 | 后台导入 | 上传后返回 `jobId`，后台处理，前端轮询 `/api/import/jobs/[id]` |
 | 启动恢复 | `instrumentation.ts` → `recoverOrphanedHeavyImportJobs`：重启后将孤儿 `PROCESSING/PENDING` 标为 `FAILED` |

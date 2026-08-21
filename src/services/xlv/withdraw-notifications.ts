@@ -33,4 +33,17 @@ export async function createWithdrawPendingNotification(opts: {
       xlvMemberAccountId: opts.recipientMemberAccountId,
     },
   });
+
+  try {
+    const { notifyXlvOutboundWithdrawPending } = await import(
+      "./outbound-notifier"
+    );
+    await notifyXlvOutboundWithdrawPending({
+      deviceSn: opts.deviceSn,
+      merchantName: opts.merchantName,
+      storeName: opts.storeName,
+    });
+  } catch (err) {
+    console.error("[xlv-outbound] withdraw pending:", err);
+  }
 }
