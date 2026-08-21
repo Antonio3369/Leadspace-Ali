@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-08-19（小绿盒：库存回拨机具、撤机二次确认 + 运营清零、性能优化 · 待部署本次提交）
+**最后更新**：2026-08-21（生产定时重启 app 容器 · 缓解 2G 内存 OOM）
 
 ---
 
@@ -1023,6 +1023,12 @@ ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/server-deploy.sh'
 # 仅重建应用（不改数据库）
 ssh sales-cloud 'cd /opt/leadspace-alipay && sudo docker compose -f docker-compose.prod.yml up -d --build app'
 
+# 仅重启应用（释放内存，约 10s 502；有进行中的大表导入则自动跳过）
+ssh sales-cloud '/opt/leadspace-alipay/deploy/restart-app.sh'
+
+# 安装定时重启（默认每天 03:00；改时间：CRON_SCHEDULE="30 4 * * *" bash ...）
+ssh sales-cloud 'bash /opt/leadspace-alipay/deploy/install-scheduled-restart.sh'
+
 # 首次 SSL（DNS 生效后）
 ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/setup-ssl.sh'
 ```
@@ -1034,8 +1040,9 @@ ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/setup-ssl.sh'
 | 措施 | 说明 |
 |---|---|
 | Swap 2G | 主机已挂载 `/swapfile`，开机自动启用 |
-| 容器内存上限 | `docker-compose.prod.yml`：app **1.5G**、postgres 768M；超限只重启该容器 |
-| Node 堆上限 | `NODE_OPTIONS=--max-old-space-size=1280`（须小于 app 容器上限） |
+| 容器内存上限 | `docker-compose.prod.yml`：app **2G**、postgres 768M；超限 OOM Kill 后 Docker 自动重启 |
+| Node 堆上限 | `NODE_OPTIONS=--max-old-space-size=1536`（须小于 app 容器上限） |
+| **定时重启 app** | `deploy/restart-app.sh` + cron **每天 03:00**；导入进行中跳过；日志 `/var/log/leadspace-restart.log` |
 | 导入互斥 | 同时只允许一个重导入；看数/登录不限 |
 | 后台导入 | 上传后返回 `jobId`，后台处理，前端轮询 `/api/import/jobs/[id]` |
 | 启动恢复 | `instrumentation.ts` → `recoverOrphanedHeavyImportJobs`：重启后将孤儿 `PROCESSING/PENDING` 标为 `FAILED` |
@@ -1053,9 +1060,11 @@ ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/setup-ssl.sh'
 
 ```
 deploy/
-├── push-and-deploy.sh      # 本机 rsync + 远程 server-deploy
-├── server-deploy.sh        # 服务器：build、up、db push、seed
-├── setup-ssl.sh            # Let's Encrypt + Nginx HTTPS
+├── push-and-deploy.sh           # 本机 rsync + 远程 server-deploy
+├── server-deploy.sh             # 服务器：build、up、db push、seed
+├── restart-app.sh                 # 仅重启 app 容器（可手动 / cron）
+├── install-scheduled-restart.sh  # 安装每天 03:00 定时重启
+├── setup-ssl.sh                 # Let's Encrypt + Nginx HTTPS
 ├── env.production.example
 └── nginx/ali.orblead.com.conf
 docker-compose.prod.yml
