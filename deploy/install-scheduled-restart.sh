@@ -22,9 +22,9 @@ fi
 
 CRON_LINE="${CRON_SCHEDULE} ${RESTART_SCRIPT} >> ${LOG_FILE} 2>&1 ${CRON_MARKER}"
 
-# 去掉旧条目后写入新条目
+# 去掉旧条目后写入新条目（匹配 marker 或脚本路径，避免重复安装）
 (
-  crontab -l 2>/dev/null | grep -v "${CRON_MARKER}" || true
+  crontab -l 2>/dev/null | grep -v "${CRON_MARKER}" | grep -v "${RESTART_SCRIPT}" || true
   echo "${CRON_LINE}"
 ) | crontab -
 
