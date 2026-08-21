@@ -97,3 +97,45 @@ export async function notifyXlvOutboundOpsAlert(
   if (!url) return;
   await pushWeComWebhookMarkdown(url, buildXlvOpsAlertMarkdown(title, detail));
 }
+
+function summarizeXlvImportResult(result: unknown): string {
+  if (!result || typeof result !== "object") return "已完成";
+  const r = result as Record<string, unknown>;
+  const format =
+    r.format === "roster"
+      ? "组织名册"
+      : r.format === "raw"
+        ? "原始明细"
+        : String(r.format ?? "");
+  return `${format} · ${r.totalRows ?? "?"} 行 · 设备新增 ${r.createdDevices ?? 0} / 更新 ${r.updatedDevices ?? 0}`;
+}
+
+export function buildXlvImportSuccessMarkdown(opts: {
+  fileName: string;
+  status: "SUCCESS" | "PARTIAL";
+  uploadedByName: string;
+  result: unknown;
+}): string {
+  const partialNote =
+    opts.status === "PARTIAL" ? "（部分成功，请登录核对明细）" : "";
+  const summary = summarizeXlvImportResult(opts.result);
+  const link = `${publicBaseUrl()}/xlv/admin/import`;
+  return [
+    `**【小绿盒】数据上传成功${partialNote}**`,
+    `> 文件：${opts.fileName}`,
+    `> 上传人：${opts.uploadedByName}`,
+    `> 结果：${summary}`,
+    `> [打开导入页](${link})`,
+  ].join("\n");
+}
+
+export async function notifyXlvOutboundImportSuccess(opts: {
+  fileName: string;
+  status: "SUCCESS" | "PARTIAL";
+  uploadedByName: string;
+  result: unknown;
+}): Promise<void> {
+  const url = xlvOutboundWebhookUrl();
+  if (!url) return;
+  await pushWeComWebhookMarkdown(url, buildXlvImportSuccessMarkdown(opts));
+}

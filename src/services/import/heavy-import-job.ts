@@ -12,6 +12,7 @@ import { importN7ExcelFile } from "@/services/import/n7-excel-importer";
 import { importXlvExcelFileFromPath } from "@/services/import/xlv-excel-importer";
 import { invalidateXlvBoardCache } from "@/services/xlv/board-cache";
 import { importExcelFile } from "@/services/import/excel-importer";
+import { notifyXlvOutboundImportSuccess } from "@/services/xlv/outbound-notifier";
 
 export type HeavyImportKind = "personnel" | "n7" | "xlh-excel" | "xlv";
 
@@ -240,6 +241,9 @@ async function runHeavyImportJob(jobId: string) {
     } else if (job.kind === "xlh-excel") {
       buffer = fs.readFileSync(filePath);
       result = await importExcelFile(buffer, job.fileName, job.uploadedById);
+      if ((result as { status?: string }).status === "FAILED") finalStatus = "FAILED";
+      else if ((result as { status?: string }).status === "PARTIAL")
+        finalStatus = "PARTIAL";
     } else if (job.kind === "xlv") {
       let lastWrittenProgress = -1;
       const reportProgress = async (progress: number, message: string) => {
@@ -284,6 +288,23 @@ async function runHeavyImportJob(jobId: string) {
         completedAt: new Date(),
       },
     });
+
+    if (job.kind === "xlv") {
+      const uploader = await db.user
+        .findUnique({
+          where: { id: job.uploadedById },
+          select: { name: true },
+        })
+        .catch(() => null);
+      void notifyXlvOutboundImportSuccess({
+        fileName: job.fileName,
+        status: finalStatus,
+        uploadedByName: uploader?.name?.trim() || "未知",
+        result,
+      }).catch((err) => {
+        console.warn("[xlv-outbound] import success notify failed:", err);
+      });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "导入失败";
     await db.heavyImportJob
