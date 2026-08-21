@@ -4,6 +4,7 @@ set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$APP_DIR"
+chmod +x deploy/*.sh 2>/dev/null || true
 
 if [[ ! -f .env ]]; then
   echo "缺少 .env，请先：cp deploy/env.production.example .env && 编辑密码与 AUTH_SECRET"

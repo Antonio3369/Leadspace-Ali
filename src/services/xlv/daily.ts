@@ -1,10 +1,10 @@
 import { db } from "@/lib/db";
-import { parseN7DateRange } from "@/lib/n7-date";
+import { getCurrentMonthRange, parseN7DateRange } from "@/lib/n7-date";
 import type { SessionUser } from "@/lib/permissions";
 import { xlvManagerDisplayName } from "@/lib/xlv-rules";
 import { xlvStatDateKey } from "@/lib/xlv-stat-date";
 import { detectXlvWakeUpDate } from "@/lib/xlv-wake-up";
-import { loadXlvSnapshotMap } from "@/services/xlv/assessment";
+import { loadXlvSnapshotMapAfterFollowUp } from "@/services/xlv/assessment";
 import {
   assertCanViewXlv,
   buildXlvAssignedDeviceWhere,
@@ -12,6 +12,7 @@ import {
   xlvManagerKeyOf,
   xlvStaffKeyOf,
 } from "@/services/xlv/xlv-scope";
+import { withXlvHeavyGate } from "./xlv-heavy-gate";
 
 export type XlvDailyPoint = {
   date: string;
@@ -83,42 +84,34 @@ function tallyRow(
   };
 }
 
-export async function getXlvDailyPerformance(
-  user: SessionUser,
-  opts: {
-    dateFrom?: string | null;
-    dateTo?: string | null;
-    month?: string | null;
-  }
-) {
-  assertCanViewXlv(user);
-  const { from, to, dateFrom, dateTo } = parseN7DateRange(opts);
-  if (!from || !to) {
-    throw new Error("请选择有效日期范围");
-  }
+const FOLLOWED_DEVICE_SELECT = {
+  deviceSn: true,
+  managerUserId: true,
+  managerName: true,
+  salesUserId: true,
+  operatorName: true,
+  followUpAt: true,
+  sleepDays: true,
+  lastTxnDate: true,
+  statDate: true,
+} as const;
 
+async function loadFollowedDevicesWithWake(
+  user: SessionUser,
+  followUpAt?: { gte: Date; lte: Date }
+): Promise<FollowedDevice[]> {
   const rows = await db.xlvDeviceRecord.findMany({
     where: {
       AND: [
         buildXlvRoleWhere(user),
         buildXlvAssignedDeviceWhere(),
-        { followUpAt: { not: null } },
+        { followUpAt: followUpAt ?? { not: null } },
       ],
     },
-    select: {
-      deviceSn: true,
-      managerUserId: true,
-      managerName: true,
-      salesUserId: true,
-      operatorName: true,
-      followUpAt: true,
-      sleepDays: true,
-      lastTxnDate: true,
-      statDate: true,
-    },
+    select: FOLLOWED_DEVICE_SELECT,
   });
 
-  const snapshotMap = await loadXlvSnapshotMap(rows.map((r) => r.deviceSn));
+  const snapshotMap = await loadXlvSnapshotMapAfterFollowUp(rows);
 
   const enriched: FollowedDevice[] = [];
   for (const row of rows) {
@@ -132,6 +125,56 @@ export async function getXlvDailyPerformance(
       woken: wakeUpDate !== null,
     });
   }
+  return enriched;
+}
+
+function wakeUpRateOf(devices: FollowedDevice[]) {
+  const followUpCount = devices.length;
+  const wakeUpCount = devices.filter((d) => d.woken).length;
+  return followUpCount > 0
+    ? Math.round((wakeUpCount / followUpCount) * 1000) / 10
+    : 0;
+}
+
+/** 本月关单唤醒率（与每日绩效 summary.wakeUpRate 同口径，不拉更早关单的历史快照） */
+export async function getXlvMonthWakeUpRate(user: SessionUser) {
+  return withXlvHeavyGate(async () => {
+    assertCanViewXlv(user);
+    const { from, to } = getCurrentMonthRange();
+    const inPeriod = await loadFollowedDevicesWithWake(user, {
+      gte: from,
+      lte: to,
+    });
+    return wakeUpRateOf(inPeriod);
+  });
+}
+
+export async function getXlvDailyPerformance(
+  user: SessionUser,
+  opts: {
+    dateFrom?: string | null;
+    dateTo?: string | null;
+    month?: string | null;
+  }
+) {
+  return withXlvHeavyGate(() => loadXlvDailyPerformance(user, opts));
+}
+
+async function loadXlvDailyPerformance(
+  user: SessionUser,
+  opts: {
+    dateFrom?: string | null;
+    dateTo?: string | null;
+    month?: string | null;
+  }
+) {
+  assertCanViewXlv(user);
+  const { from, to, dateFrom, dateTo } = parseN7DateRange(opts);
+  if (!from || !to) {
+    throw new Error("请选择有效日期范围");
+  }
+
+  const enriched = await loadFollowedDevicesWithWake(user);
 
   const fromMs = from.getTime();
   const toMs = to.getTime() + 24 * 60 * 60 * 1000 - 1;
@@ -165,10 +208,7 @@ export async function getXlvDailyPerformance(
   const followUpCount = inPeriod.length;
   const wakeUpCount = inPeriod.filter((d) => d.woken).length;
   const stillDormantCount = followUpCount - wakeUpCount;
-  const wakeUpRate =
-    followUpCount > 0
-      ? Math.round((wakeUpCount / followUpCount) * 1000) / 10
-      : 0;
+  const wakeUpRate = wakeUpRateOf(inPeriod);
 
   let audience: XlvDailyAudience;
   let ranking: XlvDailyRow[];

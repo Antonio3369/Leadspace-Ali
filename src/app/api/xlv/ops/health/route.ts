@@ -17,7 +17,7 @@ function authorize(request: Request): boolean {
   return false;
 }
 
-/** 运维巡检：内存 / 卡死导入 → 企微告警（须配置 XLV_OPS_CRON_SECRET） */
+/** 运维巡检：卡死导入可走企微；内存过高只返回 503 + 日志，不推业务群 */
 export async function GET(request: Request) {
   if (!authorize(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

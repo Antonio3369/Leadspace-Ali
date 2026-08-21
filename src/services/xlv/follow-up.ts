@@ -10,7 +10,7 @@ import {
   type XlvTodayPriority,
   XLV_SLEEP_THRESHOLD_DAYS,
   xlvEffectiveAlertKind,
-  xlvQualificationGapLine,
+  xlvStoredQualificationGapLine,
 } from "@/lib/xlv-rules";
 import {
   assertCanViewXlv,
@@ -18,12 +18,9 @@ import {
   buildXlvRoleWhere,
   buildXlvSleepAlertWhere,
 } from "@/services/xlv/xlv-scope";
-import {
-  attachXlvQualificationDetails,
-  loadXlvSnapshotMap,
-} from "@/services/xlv/assessment";
 import { sortXlvDevices } from "@/services/xlv/sort-devices";
 import type { XlvDeviceListItem } from "@/services/xlv/analytics";
+import { withXlvHeavyGate } from "./xlv-heavy-gate";
 
 export type XlvFollowFilter = "pending" | "done" | "all";
 
@@ -175,6 +172,20 @@ export async function getXlvFollowUpDevices(
     search?: string | null;
   }
 ) {
+  return withXlvHeavyGate(() => loadXlvFollowUpDevices(user, opts));
+}
+
+export async function loadXlvFollowUpDevices(
+  user: SessionUser,
+  opts: {
+    follow?: XlvFollowFilter;
+    alert?: Exclude<XlvAlertKind, "all" | "active"> | "all";
+    priority?: XlvFollowUpPriority | null;
+    managerName?: string | null;
+    operatorName?: string | null;
+    search?: string | null;
+  }
+) {
   assertCanViewXlv(user);
   const follow = opts.follow ?? "pending";
   const where = buildFollowUpWhere(user, {
@@ -203,22 +214,18 @@ export async function getXlvFollowUpDevices(
       followUpAt: true,
       followUpConnectStatus: true,
       followUpFlags: true,
+      qualificationStatus: true,
     },
   });
 
-  const snapshotMap = await loadXlvSnapshotMap(rows.map((r) => r.deviceSn));
-  const enriched = attachXlvQualificationDetails(rows, snapshotMap);
-  const sorted = sortXlvDevices(enriched, "risk");
+  const sorted = sortXlvDevices(rows, "risk");
 
   const devices: XlvFollowUpDeviceItem[] = [];
   let priorityPending = 0;
   let priorityDone = 0;
 
   for (const row of sorted) {
-    const snapshots = snapshotMap.get(row.deviceSn) ?? [];
-    const asOf =
-      row.statDate ??
-      (snapshots.length ? snapshots[snapshots.length - 1]!.statDate : new Date());
+    const asOf = row.statDate ?? new Date();
     const assessmentDaysLeft = getXlvAssessmentDaysRemaining(
       row.firstTxnDate,
       asOf
@@ -240,7 +247,6 @@ export async function getXlvFollowUpDevices(
       if (follow === "done" && !row.followUpDone) continue;
     }
 
-    const detail = row.qualificationDetail;
     devices.push({
       deviceSn: row.deviceSn,
       merchantName: row.merchantName,
@@ -259,7 +265,7 @@ export async function getXlvFollowUpDevices(
         qualificationStatus: row.qualificationStatus,
       }),
       qualificationStatus: row.qualificationStatus,
-      qualificationGapLine: xlvQualificationGapLine(detail),
+      qualificationGapLine: xlvStoredQualificationGapLine(row),
       followUpDone: row.followUpDone,
       followUpNote: row.followUpNote,
       followUpAt: row.followUpAt?.toISOString() ?? null,

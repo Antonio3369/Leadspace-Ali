@@ -4,6 +4,8 @@ import { PermissionError } from "@/lib/permissions";
 import { getXlvDailyPerformance } from "@/services/xlv/daily";
 import { assertCanViewXlv } from "@/services/xlv/xlv-scope";
 
+export const maxDuration = 120;
+
 export async function GET(request: Request) {
   try {
     const user = await requireSessionUser();

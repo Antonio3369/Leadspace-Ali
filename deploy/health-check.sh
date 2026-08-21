@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # 生产健康巡检：站点可达 + 小绿盒运维 API（内存/导入卡死 → 企微）
+# 内存：第一次超阈值只告警；连续两次（约 20 分钟）仍高且无导入才重启
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ALERT="${APP_DIR}/deploy/ops-alert.sh"
+RESTART="${APP_DIR}/deploy/restart-app.sh"
+MEM_FLAG="${MEM_HIGH_FLAG:-/tmp/leadspace-mem-high}"
 LOG_TAG="[health-check]"
 
 log() { echo "$(date -Iseconds) ${LOG_TAG} $*"; }
@@ -33,7 +36,7 @@ if ! curl -sf -o /dev/null --max-time 8 http://127.0.0.1:3001/login; then
   exit 1
 fi
 
-# 3. 小绿盒运维 API（进程内存 / 卡死导入 → 企微，走 XLV_OUTBOUND_WEBHOOK_URL）
+# 3. 小绿盒运维 API（卡死导入仍可走企微；内存过高只记日志，不推业务群）
 if [[ -n "${XLV_OPS_CRON_SECRET:-}" ]]; then
   code="$(
     curl -sS -o /tmp/xlv-ops-health.json -w '%{http_code}' \
@@ -42,9 +45,40 @@ if [[ -n "${XLV_OPS_CRON_SECRET:-}" ]]; then
       "http://127.0.0.1:3001/api/xlv/ops/health" || echo "000"
   )"
   if [[ "${code}" == "200" ]]; then
+    rm -f "${MEM_FLAG}"
     log "正常 $(tr -d '\n' < /tmp/xlv-ops-health.json 2>/dev/null | head -c 200)"
   elif [[ "${code}" == "503" ]]; then
     log "有告警 $(cat /tmp/xlv-ops-health.json 2>/dev/null)"
+    if grep -q 'memory_high' /tmp/xlv-ops-health.json 2>/dev/null; then
+      if [[ -f "${MEM_FLAG}" ]]; then
+        active="$(
+          sudo docker exec leadspace-postgres psql -U leadspace -d leadspace -tAc \
+            "SELECT COUNT(*) FROM \"HeavyImportJob\" WHERE status IN ('PROCESSING', 'PENDING');" \
+            2>/dev/null || echo "0"
+        )"
+        active="${active// /}"
+        if [[ "${active}" -gt 0 ]]; then
+          log "连续超阈值但有 ${active} 个导入进行中，推迟重启"
+        else
+          log "连续超阈值，重启 app"
+          restart_out="$(bash "${RESTART}" 2>&1)" || true
+          log "${restart_out}"
+          if echo "${restart_out}" | grep -q '跳过重启'; then
+            log "有导入任务，推迟重启"
+          elif echo "${restart_out}" | grep -q '完成'; then
+            rm -f "${MEM_FLAG}"
+            log "连续超阈值已自动重启（不推业务企微群）"
+          else
+            log "自动重启失败"
+          fi
+        fi
+      else
+        date -Iseconds > "${MEM_FLAG}"
+        log "内存告警，记一次；下次仍高再重启"
+      fi
+    else
+      rm -f "${MEM_FLAG}"
+    fi
   else
     log "运维 API 异常 http=${code}"
   fi

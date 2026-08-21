@@ -3,6 +3,8 @@ import { requireSessionUser } from "@/lib/auth";
 import { PermissionError } from "@/lib/permissions";
 import { getXlvDashboardPulseSummary } from "@/services/xlv/analytics";
 
+export const maxDuration = 120;
+
 export async function GET() {
   try {
     const user = await requireSessionUser();

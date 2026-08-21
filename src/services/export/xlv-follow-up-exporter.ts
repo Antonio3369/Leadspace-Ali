@@ -2,17 +2,15 @@ import * as XLSX from "xlsx";
 import type { SessionUser } from "@/lib/permissions";
 import { canExport } from "@/lib/permissions";
 import { xlvDeviceUserStatusLabel } from "@/lib/xlv-device-display";
-import {
-  connectStatusLabel,
-  summarizeFollowUpResult,
-} from "@/lib/xlv-follow-up";
+import { summarizeFollowUpResult } from "@/lib/xlv-follow-up";
 import { isXlvDeviceWokenUp, xlvWakeUpStatusLabel } from "@/lib/xlv-wake-up";
-import { loadXlvSnapshotMap } from "@/services/xlv/assessment";
+import { loadXlvSnapshotMapAfterFollowUp } from "@/services/xlv/assessment";
 import {
-  getXlvFollowUpDevices,
+  loadXlvFollowUpDevices,
   type XlvFollowFilter,
   type XlvFollowUpPriority,
 } from "@/services/xlv/follow-up";
+import { withXlvHeavyGate } from "@/services/xlv/xlv-heavy-gate";
 
 const EXPORT_COLUMNS = [
   { key: "managerName", header: "经理" },
@@ -58,17 +56,21 @@ export async function exportXlvFollowUpExcel(
     throw new Error("当前账号不可导出");
   }
 
-  const data = await getXlvFollowUpDevices(user, {
-    follow: opts.follow ?? "pending",
-    priority: opts.priority ?? null,
-    managerName: opts.managerName,
-    operatorName: opts.operatorName,
-    search: opts.search,
-  });
+  return withXlvHeavyGate(async () => {
+    const data = await loadXlvFollowUpDevices(user, {
+      follow: opts.follow ?? "pending",
+      priority: opts.priority ?? null,
+      managerName: opts.managerName,
+      operatorName: opts.operatorName,
+      search: opts.search,
+    });
 
-  const snapshotMap = await loadXlvSnapshotMap(
-    data.devices.map((d) => d.deviceSn)
-  );
+    const snapshotMap = await loadXlvSnapshotMapAfterFollowUp(
+      data.devices.map((d) => ({
+        deviceSn: d.deviceSn,
+        followUpAt: d.followUpAt ? new Date(d.followUpAt) : null,
+      }))
+    );
 
   const rows = data.devices.map((d) => {
     const snapshots = snapshotMap.get(d.deviceSn) ?? [];
@@ -136,4 +138,5 @@ export async function exportXlvFollowUpExcel(
     filename: `小绿盒沉睡回访_${followLabel}_${formatTimestamp()}.xlsx`,
     count: rows.length,
   };
+  });
 }

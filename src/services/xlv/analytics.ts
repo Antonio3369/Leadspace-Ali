@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { getCurrentMonthRange } from "@/lib/n7-date";
 import type { SessionUser } from "@/lib/permissions";
-import { getXlvDailyPerformance } from "@/services/xlv/daily";
+import { getXlvMonthWakeUpRate } from "@/services/xlv/daily";
 import {
   classifyXlvAlert,
   type XlvAlertKind,
@@ -249,14 +249,14 @@ export async function getXlvDashboardPulseSummary(
     ],
   };
 
-  const [fast, qual, expandCount, expandQualified, daily] = await Promise.all([
+  const [fast, qual, expandCount, expandQualified, wakeUpRate] = await Promise.all([
     getXlvDashboardSummaryFast(user),
     getXlvDashboardQualSummary(user),
     db.xlvDeviceRecord.count({ where: expandWhere }),
     db.xlvDeviceRecord.count({
       where: { AND: [expandWhere, { qualificationStatus: "qualified" }] },
     }),
-    getXlvDailyPerformance(user, {}),
+    getXlvMonthWakeUpRate(user),
   ]);
 
   const monthQualifyRate =
@@ -269,7 +269,7 @@ export async function getXlvDashboardPulseSummary(
     monthQualifyRate,
     singleSilence: fast.singleSilence,
     dormant: fast.dormant,
-    wakeUpRate: daily.summary.wakeUpRate,
+    wakeUpRate,
     qualifiedCount: qual.qualifiedCount,
   };
 }

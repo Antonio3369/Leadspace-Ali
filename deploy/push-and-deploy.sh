@@ -34,6 +34,6 @@ fi
 REMOTE
 
 echo "==> 远程构建并启动..."
-ssh "${SERVER}" "cd ${REMOTE_DIR} && chmod +x deploy/server-deploy.sh && ./deploy/server-deploy.sh"
+ssh "${SERVER}" "chmod +x ${REMOTE_DIR}/deploy/*.sh && cd ${REMOTE_DIR} && ./deploy/server-deploy.sh"
 
 echo "==> 完成。下一步：配置 DNS ali.orblead.com -> 43.136.25.181，然后运行 SSL 配置脚本"

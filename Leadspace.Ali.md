@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-08-21（小绿盒数据上传成功企微 · 已部署生产 `4f42578`）
+**最后更新**：2026-08-21（小绿盒看板降内存 + 内存告警不进业务企微群）
 
 ---
 
@@ -56,14 +56,14 @@
 | 小绿盒关单回告经理 | 队员关单成功后，所属经理收**站内通知**（`XlvNotification` → `XlvMemberAccount`）；**同时抄送全局 `admin` 管理员**（`User`）；按设备 `managerName` 匹配经理账号；经理本人代记不通知；入口：今日待办「队员已处理」、侧栏、`/xlv/notifications`、经理待办底栏角标；点开设备详情即已读；**企微外推**（`XLV_OUTBOUND_WEBHOOK_URL`）：队员跟进成功旁路推群，含设备详情链接；**生产已上线**（2026-08-21 验收） |
 | 小绿盒撤机企微 | 运营导入移机明细 → 归属人收站内「撤机待确认」；**同时**推企微群（同上 Webhook）；**生产已上线** |
 | 小绿盒数据上传成功企微 | 小绿盒 Excel 大表导入后台任务 **SUCCESS / PARTIAL** 完成时旁路推群；含文件名、上传人、结果摘要 + `/xlv/admin/import` 链接；N7 / 小蓝环 / 人员名单不发 |
-| 小绿盒运维企微 | 内存过高 / 导入卡死 / 站点不可用 → 企微告警；cron 每 10 分钟 + 每天 03:00 定时重启 app；见 §15.6、`outbound-notifier.ts`、`/api/xlv/ops/health` |
+| 小绿盒运维企微 | **导入卡死 / 站点不可用 / 容器未运行** → 业务企微群；**内存过高不推群**（群里有一线用户），只写巡检日志；cron 每 10 分钟；连续两次超 1200MB（约 20 分钟）且无导入才自动重启 app；每天 03:00 定时重启；见 §15.6、`ops-health.ts`、`/api/xlv/ops/health` |
 | 小绿盒经理/队员手机底栏 | **经理**：待办 · 设备 · 团队 · 回访 · 我的；**队员**：待办 · 设备 · 回访 · 我的（无团队）；设备详情藏底栏 |
 | 小绿盒设备状态文案 | 列表/详情/导出统一 `xlv-device-display.ts`：沉睡优先；已达标/考核中；用户侧不出现「正常」「未收款」 |
 | 小绿盒唤醒 | 已回访后，导入数据自动判定：`sleepDays < 2` 或 `lastTxnDate` 晚于 `followUpAt` → **已唤醒**；见 `src/lib/xlv-wake-up.ts`、§6.2c `/xlv/daily`（**回访情况**） |
 
 ### 1.2 本阶段停在哪里
 
-生产 https://ali.orblead.com。已上线：N7 底栏、队员开号与登录、系统催办与 V1 关单回告、设备按姓名+经理挂靠、人员管理停用/彻底删除、本队同名空号去重、**设备搜索**、**运营名单按考核期 / 看板按注册日**；**微信小绿盒阶段 1–4**（独立开号、沉睡回访、今日待办、回访情况、队员月绩效、**关单回告经理**）；**小绿盒企微外推**（队员跟进 / 撤机待确认 / 运维告警，2026-08-21 生产验收）。  
+生产 https://ali.orblead.com。已上线：N7 底栏、队员开号与登录、系统催办与 V1 关单回告、设备按姓名+经理挂靠、人员管理停用/彻底删除、本队同名空号去重、**设备搜索**、**运营名单按考核期 / 看板按注册日**；**微信小绿盒阶段 1–4**（独立开号、沉睡回访、今日待办、回访情况、队员月绩效、**关单回告经理**）；**小绿盒企微外推**（队员跟进 / 撤机待确认 / 数据上传成功，2026-08-21 生产验收；**内存告警不进该群**）。  
 **其它待部署**：N7 关单企微外推 MVP-A（代码在 GitHub，见 §16.1；生产未配 Webhook，先测再上）。
 
 ---
@@ -780,6 +780,15 @@ src/
 
 ## 13. 近期已完成
 
+### 2026-08-21（小绿盒 · 看板降内存 + 内存告警不进业务群）
+
+- [x] **根因**：打开 `/xlv/alerts` 时 pulse 会拉每日绩效全量关单设备 × 全部历史快照，RSS 约 10 分钟顶到 1.5GB
+- [x] **Pulse**：本月关单设备算唤醒率，不再调用 `getXlvDailyPerformance` 全量
+- [x] **Daily / 导出**：快照只拉 `followUpAt` 之后；折线仍含「更早关单、期内唤醒」
+- [x] **回访列表**：用落库 `qualificationStatus`，不再为整表拉快照
+- [x] **巡检**：每 10 分钟只记日志；连续两次超 1200MB 且无导入才重启；`restart-app.sh` 部署时补执行权限
+- [x] **企微**：**内存过高 / 自动重启不推业务群**；导入卡死、站点挂了仍推
+
 ### 2026-08-21（小绿盒 · 企微外推 + 运维告警 · 已部署生产 `a6d935b`）
 
 - [x] **企微外推**：`outbound-notifier.ts` — 队员跟进完成、撤机待确认、**小绿盒数据上传成功**旁路推群（`XLV_OUTBOUND_WEBHOOK_URL`）
@@ -1058,8 +1067,10 @@ ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/setup-ssl.sh'
 | Swap 2G | 主机已挂载 `/swapfile`，开机自动启用 |
 | 容器内存上限 | `docker-compose.prod.yml`：app **2G**、postgres 768M；超限 OOM Kill 后 Docker 自动重启 |
 | Node 堆上限 | `NODE_OPTIONS=--max-old-space-size=1536`（须小于 app 容器上限） |
-| **定时重启 app** | `deploy/restart-app.sh` + cron **每天 03:00**；导入进行中跳过；日志 `/var/log/leadspace-restart.log` |
-| **紧急告警** | 小绿盒 `outbound-notifier.ts` + `/api/xlv/ops/health`；`.env` 配 `XLV_OUTBOUND_WEBHOOK_URL` + `XLV_OPS_CRON_SECRET`；cron 每 10 分钟；30 分钟冷却 |
+| **定时重启 app** | `deploy/restart-app.sh` + cron **每天 03:00**；导入进行中跳过；日志 `/var/log/leadspace-restart.log`；部署脚本 `chmod +x deploy/*.sh` |
+| **紧急告警** | 导入卡死 / 站点不可用 / 容器未运行 → 企微（`ops-alert.sh` / `notifyXlvOutboundOpsAlert`）；**内存过高不推业务群**，只写 `/var/log/leadspace-health-check.log` |
+| **内存超阈值重启** | 巡检每 10 分钟；第一次 `memory_high` 只打标；**连续两次**（约 20 分钟）仍高且无导入才 `restart-app.sh` |
+| **看板降内存** | pulse 不拉 daily 全量；快照可按 `statDateFrom` / 跟进日后加载；回访列表用落库达标状态 |
 | 导入互斥 | 同时只允许一个重导入；看数/登录不限 |
 | 后台导入 | 上传后返回 `jobId`，后台处理，前端轮询 `/api/import/jobs/[id]` |
 | 启动恢复 | `instrumentation.ts` → `recoverOrphanedHeavyImportJobs`：重启后将孤儿 `PROCESSING/PENDING` 标为 `FAILED` |

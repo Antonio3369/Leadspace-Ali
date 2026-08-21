@@ -9,7 +9,7 @@ LOG_FILE="${LOG_FILE:-/var/log/leadspace-health-check.log}"
 CHECK_SCRIPT="${APP_DIR}/deploy/health-check.sh"
 CRON_MARKER="# leadspace-alipay-health-check"
 
-chmod +x "${CHECK_SCRIPT}" "${APP_DIR}/deploy/ops-alert.sh" 2>/dev/null || true
+chmod +x "${CHECK_SCRIPT}" "${APP_DIR}/deploy/ops-alert.sh" "${APP_DIR}/deploy/restart-app.sh" 2>/dev/null || true
 
 if [[ ! -f "${LOG_FILE}" ]]; then
   sudo touch "${LOG_FILE}"

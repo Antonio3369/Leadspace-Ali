@@ -432,6 +432,28 @@ export function xlvQualificationGapLine(detail: XlvQualificationDetail) {
   return gapText;
 }
 
+/** 列表用落库达标状态写缺口文案，避免为整表拉快照；装机月/次月细节按累计近似 */
+export function xlvStoredQualificationGapLine(device: {
+  firstTxnDate: Date | null;
+  statDate?: Date | null;
+  cumulativeUsers: number;
+  cumulativeTxns: number;
+  qualificationStatus: XlvQualificationStatus;
+}): string {
+  if (device.qualificationStatus === "qualified") return "已达标";
+  if (!device.firstTxnDate) return "待首笔交易";
+  const detail = getXlvQualificationDetail(
+    device,
+    [],
+    device.statDate ?? undefined,
+    true
+  );
+  return xlvQualificationGapLine({
+    ...detail,
+    status: device.qualificationStatus,
+  });
+}
+
 export function xlvQualificationMonthResultLabel(row: XlvQualificationMonthRow) {
   if (row.met) return { tone: "success" as const, text: "达标" };
   if (row.users == null && row.txns == null) {
