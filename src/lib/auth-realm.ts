@@ -20,6 +20,11 @@ export function isPublicPath(pathname: string): boolean {
   return false;
 }
 
+/** 服务器 cron 调用的运维接口（路由内校验 XLV_OPS_CRON_SECRET） */
+export function isInternalOpsPath(pathname: string): boolean {
+  return pathname === "/api/xlv/ops/health";
+}
+
 export function canAccessPathWithSession(
   pathname: string,
   user: {

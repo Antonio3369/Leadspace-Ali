@@ -7,6 +7,7 @@ import {
   isPublicPath,
   sessionAuthRealm,
   isApiPath,
+  isInternalOpsPath,
   apiJsonError,
 } from "@/lib/auth-realm";
 import type { AuthRealm } from "@/lib/permissions";
@@ -79,6 +80,7 @@ export const authConfig = {
     authorized({ auth, request }) {
       const { pathname } = request.nextUrl;
       if (isPublicPath(pathname)) return true;
+      if (isInternalOpsPath(pathname)) return true;
 
       const isLoggedIn = !!auth?.user;
       if (!isLoggedIn) {

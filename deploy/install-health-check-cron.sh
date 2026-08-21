@@ -27,5 +27,5 @@ echo "==> 已安装健康巡检"
 echo "    计划: ${CRON_SCHEDULE}（每 10 分钟）"
 echo "    脚本: ${CHECK_SCRIPT}"
 echo "    日志: ${LOG_FILE}"
-echo "    告警: 需 .env 配置 OPS_ALERT_WEBHOOK_URL（企微群机器人）"
+echo "    告警: 需 .env 配置 XLV_OUTBOUND_WEBHOOK_URL + XLV_OPS_CRON_SECRET"
 crontab -l | grep "${CRON_MARKER}" || true
