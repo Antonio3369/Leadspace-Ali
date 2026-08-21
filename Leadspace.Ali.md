@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-08-21（生产定时重启 app 容器 · 缓解 2G 内存 OOM）
+**最后更新**：2026-08-21（运维：定时重启 + 企微紧急告警）
 
 ---
 
@@ -1029,6 +1029,12 @@ ssh sales-cloud '/opt/leadspace-alipay/deploy/restart-app.sh'
 # 安装定时重启（默认每天 03:00；改时间：CRON_SCHEDULE="30 4 * * *" bash ...）
 ssh sales-cloud 'bash /opt/leadspace-alipay/deploy/install-scheduled-restart.sh'
 
+# 安装健康巡检 + 企微紧急告警（每 10 分钟；须先在服务器 .env 配 OPS_ALERT_WEBHOOK_URL）
+ssh sales-cloud 'bash /opt/leadspace-alipay/deploy/install-health-check-cron.sh'
+
+# 手动发一条测试告警
+ssh sales-cloud '/opt/leadspace-alipay/deploy/ops-alert.sh "测试" "> 这是一条测试告警" test'
+
 # 首次 SSL（DNS 生效后）
 ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/setup-ssl.sh'
 ```
@@ -1043,6 +1049,7 @@ ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/setup-ssl.sh'
 | 容器内存上限 | `docker-compose.prod.yml`：app **2G**、postgres 768M；超限 OOM Kill 后 Docker 自动重启 |
 | Node 堆上限 | `NODE_OPTIONS=--max-old-space-size=1536`（须小于 app 容器上限） |
 | **定时重启 app** | `deploy/restart-app.sh` + cron **每天 03:00**；导入进行中跳过；日志 `/var/log/leadspace-restart.log` |
+| **紧急告警** | `deploy/health-check.sh` 每 **10 分钟**巡检；异常推 **企微群**（`.env` 配 `OPS_ALERT_WEBHOOK_URL`）；30 分钟冷却防刷屏 |
 | 导入互斥 | 同时只允许一个重导入；看数/登录不限 |
 | 后台导入 | 上传后返回 `jobId`，后台处理，前端轮询 `/api/import/jobs/[id]` |
 | 启动恢复 | `instrumentation.ts` → `recoverOrphanedHeavyImportJobs`：重启后将孤儿 `PROCESSING/PENDING` 标为 `FAILED` |
@@ -1064,6 +1071,9 @@ deploy/
 ├── server-deploy.sh             # 服务器：build、up、db push、seed
 ├── restart-app.sh                 # 仅重启 app 容器（可手动 / cron）
 ├── install-scheduled-restart.sh  # 安装每天 03:00 定时重启
+├── health-check.sh               # 健康巡检（站点/内存/导入）
+├── ops-alert.sh                  # 企微紧急告警
+├── install-health-check-cron.sh  # 安装每 10 分钟巡检 cron
 ├── setup-ssl.sh                 # Let's Encrypt + Nginx HTTPS
 ├── env.production.example
 └── nginx/ali.orblead.com.conf

@@ -52,4 +52,7 @@ for _ in $(seq 1 15); do
 done
 
 log "警告：重启后 30s 内 /login 未响应，请人工检查"
+if [[ -x "${APP_DIR}/deploy/ops-alert.sh" ]]; then
+  bash "${APP_DIR}/deploy/ops-alert.sh" "定时重启失败" "> 脚本：restart-app.sh\n> 现象：重启后 30s 内 /login 仍无响应" "restart_failed" || true
+fi
 exit 1
