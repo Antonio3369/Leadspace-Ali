@@ -85,6 +85,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-leadspace}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-leadspace}?schema=public
+      AUTH_URL: ${AUTH_URL:-https://ali.orblead.com}
+      XLV_OUTBOUND_WEBHOOK_URL: ${XLV_OUTBOUND_WEBHOOK_URL:-}
+      XLV_PUBLIC_BASE_URL: ${XLV_PUBLIC_BASE_URL:-${AUTH_URL:-https://ali.orblead.com}}
     restart: "no"
 
 volumes:

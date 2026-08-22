@@ -5,6 +5,13 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$APP_DIR"
 
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
 COMMIT="${1:-unknown}"
 TITLE="${2:-部署成功}"
 BODY="${3:-}"
@@ -22,6 +29,11 @@ echo "==> 运维小群：${TITLE}"
 bash "${APP_DIR}/deploy/ops-alert.sh" "${TITLE}" "${BODY}" "deploy_${COMMIT}"
 
 echo "==> 负责人群：分公司排名汇总"
+if [[ -z "${XLV_OUTBOUND_WEBHOOK_URL:-}" ]]; then
+  echo "ERROR: .env 未配置 XLV_OUTBOUND_WEBHOOK_URL，跳过负责人群汇总" >&2
+  exit 1
+fi
+
 sudo docker compose -f docker-compose.prod.yml --profile init run --rm \
   --entrypoint sh db-init -c "npx tsx scripts/xlv-push-company-summary.ts"
 
