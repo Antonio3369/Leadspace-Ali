@@ -72,6 +72,7 @@ export async function GET(request: Request) {
 const patchSchema = z.object({
   id: z.string().min(1).optional(),
   all: z.boolean().optional(),
+  types: z.array(z.string().min(1)).min(1).optional(),
 });
 
 export async function PATCH(request: Request) {
@@ -83,7 +84,10 @@ export async function PATCH(request: Request) {
 
     const body = patchSchema.parse(await request.json());
     if (body.all) {
-      await markAllXlvNotificationsRead(user);
+      await markAllXlvNotificationsRead(
+        user,
+        body.types ? { types: body.types } : undefined
+      );
       return NextResponse.json({ ok: true });
     }
     if (!body.id) {

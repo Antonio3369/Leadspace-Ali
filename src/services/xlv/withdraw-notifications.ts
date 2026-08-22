@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
+import { XLV_WITHDRAW_IMPORT_ENABLED } from "@/lib/xlv-inventory";
 import { XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING } from "@/lib/xlv-withdraw";
 
 export async function createWithdrawPendingNotification(opts: {
@@ -9,6 +10,7 @@ export async function createWithdrawPendingNotification(opts: {
   storeName: string | null;
   recipientMemberAccountId: string;
 }) {
+  if (!XLV_WITHDRAW_IMPORT_ENABLED) return;
   const store =
     opts.merchantName?.trim() ||
     opts.storeName?.trim() ||
@@ -33,17 +35,4 @@ export async function createWithdrawPendingNotification(opts: {
       xlvMemberAccountId: opts.recipientMemberAccountId,
     },
   });
-
-  try {
-    const { notifyXlvOutboundWithdrawPending } = await import(
-      "./outbound-notifier"
-    );
-    await notifyXlvOutboundWithdrawPending({
-      deviceSn: opts.deviceSn,
-      merchantName: opts.merchantName,
-      storeName: opts.storeName,
-    });
-  } catch (err) {
-    console.error("[xlv-outbound] withdraw pending:", err);
-  }
 }

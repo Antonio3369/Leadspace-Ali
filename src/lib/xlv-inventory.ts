@@ -9,6 +9,7 @@ export type { XlvInventoryStatus, XlvInventoryTransferType, XlvInventoryDeployed
 /**
  * 移机撤机明细导入 / 待确认：暂关闭。
  * 撤机改由 SN 归属推断：同 SN 商户名变更 = 已从旧商户撤机并铺到新商户。
+ * 关闭时不再创建/展示撤机待确认通知。
  */
 export const XLV_WITHDRAW_IMPORT_ENABLED = false;
 

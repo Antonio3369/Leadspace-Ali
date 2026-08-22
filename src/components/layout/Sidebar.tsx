@@ -87,7 +87,11 @@ const XLV_SALES_NAV_ITEMS = [
 ];
 
 const XLV_DIRECTOR_NAV_ITEMS = [
-  ...XLV_NAV_ITEMS,
+  { href: xlvPath(), label: "今日待办", icon: "📋" },
+  { href: xlvPath("/alerts"), label: "设备", icon: "📱" },
+  { href: xlvPath("/board"), label: "团队看板", icon: "📊" },
+  { href: xlvPath("/daily"), label: "回访情况", icon: "📈" },
+  { href: xlvPath("/admin/companies"), label: "分公司排名", icon: "🏢" },
   { href: xlvPath("/notifications"), label: "系统通知", icon: "✉️" },
   { href: xlvPath("/admin/import"), label: "数据导入", icon: "⬆️" },
   { href: xlvPath("/admin/inventory"), label: "设备库存", icon: "📦" },

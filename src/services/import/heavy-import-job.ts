@@ -12,7 +12,10 @@ import { importN7ExcelFile } from "@/services/import/n7-excel-importer";
 import { importXlvExcelFileFromPath } from "@/services/import/xlv-excel-importer";
 import { invalidateXlvBoardCache } from "@/services/xlv/board-cache";
 import { importExcelFile } from "@/services/import/excel-importer";
-import { notifyXlvOutboundImportSuccess } from "@/services/xlv/outbound-notifier";
+import {
+  notifyXlvOutboundCompanyBoardSummary,
+  notifyXlvOutboundImportSuccess,
+} from "@/services/xlv/outbound-notifier";
 
 export type HeavyImportKind = "personnel" | "n7" | "xlh-excel" | "xlv";
 
@@ -304,6 +307,16 @@ async function runHeavyImportJob(jobId: string) {
       }).catch((err) => {
         console.warn("[xlv-outbound] import success notify failed:", err);
       });
+
+      const importFormat =
+        result && typeof result === "object"
+          ? (result as { format?: string }).format
+          : undefined;
+      if (importFormat === "assignment") {
+        void notifyXlvOutboundCompanyBoardSummary().catch((err) => {
+          console.warn("[xlv-outbound] company board summary notify failed:", err);
+        });
+      }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "导入失败";

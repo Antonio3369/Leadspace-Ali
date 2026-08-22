@@ -259,6 +259,13 @@ export function XlvImportPage() {
             建议顺序：① 运营原始表 → ② 组织名册 → ③ SN 归属表。
             {" "}
             <Link
+              href={xlvPath("/admin/companies")}
+              className="text-[#2563eb] hover:text-[#1d4ed8] font-medium"
+            >
+              分公司排名 →
+            </Link>
+            {" · "}
+            <Link
               href={xlvPath("/admin/attribution")}
               className="text-[#2563eb] hover:text-[#1d4ed8] font-medium"
             >

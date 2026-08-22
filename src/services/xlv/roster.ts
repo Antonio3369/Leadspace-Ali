@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { isXlvPlaceholderName } from "@/lib/xlv-rules";
 
 export type XlvRosterEntry = {
   operatorName: string;
@@ -71,4 +72,17 @@ export function buildXlvRosterPairSet(entries: XlvRosterEntry[]) {
   return new Set(
     entries.map((e) => `${e.managerName.trim()}::${e.operatorName.trim()}`)
   );
+}
+
+/** 组织名册中的分公司名单（去重、中文排序） */
+export async function loadXlvCanonicalCompanyNames(): Promise<string[]> {
+  const rows = await db.xlvTeamRoster.findMany({
+    select: { companyName: true },
+  });
+  const names = new Set<string>();
+  for (const row of rows) {
+    const name = row.companyName?.trim();
+    if (name && !isXlvPlaceholderName(name)) names.add(name);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b, "zh-CN"));
 }

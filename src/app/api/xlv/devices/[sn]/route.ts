@@ -10,6 +10,7 @@ import { getXlvDeviceDetail } from "@/services/xlv/board";
 import { updateXlvDeviceFollowUp } from "@/services/xlv/follow-up";
 import { markXlvNotificationsReadByDevice, reopenMisreadWithdrawNotifications } from "@/services/xlv/notifications";
 import { findPendingWithdrawRequestForRecipient } from "@/services/xlv/inventory/withdraw-request";
+import { XLV_WITHDRAW_IMPORT_ENABLED } from "@/lib/xlv-inventory";
 import { assertCanViewXlvDevice } from "@/services/xlv/xlv-scope";
 import { sessionAuthRealm } from "@/lib/auth-realm";
 
@@ -43,6 +44,7 @@ export async function GET(_req: Request, { params }: Params) {
     } | null = null;
 
     if (
+      XLV_WITHDRAW_IMPORT_ENABLED &&
       sessionAuthRealm(user) === "xlv" &&
       (user.role === "MANAGER" || user.role === "SALES")
     ) {

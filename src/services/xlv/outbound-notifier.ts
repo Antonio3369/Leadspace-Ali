@@ -1,12 +1,17 @@
 /**
- * 小绿盒外推：业务走企微群 Webhook；运维告警走运维小群（不进业务群）。
+ * 小绿盒外推：运维小群收告警与导入结果；负责人群收分公司汇总。
  * 旁路推送，失败只打日志，不挡站内通知 / 关单事务。
  */
 
 import { pushWeComOpsAppMarkdown } from "@/lib/wecom-app-message";
 import { pushWeComWebhookMarkdown } from "@/lib/wecom-webhook";
+import {
+  isXlvCompanyBoardTailRow,
+  type XlvCompanyBoardResult,
+} from "@/lib/xlv-company-board";
 import { summarizeFollowUpResult } from "@/lib/xlv-follow-up";
-import { xlvMerchantLabel } from "@/lib/xlv-rules";
+import { XLV_COMPLIANCE_TARGET_RATE, xlvMerchantLabel } from "@/lib/xlv-rules";
+import { getXlvCompanyBoard } from "./company-board";
 import type { XlvFollowUpNotificationPayload } from "./notifications";
 
 function publicBaseUrl(): string {
@@ -49,25 +54,6 @@ export function buildXlvFollowUpDoneMarkdown(
   ].join("\n");
 }
 
-export function buildXlvWithdrawPendingMarkdown(opts: {
-  deviceSn: string;
-  merchantName: string | null;
-  storeName: string | null;
-}): string {
-  const store =
-    opts.merchantName?.trim() ||
-    opts.storeName?.trim() ||
-    opts.deviceSn;
-  const link = `${publicBaseUrl()}/xlv/notifications`;
-  return [
-    "**【小绿盒】撤机待确认**",
-    `> SN：${opts.deviceSn}`,
-    `> 门店：${store}`,
-    `> 说明：运营已登记移机，请登录确认是否同意撤机`,
-    `> [打开通知中心](${link})`,
-  ].join("\n");
-}
-
 export function buildXlvOpsAlertMarkdown(title: string, detail: string): string {
   return [
     `**【小绿盒 · 运维】${title}**`,
@@ -85,37 +71,27 @@ export async function notifyXlvOutboundFollowUpDone(
   await pushWeComWebhookMarkdown(url, buildXlvFollowUpDoneMarkdown(payload));
 }
 
-export async function notifyXlvOutboundWithdrawPending(opts: {
-  deviceSn: string;
-  merchantName: string | null;
-  storeName: string | null;
-}): Promise<void> {
-  const url = xlvOutboundWebhookUrl();
-  if (!url) return;
-  await pushWeComWebhookMarkdown(url, buildXlvWithdrawPendingMarkdown(opts));
-}
-
-export async function notifyXlvOutboundOpsAlert(
-  title: string,
-  detail: string
-): Promise<void> {
-  const content = buildXlvOpsAlertMarkdown(title, detail);
-
-  // 1) 运维小群 Webhook（主体域名受限时的主通道）
+/** 运维小群；不回退业务群 Webhook */
+async function pushXlvOpsMarkdown(content: string): Promise<void> {
   const opsUrl = opsAlertWebhookUrl();
   if (opsUrl) {
     await pushWeComWebhookMarkdown(opsUrl, content);
     return;
   }
 
-  // 2) 可选：自建应用推个人（需企业可信 IP；域名主体校验失败时不可用）
   try {
     const sentToApp = await pushWeComOpsAppMarkdown(content);
     if (sentToApp) return;
   } catch (err) {
     console.error("[xlv-ops] wecom app message failed:", err);
   }
-  // 故意不回退 XLV_OUTBOUND_WEBHOOK_URL，避免内存/宕机刷业务群
+}
+
+export async function notifyXlvOutboundOpsAlert(
+  title: string,
+  detail: string
+): Promise<void> {
+  await pushXlvOpsMarkdown(buildXlvOpsAlertMarkdown(title, detail));
 }
 
 function summarizeXlvImportResult(result: unknown): string {
@@ -141,7 +117,8 @@ export function buildXlvImportSuccessMarkdown(opts: {
   const summary = summarizeXlvImportResult(opts.result);
   const link = `${publicBaseUrl()}/xlv/admin/import`;
   return [
-    `**【小绿盒】数据上传成功${partialNote}**`,
+    `**【小绿盒 · 运维】数据上传成功${partialNote}**`,
+    `> 时间：${new Date().toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" })}`,
     `> 文件：${opts.fileName}`,
     `> 上传人：${opts.uploadedByName}`,
     `> 结果：${summary}`,
@@ -155,7 +132,53 @@ export async function notifyXlvOutboundImportSuccess(opts: {
   uploadedByName: string;
   result: unknown;
 }): Promise<void> {
+  await pushXlvOpsMarkdown(buildXlvImportSuccessMarkdown(opts));
+}
+
+function companyBoardRankPrefix(rank: number): string {
+  if (rank === 1) return "🥇";
+  if (rank === 2) return "🥈";
+  if (rank === 3) return "🥉";
+  return `${rank}.`;
+}
+
+function pctOne(v: number) {
+  return `${v.toFixed(1)}%`;
+}
+
+/** 负责人群 · 分公司排名汇总（不含未归属/待定） */
+export function buildXlvCompanyBoardSummaryMarkdown(
+  board: XlvCompanyBoardResult
+): string {
+  const { summary, rows } = board;
+  const companies = rows.filter((r) => !isXlvCompanyBoardTailRow(r));
+  const link = `${publicBaseUrl()}/xlv/admin/companies`;
+  const dateLine = summary.dataDate
+    ? `数据日期 ${summary.dataDate}`
+    : "数据日期 —";
+
+  const companyLines = companies.map((row, index) => {
+    const rank = index + 1;
+    return `${companyBoardRankPrefix(rank)} **${row.name}** · 已铺 ${row.deployedCount} · 沉睡 ${row.dormantCount} · 单笔沉默 ${row.singleSilenceCount} · 合规 ${pctOne(row.complianceRate)} · 唤醒 ${pctOne(row.monthWakeUpRate)}`;
+  });
+
+  return [
+    "**【小绿盒】分公司排名汇总**",
+    `> ${dateLine} · 已铺设 ${summary.deployedCount} · 合规 ${pctOne(summary.complianceRate)}（目标 ${XLV_COMPLIANCE_TARGET_RATE}%）`,
+    "",
+    ...companyLines.map((line) => `> ${line}`),
+    "",
+    `> [打开分公司看板](${link})`,
+  ].join("\n");
+}
+
+/** 负责人群 · SN 归属表导入成功后推送（不含未归属/待定） */
+export async function notifyXlvOutboundCompanyBoardSummary(): Promise<void> {
   const url = xlvOutboundWebhookUrl();
   if (!url) return;
-  await pushWeComWebhookMarkdown(url, buildXlvImportSuccessMarkdown(opts));
+  const board = await getXlvCompanyBoard();
+  await pushWeComWebhookMarkdown(
+    url,
+    buildXlvCompanyBoardSummaryMarkdown(board)
+  );
 }

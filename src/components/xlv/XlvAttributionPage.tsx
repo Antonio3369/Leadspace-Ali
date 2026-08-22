@@ -265,6 +265,11 @@ export function XlvAttributionPage() {
                 经理账号
               </NotionButton>
             </Link>
+            <Link href={xlvPath("/admin/companies")}>
+              <NotionButton type="button" variant="secondary">
+                分公司排名
+              </NotionButton>
+            </Link>
             <NotionButton
               type="button"
               onClick={handleSyncFromRoster}

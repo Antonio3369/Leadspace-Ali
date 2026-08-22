@@ -5,6 +5,7 @@ import {
   summarizeFollowUpResult,
 } from "@/lib/xlv-follow-up";
 import { XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING } from "@/lib/xlv-withdraw";
+import { XLV_WITHDRAW_IMPORT_ENABLED } from "@/lib/xlv-inventory";
 import { xlvMerchantLabel } from "@/lib/xlv-rules";
 import type { SessionUser } from "@/lib/permissions";
 import type { Prisma } from "@/generated/prisma/client";
@@ -176,15 +177,6 @@ export async function notifyFollowUpDoneRecipients(opts: {
   }
 
   await Promise.all(tasks);
-
-  try {
-    const { notifyXlvOutboundFollowUpDone } = await import(
-      "./outbound-notifier"
-    );
-    await notifyXlvOutboundFollowUpDone(opts.payload);
-  } catch (err) {
-    console.error("[xlv-outbound] follow-up done:", err);
-  }
 }
 
 export type XlvFollowUpReviewNotificationPayload = {
@@ -265,6 +257,12 @@ export function canViewXlvFollowUpNotifications(user: SessionUser) {
 /** 撤机待确认须归属人显式同意/拒绝，不可因查看设备或批量已读而关闭 */
 const autoReadExcludedTypes = [XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING] as const;
 
+/** 撤机流程关闭时，列表/角标不展示历史撤机待确认 */
+function xlvVisibleNotificationWhere(): Prisma.XlvNotificationWhereInput {
+  if (XLV_WITHDRAW_IMPORT_ENABLED) return {};
+  return { type: { not: XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING } };
+}
+
 function withdrawRequestIdFromMeta(meta: unknown): string | null {
   if (!meta || typeof meta !== "object") return null;
   const id = (meta as Record<string, unknown>).requestId;
@@ -273,6 +271,7 @@ function withdrawRequestIdFromMeta(meta: unknown): string | null {
 
 /** 历史 bug：查看设备曾误标已读；若撤机单仍为 pending 则自动恢复为待确认 */
 export async function reopenMisreadWithdrawNotifications(user: SessionUser) {
+  if (!XLV_WITHDRAW_IMPORT_ENABLED) return;
   if (!canViewXlvNotifications(user)) return;
   if (user.authRealm !== "xlv") return;
 
@@ -332,7 +331,11 @@ export async function countUnreadXlvNotifications(user: SessionUser) {
   if (!canViewXlvNotifications(user)) return 0;
   await reopenMisreadWithdrawNotifications(user);
   return db.xlvNotification.count({
-    where: { ...recipientWhere(user), read: false },
+    where: {
+      ...recipientWhere(user),
+      ...xlvVisibleNotificationWhere(),
+      read: false,
+    },
   });
 }
 
@@ -346,6 +349,7 @@ export async function listXlvNotifications(
   const rows = await db.xlvNotification.findMany({
     where: {
       ...recipientWhere(user),
+      ...xlvVisibleNotificationWhere(),
       ...(opts?.unreadOnly ? { read: false } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -408,13 +412,20 @@ export async function markXlvNotificationsReadByDevice(
   });
 }
 
-export async function markAllXlvNotificationsRead(user: SessionUser) {
+export async function markAllXlvNotificationsRead(
+  user: SessionUser,
+  opts?: { types?: string[] }
+) {
   const now = new Date();
+  const types = opts?.types?.map((t) => t.trim()).filter(Boolean);
   await db.xlvNotification.updateMany({
     where: {
       ...recipientWhere(user),
+      ...xlvVisibleNotificationWhere(),
       read: false,
-      type: { notIn: [...autoReadExcludedTypes] },
+      ...(types && types.length > 0
+        ? { type: { in: types } }
+        : { type: { notIn: [...autoReadExcludedTypes] } }),
     },
     data: { read: true, readAt: now },
   });

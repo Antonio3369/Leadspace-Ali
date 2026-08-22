@@ -20,8 +20,6 @@ import {
   XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW,
   xlvNotificationTitle,
 } from "@/lib/xlv-follow-up";
-import { XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING } from "@/lib/xlv-withdraw";
-import { XLV_WITHDRAW_IMPORT_ENABLED } from "@/lib/xlv-inventory";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 
 type NotifItem = {
@@ -36,35 +34,14 @@ type NotifItem = {
     flags?: string[];
     followUpAt?: string;
     reviewNote?: string;
-    requestId?: string;
     merchantName?: string | null;
-    storeName?: string | null;
   } | null;
   read: boolean;
   createdAt: string;
-  withdrawStatus?: "pending" | "approved" | "rejected" | null;
-  needsWithdrawAction?: boolean;
 };
 
 function fmt(iso: string) {
   return new Date(iso).toLocaleString("zh-CN", { hour12: false });
-}
-
-function isFollowUpNotification(item: NotifItem) {
-  return (
-    item.type === XLV_NOTIFICATION_TYPE_FOLLOW_UP_DONE ||
-    item.type === XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW
-  );
-}
-
-function isWithdrawNotification(item: NotifItem) {
-  return item.type === XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING;
-}
-
-function withdrawNeedsAction(item: NotifItem) {
-  return (
-    item.needsWithdrawAction === true || item.withdrawStatus === "pending"
-  );
 }
 
 function FollowUpNotifCard({
@@ -119,84 +96,6 @@ function FollowUpNotifCard({
   );
 }
 
-function WithdrawNotifCard({
-  item,
-  busy,
-  onRespond,
-}: {
-  item: NotifItem;
-  busy: boolean;
-  onRespond: (item: NotifItem, action: "approve" | "reject") => void;
-}) {
-  const needsAction = withdrawNeedsAction(item);
-  const resolvedLabel =
-    item.withdrawStatus === "approved"
-      ? "已同意撤机"
-      : item.withdrawStatus === "rejected"
-        ? "已拒绝"
-        : item.read
-          ? "已处理"
-          : null;
-
-  return (
-    <li
-      className={`rounded-[14px] border px-4 py-3 ${
-        needsAction
-          ? "border-sky-200 bg-sky-50/60"
-          : "border-[#eef2f7] bg-white"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <p className="flex items-center gap-2 text-sm font-medium text-[#111827]">
-          {xlvNotificationTitle(item.type)}
-          {needsAction ? (
-            <span className="inline-flex items-center justify-center rounded-full bg-[#ef4444] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-              待确认
-            </span>
-          ) : null}
-        </p>
-        <span className="shrink-0 text-[0.7rem] text-[#94a3b8] tabular-nums">
-          {fmt(item.createdAt)}
-        </span>
-      </div>
-      <p className="mt-1 text-sm text-[#64748b]">{item.body}</p>
-      <p className="mt-1 font-mono text-xs text-[#475569]">SN {item.deviceSn}</p>
-      {needsAction && item.meta?.requestId ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <NotionButton
-            type="button"
-            disabled={busy}
-            onClick={() => onRespond(item, "approve")}
-            className="min-h-[40px]"
-          >
-            同意撤机
-          </NotionButton>
-          <NotionButton
-            type="button"
-            variant="secondary"
-            disabled={busy}
-            onClick={() => onRespond(item, "reject")}
-            className="min-h-[40px]"
-          >
-            拒绝
-          </NotionButton>
-          <Link
-            href={xlvPath(`/devices/${encodeURIComponent(item.deviceSn)}`)}
-            className="inline-flex items-center text-sm text-[#2563eb] hover:text-[#1d4ed8] px-2"
-          >
-            查看设备
-          </Link>
-          <span className="self-center text-xs text-[#94a3b8]">
-            查看详情不影响待确认
-          </span>
-        </div>
-      ) : resolvedLabel ? (
-        <p className="mt-2 text-xs text-[#94a3b8]">{resolvedLabel}</p>
-      ) : null}
-    </li>
-  );
-}
-
 function NotificationSection({
   title,
   unreadLabel,
@@ -244,29 +143,34 @@ function NotificationSection({
 
 export function XlvNotificationsView({
   pageTitle = "系统通知",
+  audience = "manager",
 }: {
   pageTitle?: string;
+  /** 队员只看经理反馈；经理/管理员看队员已跟进 */
+  audience?: "sales" | "manager";
 }) {
   const [items, setItems] = useState<NotifItem[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  const followUpItems = useMemo(
-    () => items.filter(isFollowUpNotification),
+  const followUpDoneItems = useMemo(
+    () =>
+      items.filter((it) => it.type === XLV_NOTIFICATION_TYPE_FOLLOW_UP_DONE),
     [items]
   );
-  const withdrawItems = useMemo(
-    () => items.filter(isWithdrawNotification),
+  const followUpReviewItems = useMemo(
+    () =>
+      items.filter((it) => it.type === XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW),
     [items]
   );
-  const followUpUnread = useMemo(
-    () => followUpItems.filter((it) => !it.read).length,
-    [followUpItems]
+  const followUpDoneUnread = useMemo(
+    () => followUpDoneItems.filter((it) => !it.read).length,
+    [followUpDoneItems]
   );
-  const withdrawPending = useMemo(
-    () => withdrawItems.filter(withdrawNeedsAction).length,
-    [withdrawItems]
+  const followUpReviewUnread = useMemo(
+    () => followUpReviewItems.filter((it) => !it.read).length,
+    [followUpReviewItems]
   );
 
   const load = useCallback((opts?: { silent?: boolean }) => {
@@ -314,20 +218,21 @@ export function XlvNotificationsView({
     };
   }, [load]);
 
-  async function markAllFollowUp() {
-    if (busy || followUpUnread === 0) return;
+  async function markAllRead(types: string[]) {
+    const unread = items.filter((it) => types.includes(it.type) && !it.read);
+    if (busy || unread.length === 0) return;
     setBusy(true);
     try {
       const res = await fetch("/api/xlv/notifications", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ all: true }),
+        body: JSON.stringify({ all: true, types }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "操作失败");
       setItems((prev) =>
         prev.map((it) =>
-          isFollowUpNotification(it) ? { ...it, read: true } : it
+          types.includes(it.type) ? { ...it, read: true } : it
         )
       );
       emitXlvNotificationsChanged();
@@ -336,6 +241,14 @@ export function XlvNotificationsView({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function markAllFollowUpDone() {
+    await markAllRead([XLV_NOTIFICATION_TYPE_FOLLOW_UP_DONE]);
+  }
+
+  async function markAllFollowUpReview() {
+    await markAllRead([XLV_NOTIFICATION_TYPE_FOLLOW_UP_REVIEW]);
   }
 
   function openItem(item: NotifItem) {
@@ -349,45 +262,6 @@ export function XlvNotificationsView({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: item.id }),
     });
-  }
-
-  async function respondWithdraw(
-    item: NotifItem,
-    action: "approve" | "reject"
-  ) {
-    const requestId = item.meta?.requestId;
-    if (!requestId || busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      const res = await fetch(
-        `/api/xlv/inventory/withdraw-requests/${encodeURIComponent(requestId)}/respond`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action }),
-        }
-      );
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "操作失败");
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === item.id
-            ? {
-                ...it,
-                read: true,
-                needsWithdrawAction: false,
-                withdrawStatus: action === "approve" ? "approved" : "rejected",
-              }
-            : it
-        )
-      );
-      emitXlvNotificationsChanged();
-    } catch (err) {
-      setError(getFetchErrorMessage(err, "操作失败"));
-    } finally {
-      setBusy(false);
-    }
   }
 
   return (
@@ -412,47 +286,45 @@ export function XlvNotificationsView({
 
       {!loading && (
         <div className="space-y-4 max-w-2xl">
-          <NotificationSection
-            title="队员已跟进"
-            isEmpty={followUpItems.length === 0}
-            unreadLabel={
-              followUpUnread > 0
-                ? `未读 ${followUpUnread}`
-                : "暂无未读"
-            }
-            emptyText="暂无队员跟进消息"
-            markAllLabel={followUpUnread > 0 ? "全部标已读" : undefined}
-            onMarkAll={() => void markAllFollowUp()}
-            markAllDisabled={busy || followUpUnread === 0}
-          >
-            {followUpItems.map((item) => (
-              <FollowUpNotifCard key={item.id} item={item} onOpen={openItem} />
-            ))}
-          </NotificationSection>
-
-          {XLV_WITHDRAW_IMPORT_ENABLED ? (
+          {audience === "manager" ? (
             <NotificationSection
-              title="撤机通知"
-              isEmpty={withdrawItems.length === 0}
+              title="队员已跟进"
+              isEmpty={followUpDoneItems.length === 0}
               unreadLabel={
-                withdrawPending > 0
-                  ? `待确认 ${withdrawPending}`
-                  : withdrawItems.length > 0
-                    ? "暂无待确认"
-                    : "暂无撤机通知"
+                followUpDoneUnread > 0
+                  ? `未读 ${followUpDoneUnread}`
+                  : "暂无未读"
               }
-              emptyText="暂无撤机通知"
+              emptyText="暂无队员跟进消息"
+              markAllLabel={followUpDoneUnread > 0 ? "全部标已读" : undefined}
+              onMarkAll={() => void markAllFollowUpDone()}
+              markAllDisabled={busy || followUpDoneUnread === 0}
             >
-              {withdrawItems.map((item) => (
-                <WithdrawNotifCard
-                  key={item.id}
-                  item={item}
-                  busy={busy}
-                  onRespond={respondWithdraw}
-                />
+              {followUpDoneItems.map((item) => (
+                <FollowUpNotifCard key={item.id} item={item} onOpen={openItem} />
               ))}
             </NotificationSection>
-          ) : null}
+          ) : (
+            <NotificationSection
+              title="经理反馈"
+              isEmpty={followUpReviewItems.length === 0}
+              unreadLabel={
+                followUpReviewUnread > 0
+                  ? `未读 ${followUpReviewUnread}`
+                  : "暂无未读"
+              }
+              emptyText="暂无经理反馈"
+              markAllLabel={
+                followUpReviewUnread > 0 ? "全部标已读" : undefined
+              }
+              onMarkAll={() => void markAllFollowUpReview()}
+              markAllDisabled={busy || followUpReviewUnread === 0}
+            >
+              {followUpReviewItems.map((item) => (
+                <FollowUpNotifCard key={item.id} item={item} onOpen={openItem} />
+              ))}
+            </NotificationSection>
+          )}
         </div>
       )}
     </PageShell>
