@@ -3,7 +3,7 @@
 > 支付宝 P 站推广业务数据统计、展示与管理系统。  
 > 本文档供下次开发前快速查阅；入门步骤见 [README.md](./README.md)。
 
-**最后更新**：2026-08-22（小绿盒：SN 归属为准推断撤机；移机撤机明细入口暂隐藏 · **已部署** `e85d995`）
+**最后更新**：2026-08-22（运维告警 → 运维小群 `OPS_ALERT_WEBHOOK_URL` · **已部署** `38bb355`；SN 归属推断撤机 `e85d995`）
 
 ---
 
@@ -782,6 +782,13 @@ src/
 
 ## 13. 近期已完成
 
+### 2026-08-22（运维告警 · 运维小群 Webhook · 已部署 `38bb355`）
+
+- [x] **通道**：内存过高 / 站点不可用 / 容器未运行 / 自动重启 / 导入卡死 → **运维小群** `OPS_ALERT_WEBHOOK_URL`（`ops-alert.sh` / `notifyXlvOutboundOpsAlert`）
+- [x] **隔离**：故意不回退 `XLV_OUTBOUND_WEBHOOK_URL`，业务群不收运维噪声
+- [x] **自建应用搁置**：曾试「LEADspace 运维」应用消息（`WECOM_*`）；卡在企业可信 IP / 域名主体校验（`60020`），代码保留为可选回退
+- [x] **生产验收**：2026-08-22 试发「配置验收」运维小群已收到
+
 ### 2026-08-22（小绿盒 · SN 归属为准推断撤机 · 已部署 `e85d995`）
 
 - [x] **撤机明细入口暂隐藏**：库存「撤机」Tab / 待确认 UI / 撤机通知分区；API `kind=withdraw` 返回 403（`XLV_WITHDRAW_IMPORT_ENABLED=false`）
@@ -796,12 +803,12 @@ src/
 - [x] **Daily / 导出**：快照只拉 `followUpAt` 之后；折线仍含「更早关单、期内唤醒」
 - [x] **回访列表**：用落库 `qualificationStatus`，不再为整表拉快照
 - [x] **巡检**：每 10 分钟只记日志；连续两次超 1200MB 且无导入才重启；`restart-app.sh` 部署时补执行权限
-- [x] **企微**：**内存过高 / 自动重启不推业务群**；导入卡死、站点挂了仍推
+- [x] **企微**：内存过高曾不推业务群（只记日志）；**现已改走运维小群**（见上条 `38bb355`）
 
 ### 2026-08-21（小绿盒 · 企微外推 + 运维告警 · 已部署生产 `a6d935b`）
 
 - [x] **企微外推**：`outbound-notifier.ts` — 队员跟进完成、撤机待确认、**小绿盒数据上传成功**旁路推群（`XLV_OUTBOUND_WEBHOOK_URL`）
-- [x] **运维告警**：`/api/xlv/ops/health` + cron 每 10 分钟；内存 / 卡死导入 → 企微；30 分钟冷却
+- [x] **运维告警**：`/api/xlv/ops/health` + cron 每 10 分钟；**现主通道为运维小群**（见 `38bb355`）；30 分钟冷却
 - [x] **定时重启**：每天 03:00 `restart-app.sh`；有大表导入则跳过
 - [x] **生产验收**：2026-08-21 测试消息送达企微群
 
@@ -1084,7 +1091,7 @@ ssh sales-cloud 'cd /opt/leadspace-alipay && ./deploy/setup-ssl.sh'
 | 容器内存上限 | `docker-compose.prod.yml`：app **2G**、postgres 768M；超限 OOM Kill 后 Docker 自动重启 |
 | Node 堆上限 | `NODE_OPTIONS=--max-old-space-size=1536`（须小于 app 容器上限） |
 | **定时重启 app** | `deploy/restart-app.sh` + cron **每天 03:00**；导入进行中跳过；日志 `/var/log/leadspace-restart.log`；部署脚本 `chmod +x deploy/*.sh` |
-| **紧急告警** | 导入卡死 / 站点不可用 / 容器未运行 → 企微（`ops-alert.sh` / `notifyXlvOutboundOpsAlert`）；**内存过高不推业务群**，只写 `/var/log/leadspace-health-check.log` |
+| **紧急告警** | 导入卡死 / 站点不可用 / 容器未运行 / **内存过高** / 自动重启 → **运维小群** `OPS_ALERT_WEBHOOK_URL`（`ops-alert.sh` / `notifyXlvOutboundOpsAlert`）；**不进业务群**；可选 `WECOM_*` 自建应用（需可信 IP，当前因域名主体校验搁置） |
 | **内存超阈值重启** | 巡检每 10 分钟；第一次 `memory_high` 只打标；**连续两次**（约 20 分钟）仍高且无导入才 `restart-app.sh` |
 | **看板降内存** | pulse 不拉 daily 全量；快照可按 `statDateFrom` / 跟进日后加载；回访列表用落库达标状态 |
 | 导入互斥 | 同时只允许一个重导入；看数/登录不限 |
