@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readResponseJson, getFetchErrorMessage } from "@/lib/fetch-json";
-import { XLV_INVENTORY_STATUS_LABEL } from "@/lib/xlv-inventory";
+import { XLV_INVENTORY_STATUS_LABEL, XLV_WITHDRAW_IMPORT_ENABLED } from "@/lib/xlv-inventory";
 import type { XlvInventoryStatus } from "@/lib/xlv-inventory";
 import type { InventoryOverview } from "@/services/xlv/inventory/service";
 import { XlvInventoryOverview } from "@/components/xlv/XlvInventoryOverview";
@@ -45,7 +45,7 @@ type ImportResult = {
 
 type PendingItem = { deviceSn: string; channel: string | null; updatedAt: string };
 
-const ADMIN_TABS: { id: InventoryKind | "receipts" | "overview"; label: string }[] = [
+const ADMIN_TABS_ALL: { id: InventoryKind | "receipts" | "overview"; label: string }[] = [
   { id: "overview", label: "库存看板" },
   { id: "opening", label: "期初盘点" },
   { id: "inbound", label: "新增入库" },
@@ -55,16 +55,25 @@ const ADMIN_TABS: { id: InventoryKind | "receipts" | "overview"; label: string }
   { id: "receipts", label: "待收货确认" },
 ];
 
-const MANAGER_TABS: { id: InventoryKind | "receipts" | "overview"; label: string }[] = [
+const MANAGER_TABS_ALL: { id: InventoryKind | "receipts" | "overview"; label: string }[] = [
   { id: "overview", label: "库存看板" },
   { id: "receipts", label: "待收货确认" },
   { id: "allocate-sales", label: "分给队员" },
   { id: "withdraw", label: "撤机" },
 ];
 
+const ADMIN_TABS = XLV_WITHDRAW_IMPORT_ENABLED
+  ? ADMIN_TABS_ALL
+  : ADMIN_TABS_ALL.filter((t) => t.id !== "withdraw");
+
+const MANAGER_TABS = XLV_WITHDRAW_IMPORT_ENABLED
+  ? MANAGER_TABS_ALL
+  : MANAGER_TABS_ALL.filter((t) => t.id !== "withdraw");
+
 const KIND_HINT: Record<InventoryKind, string> = {
   inbound: "列：设备SN（必填）、渠道（可选）",
-  "recall-to-admin": "列：设备SN（必填）、备注（可选）；从经理/队员库存回拨至事业部总库，已铺设须先撤机",
+  "recall-to-admin":
+    "列：设备SN（必填）、备注（可选）；从经理/队员库存回拨至事业部总库；已铺设设备请先通过 SN 归属换商户推断撤机后再回拨",
   "allocate-manager": "列：设备SN、所属经理；可选渠道",
   "allocate-sales": "列：设备SN、作业员（或所属业务员）",
   withdraw:
@@ -262,7 +271,11 @@ export function XlvInventoryPage({ isAdmin }: { isAdmin: boolean }) {
     <PageShell>
       <PageHeader
         title="设备库存"
-        meta="入库 · 分货 · 撤机（物流账）；运营考核仍走数据导入"
+        meta={
+          XLV_WITHDRAW_IMPORT_ENABLED
+            ? "入库 · 分货 · 撤机（物流账）；运营考核仍走数据导入"
+            : "入库 · 分货（物流账）；撤机改由 SN 归属换商户推断；运营考核仍走数据导入"
+        }
       />
 
       {summary && tab !== "overview" && (

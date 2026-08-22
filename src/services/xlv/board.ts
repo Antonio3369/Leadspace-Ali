@@ -348,7 +348,7 @@ export async function getXlvStaffBoard(
           opts.managerKey.slice(5);
 
       const boardResult = await aggregateBoardDevices(
-          { AND: [roleWhere, managerWhere] },
+          { AND: [roleWhere, managerWhere, buildXlvOperationalDeviceWhere()] },
           (d) => xlvStaffKeyOf(d),
           (d) => d.operatorName || "未分配",
           (d) => d.salesUserId,
@@ -385,7 +385,9 @@ export async function getXlvStaffDevices(
   const staffWhere = await buildXlvStaffDeviceWhere(opts.staffKey);
   const roleWhere = buildXlvRoleWhere(user);
 
-  const where = { AND: [roleWhere, managerWhere, staffWhere] };
+  const where = {
+    AND: [roleWhere, managerWhere, staffWhere, buildXlvOperationalDeviceWhere()],
+  };
 
   const devices = await db.xlvDeviceRecord.findMany({
     where,

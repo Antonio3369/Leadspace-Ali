@@ -20,6 +20,7 @@ import {
   importRecallToAdminRows,
   importWithdrawRows,
 } from "@/services/xlv/inventory/service";
+import { XLV_WITHDRAW_IMPORT_ENABLED } from "@/lib/xlv-inventory";
 
 export const maxDuration = 120;
 
@@ -142,6 +143,15 @@ export const POST = auth(async (request) => {
     }
 
     if (kind === "withdraw") {
+      if (!XLV_WITHDRAW_IMPORT_ENABLED) {
+        return NextResponse.json(
+          {
+            error:
+              "撤机明细导入已暂停；请以 SN 归属表为准（同 SN 换商户即视为已撤机并铺到新商户）",
+          },
+          { status: 403 }
+        );
+      }
       const parsed = parseWithdrawExcel(buffer);
       if (parsed.errors.length) {
         return NextResponse.json({ error: parsed.errors.join("；") }, { status: 400 });

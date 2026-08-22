@@ -6,6 +6,12 @@ import type {
 
 export type { XlvInventoryStatus, XlvInventoryTransferType, XlvInventoryDeployedBy };
 
+/**
+ * 移机撤机明细导入 / 待确认：暂关闭。
+ * 撤机改由 SN 归属推断：同 SN 商户名变更 = 已从旧商户撤机并铺到新商户。
+ */
+export const XLV_WITHDRAW_IMPORT_ENABLED = false;
+
 export const XLV_INVENTORY_STATUS_LABEL: Record<XlvInventoryStatus, string> = {
   admin_stock: "事业部库存",
   pending_mgr_confirm: "待经理确认",

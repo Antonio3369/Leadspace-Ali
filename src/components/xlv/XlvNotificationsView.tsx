@@ -21,6 +21,7 @@ import {
   xlvNotificationTitle,
 } from "@/lib/xlv-follow-up";
 import { XLV_NOTIFICATION_TYPE_WITHDRAW_PENDING } from "@/lib/xlv-withdraw";
+import { XLV_WITHDRAW_IMPORT_ENABLED } from "@/lib/xlv-inventory";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 
 type NotifItem = {
@@ -429,27 +430,29 @@ export function XlvNotificationsView({
             ))}
           </NotificationSection>
 
-          <NotificationSection
-            title="撤机通知"
-            isEmpty={withdrawItems.length === 0}
-            unreadLabel={
-              withdrawPending > 0
-                ? `待确认 ${withdrawPending}`
-                : withdrawItems.length > 0
-                  ? "暂无待确认"
-                  : "暂无撤机通知"
-            }
-            emptyText="暂无撤机通知"
-          >
-            {withdrawItems.map((item) => (
-              <WithdrawNotifCard
-                key={item.id}
-                item={item}
-                busy={busy}
-                onRespond={respondWithdraw}
-              />
-            ))}
-          </NotificationSection>
+          {XLV_WITHDRAW_IMPORT_ENABLED ? (
+            <NotificationSection
+              title="撤机通知"
+              isEmpty={withdrawItems.length === 0}
+              unreadLabel={
+                withdrawPending > 0
+                  ? `待确认 ${withdrawPending}`
+                  : withdrawItems.length > 0
+                    ? "暂无待确认"
+                    : "暂无撤机通知"
+              }
+              emptyText="暂无撤机通知"
+            >
+              {withdrawItems.map((item) => (
+                <WithdrawNotifCard
+                  key={item.id}
+                  item={item}
+                  busy={busy}
+                  onRespond={respondWithdraw}
+                />
+              ))}
+            </NotificationSection>
+          ) : null}
         </div>
       )}
     </PageShell>

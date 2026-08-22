@@ -37,6 +37,7 @@ import {
 } from "@/services/org/user-matcher";
 import { reopenXlvFollowUpsAfterSnapshot } from "@/services/xlv/follow-up";
 import { recomputeXlvQualificationForDevices } from "@/services/xlv/recompute-qualification";
+import { syncInventoryFromSnAttribution } from "@/services/xlv/inventory/service";
 
 function createId() {
   return `c${randomBytes(12).toString("hex")}`;
@@ -311,6 +312,7 @@ async function importRosterRows(rows: ParsedXlvRosterRow[], _importBatchId: stri
 async function importAssignmentRows(
   rows: ParsedXlvAssignmentRow[],
   importBatchId: string,
+  uploadedById: string,
   onProgress?: XlvImportProgress
 ) {
   let managersInferredFromRoster = 0;
@@ -361,6 +363,12 @@ async function importAssignmentRows(
 
   const creates: AssignmentDeviceWrite[] = [];
   const updates: AssignmentDeviceWrite[] = [];
+  const inventoryRows: {
+    deviceSn: string;
+    managerName: string;
+    operatorName: string;
+    storeName?: string | null;
+  }[] = [];
 
   for (const row of rows) {
     let managerName = row.managerName.trim();
@@ -418,6 +426,15 @@ async function importAssignmentRows(
     if (existing) updates.push(write);
     else creates.push(write);
 
+    if (managerName && !isXlvPlaceholderName(operatorName)) {
+      inventoryRows.push({
+        deviceSn: row.deviceSn,
+        managerName,
+        operatorName,
+        storeName: row.merchantName,
+      });
+    }
+
     if (row.statDate) {
       snapshotsToWrite.push({
         deviceSn: row.deviceSn,
@@ -438,6 +455,12 @@ async function importAssignmentRows(
   }
 
   await bulkUpsertAssignmentDevices(creates, updates, onProgress);
+
+  await onProgress?.(84, "按 SN 归属同步库存已铺设…");
+  const inventorySync = await syncInventoryFromSnAttribution(
+    inventoryRows,
+    uploadedById
+  );
 
   let snapshotRows = 0;
   if (snapshotsToWrite.length > 0) {
@@ -460,6 +483,7 @@ async function importAssignmentRows(
     snapshotRows,
     createdDevices: creates.length,
     updatedDevices: updates.length,
+    inventorySynced: inventorySync.synced,
     rosterRowsWritten: 0,
     rosterCreated: 0,
     rosterUpdated: 0,
@@ -591,6 +615,7 @@ async function importXlvExcelBuffer(
     const result = await importAssignmentRows(
       assignmentRows,
       importLog.id,
+      uploadedById,
       onProgress
     );
     createdDevices = result.createdDevices;

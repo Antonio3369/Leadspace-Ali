@@ -16,9 +16,9 @@ import {
 } from "@/lib/xlv-rules";
 import {
   assertCanViewXlv,
-  buildXlvAssignedDeviceWhere,
   buildXlvDeviceWhere,
   buildXlvInventoryDeviceWhere,
+  buildXlvOperationalDeviceWhere,
   buildXlvRoleWhere,
 } from "@/services/xlv/xlv-scope";
 import {
@@ -182,7 +182,7 @@ export async function getXlvDashboardSummaryFast(
         where: {
           AND: [
             baseWhere,
-            buildXlvAssignedDeviceWhere(),
+            buildXlvOperationalDeviceWhere(),
             {
               cumulativeTxns: 1,
               sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS },
@@ -194,7 +194,7 @@ export async function getXlvDashboardSummaryFast(
         where: {
           AND: [
             baseWhere,
-            buildXlvAssignedDeviceWhere(),
+            buildXlvOperationalDeviceWhere(),
             { sleepDays: { gte: XLV_SLEEP_THRESHOLD_DAYS } },
             { NOT: { cumulativeTxns: 1 } },
             { NOT: { qualificationStatus: "qualified" } },
@@ -244,7 +244,7 @@ export async function getXlvDashboardPulseSummary(
   const expandWhere = {
     AND: [
       buildXlvRoleWhere(user),
-      buildXlvAssignedDeviceWhere(),
+      buildXlvOperationalDeviceWhere(),
       { firstTxnDate: { gte: from, lte: to } },
     ],
   };

@@ -29,6 +29,7 @@ import type { XlvTxnActivityPoint } from "@/services/xlv/snapshot-daily";
 import type { XlvQualificationDetail } from "@/lib/xlv-rules";
 import { readResponseJson, getFetchErrorMessage } from "@/lib/fetch-json";
 import { emitXlvNotificationsChanged } from "@/lib/xlv-notifications-client";
+import { XLV_WITHDRAW_IMPORT_ENABLED } from "@/lib/xlv-inventory";
 
 interface Device {
   deviceSn: string;
@@ -253,7 +254,7 @@ export function XlvDeviceDetailView({
 
       {device ? (
         <div className="flex flex-col gap-4">
-          {pendingWithdraw ? (
+          {XLV_WITHDRAW_IMPORT_ENABLED && pendingWithdraw ? (
             <div className="rounded-[14px] border border-sky-200 bg-sky-50/60 p-4 shadow-sm space-y-3">
               <div>
                 <p className="text-sm font-semibold text-[#111827]">撤机待确认</p>

@@ -65,7 +65,7 @@ const TAB_CONFIG: Record<
   assignment: {
     title: "SN 归属表",
     description:
-      "③ 最后传 SN 归属（「所属作业员」或「所属业务员」必填；经理可省略，从名册反查）。仅补挂靠，不能替代原始表快照。",
+      "③ 最后传 SN 归属（「所属作业员」或「所属业务员」必填；经理可省略，从名册反查）。谁铺算谁的：表内 SN=已铺设；同 SN 换商户名=推断已撤机并铺到新商户。",
     endpoint: "/api/import/xlv",
     buttonLabel: "导入 SN 归属表",
   },

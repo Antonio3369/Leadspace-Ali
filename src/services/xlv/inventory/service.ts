@@ -738,6 +738,164 @@ export async function markDeployedFromOps(
   );
 }
 
+function normalizeMerchantName(name: string | null | undefined) {
+  return (name ?? "").trim().replace(/\s+/g, "");
+}
+
+/**
+ * SN 归属表为准：表内 SN = 已铺设，作业员/经理以归属表为准。
+ * 同 SN 商户名变更 = 已从旧商户撤机并铺到新商户（流水记 withdraw + deploy）。
+ */
+export async function syncInventoryFromSnAttribution(
+  rows: {
+    deviceSn: string;
+    managerName: string;
+    operatorName: string;
+    storeName?: string | null;
+  }[],
+  operatorUserId: string
+): Promise<{ synced: number; skipped: number; merchantChanged: number }> {
+  const batchId = createBatchId();
+  const indexes = await buildUserLookupIndexes();
+  let synced = 0;
+  let skipped = 0;
+  let merchantChanged = 0;
+
+  const uniqueSns = [
+    ...new Set(rows.map((r) => r.deviceSn.trim()).filter(Boolean)),
+  ];
+  const invBySn = new Map(
+    (
+      await db.xlvInventoryDevice.findMany({
+        where: { deviceSn: { in: uniqueSns } },
+      })
+    ).map((r) => [r.deviceSn, r] as const)
+  );
+  const opsBySn = new Map(
+    (
+      await db.xlvDeviceRecord.findMany({
+        where: { deviceSn: { in: uniqueSns } },
+        select: {
+          deviceSn: true,
+          merchantName: true,
+          activationMerchantName: true,
+        },
+      })
+    ).map((r) => [r.deviceSn, r] as const)
+  );
+
+  for (const row of rows) {
+    const deviceSn = row.deviceSn.trim();
+    const managerName = row.managerName.trim();
+    const operatorName = row.operatorName.trim();
+    const nextStore = row.storeName?.trim() || "";
+    if (!deviceSn || !managerName) {
+      skipped++;
+      continue;
+    }
+
+    const existing = invBySn.get(deviceSn) ?? null;
+    const ops = opsBySn.get(deviceSn);
+    const prevStoreRaw =
+      existing?.deployedStoreName?.trim() ||
+      ops?.merchantName?.trim() ||
+      ops?.activationMerchantName?.trim() ||
+      "";
+    const prevStore = normalizeMerchantName(prevStoreRaw);
+    const nextStoreKey = normalizeMerchantName(nextStore);
+    const storeChanged =
+      Boolean(prevStore && nextStoreKey && prevStore !== nextStoreKey);
+
+    const alreadyAligned =
+      existing?.status === "deployed" &&
+      existing.managerName === managerName &&
+      existing.operatorName === operatorName &&
+      !storeChanged &&
+      (!nextStore ||
+        normalizeMerchantName(existing.deployedStoreName) === nextStoreKey);
+    if (alreadyAligned) {
+      skipped++;
+      continue;
+    }
+
+    // 事业部库存/待确认等中间态不强制覆盖
+    if (
+      existing &&
+      ["admin_stock", "pending_mgr_confirm"].includes(existing.status)
+    ) {
+      skipped++;
+      continue;
+    }
+
+    const deployedByRole = inferDeployedByRole(managerName, operatorName);
+
+    // 同 SN 换商户：先记撤机流水，再记铺设到新商户
+    if (storeChanged && existing?.status === "deployed") {
+      const returnStatus = xlvWithdrawReturnStatus(existing.deployedByRole);
+      await applyTransition(
+        deviceSn,
+        {
+          status: returnStatus,
+          managerName: existing.managerName,
+          operatorName:
+            returnStatus === "sales_stock" ? existing.operatorName : "",
+          deployedByRole: null,
+          deployedStoreName: null,
+          deployedAt: null,
+        },
+        {
+          type: "withdraw",
+          batchId,
+          operatorUserId,
+          note: `SN归属推断撤机：${prevStoreRaw}`,
+          meta: {
+            source: "sn_attribution",
+            fromStore: prevStoreRaw,
+            toStore: nextStore,
+          },
+        },
+        { indexes }
+      );
+      merchantChanged++;
+    }
+
+    await applyTransition(
+      deviceSn,
+      {
+        status: "deployed",
+        managerName,
+        operatorName,
+        deployedByRole,
+        deployedStoreName: nextStore || existing?.deployedStoreName || null,
+        deployedAt: storeChanged ? new Date() : existing?.deployedAt ?? new Date(),
+      },
+      {
+        type: "deploy",
+        batchId,
+        operatorUserId,
+        note: storeChanged
+          ? `SN归属换商铺设：${nextStore || "（无商户名）"}`
+          : "SN归属同步：已铺设",
+        meta: {
+          source: "sn_attribution",
+          ...(storeChanged
+            ? { fromStore: prevStoreRaw, toStore: nextStore }
+            : {}),
+        },
+      },
+      { indexes }
+    );
+    // refresh cache for subsequent duplicate SN rows in same batch
+    invBySn.set(
+      deviceSn,
+      (await db.xlvInventoryDevice.findUnique({ where: { deviceSn } }))!
+    );
+    synced++;
+  }
+
+  return { synced, skipped, merchantChanged };
+}
+
 export async function getInventorySummary(forManagerName?: string | null) {
   const where = forManagerName?.trim()
     ? { managerName: forManagerName.trim() }
