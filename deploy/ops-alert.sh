@@ -4,7 +4,7 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-STATE_DIR="${OPS_ALERT_STATE_DIR:-/var/log/leadspace-ops}"
+STATE_DIR="${OPS_ALERT_STATE_DIR:-/tmp/leadspace-ops}"
 COOLDOWN_SEC="${OPS_ALERT_COOLDOWN_SEC:-1800}"
 
 title="${1:-运维告警}"
