@@ -50,9 +50,14 @@ export async function runXlvOpsHealthCheck(): Promise<XlvOpsHealthResult> {
 
   if (rssMb >= MEM_WARN_RSS_MB) {
     warnings.push(`memory_high:${rssMb}MB`);
-    // 不推业务企微群（群里有一线用户）；巡检日志 + 连续两次超阈值自动重启
     console.warn(
       `[xlv-ops-health] memory_high rss=${rssMb}MB threshold=${MEM_WARN_RSS_MB}MB`
+    );
+    // 推个人企微应用（不进业务群）
+    await alert(
+      "memory_high",
+      "应用内存过高",
+      `> RSS：${rssMb}MB（阈值 ${MEM_WARN_RSS_MB}MB）\n> 连续两次超阈值且无导入时将自动重启`
     );
   }
 

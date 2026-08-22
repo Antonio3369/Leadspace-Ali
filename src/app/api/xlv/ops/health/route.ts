@@ -17,7 +17,7 @@ function authorize(request: Request): boolean {
   return false;
 }
 
-/** 运维巡检：卡死导入可走企微；内存过高只返回 503 + 日志，不推业务群 */
+/** 运维巡检：卡死导入 / 内存过高 → 优先推个人企微应用 */
 export async function GET(request: Request) {
   if (!authorize(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
       );
       await notifyXlvOutboundOpsAlert(
         "测试告警",
-        "> 小绿盒企微通道已接通\n> 若群里有此消息，紧急通知已生效"
+        "> LEADspace 运维通道已接通\n> 若你企微「LEADspace 运维」应用收到此消息，个人告警已生效"
       );
       return NextResponse.json({ ok: true, test: true });
     } catch (err) {

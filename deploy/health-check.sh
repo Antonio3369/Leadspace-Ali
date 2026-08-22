@@ -36,7 +36,7 @@ if ! curl -sf -o /dev/null --max-time 8 http://127.0.0.1:3001/login; then
   exit 1
 fi
 
-# 3. 小绿盒运维 API（卡死导入仍可走企微；内存过高只记日志，不推业务群）
+# 3. 小绿盒运维 API（卡死导入 / 内存 → 个人企微应用；业务群不收内存）
 if [[ -n "${XLV_OPS_CRON_SECRET:-}" ]]; then
   code="$(
     curl -sS -o /tmp/xlv-ops-health.json -w '%{http_code}' \
@@ -67,14 +67,25 @@ if [[ -n "${XLV_OPS_CRON_SECRET:-}" ]]; then
             log "有导入任务，推迟重启"
           elif echo "${restart_out}" | grep -q '完成'; then
             rm -f "${MEM_FLAG}"
-            log "连续超阈值已自动重启（不推业务企微群）"
+            log "连续超阈值已自动重启"
+            if [[ -x "${ALERT}" ]]; then
+              bash "${ALERT}" "应用已自动重启" "> 原因：连续两次巡检内存超阈值\n> 动作：已重启 leadspace-alipay-app" "auto_restart" || true
+            fi
           else
             log "自动重启失败"
+            if [[ -x "${ALERT}" ]]; then
+              bash "${ALERT}" "自动重启失败" "> 连续内存超阈值后重启未成功，请人工检查" "restart_failed" || true
+            fi
           fi
         fi
       else
         date -Iseconds > "${MEM_FLAG}"
         log "内存告警，记一次；下次仍高再重启"
+        # 第一次超阈值：由 /api/xlv/ops/health 内推个人；此处 bash 再补一条容器级内存（docker stats）
+        mem_line="$(sudo docker stats leadspace-alipay-app --no-stream --format '{{.MemUsage}}' 2>/dev/null || echo '?')"
+        if [[ -x "${ALERT}" ]]; then
+          bash "${ALERT}" "应用内存过高" "> 容器内存：${mem_line}\n> 下次巡检仍高且无导入将自动重启" "memory_high_host" || true
+        fi
       fi
     else
       rm -f "${MEM_FLAG}"

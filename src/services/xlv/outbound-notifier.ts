@@ -1,8 +1,9 @@
 /**
- * 小绿盒外推：企微群机器人 Webhook。
+ * 小绿盒外推：业务走企微群 Webhook；运维告警优先走自建应用（推个人）。
  * 旁路推送，失败只打日志，不挡站内通知 / 关单事务。
  */
 
+import { pushWeComOpsAppMarkdown } from "@/lib/wecom-app-message";
 import { pushWeComWebhookMarkdown } from "@/lib/wecom-webhook";
 import { summarizeFollowUpResult } from "@/lib/xlv-follow-up";
 import { xlvMerchantLabel } from "@/lib/xlv-rules";
@@ -93,9 +94,14 @@ export async function notifyXlvOutboundOpsAlert(
   title: string,
   detail: string
 ): Promise<void> {
+  const content = buildXlvOpsAlertMarkdown(title, detail);
+  // 优先推个人企微应用；未配置再回退业务群 Webhook（兼容旧环境）
+  const sentToApp = await pushWeComOpsAppMarkdown(content);
+  if (sentToApp) return;
+
   const url = xlvOutboundWebhookUrl();
   if (!url) return;
-  await pushWeComWebhookMarkdown(url, buildXlvOpsAlertMarkdown(title, detail));
+  await pushWeComWebhookMarkdown(url, content);
 }
 
 function summarizeXlvImportResult(result: unknown): string {
