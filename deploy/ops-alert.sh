@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 站点级紧急告警（容器挂了 / login 不通）
-# 优先：企微自建应用推个人（WECOM_*）；其次群 Webhook
+# 优先：运维小群 OPS_ALERT_WEBHOOK_URL；其次可选自建应用 WECOM_*
+# 故意不回退业务群 XLV_OUTBOUND_WEBHOOK_URL
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -38,6 +39,23 @@ ${body}
 > 站点：https://ali.orblead.com
 EOF
 )"
+
+send_via_webhook() {
+  local webhook="${OPS_ALERT_WEBHOOK_URL:-}"
+  if [[ -z "${webhook}" ]]; then
+    return 1
+  fi
+  local payload
+  payload="$(python3 -c 'import json,sys; print(json.dumps({"msgtype":"markdown","markdown":{"content":sys.stdin.read()}}, ensure_ascii=False))' <<< "${content}")"
+  local http_code
+  http_code="$(
+    curl -sS -o /tmp/leadspace-ops-alert-resp.txt -w '%{http_code}' \
+      -X POST -H 'Content-Type: application/json; charset=utf-8' \
+      -d "${payload}" \
+      "${webhook}" || echo "000"
+  )"
+  [[ "${http_code}" == "200" ]]
+}
 
 send_via_app() {
   local corp_id="${WECOM_CORP_ID:-}"
@@ -95,26 +113,11 @@ print(json.dumps({
   return 0
 }
 
-send_via_webhook() {
-  local webhook=""
-  for key in OPS_ALERT_WEBHOOK_URL XLV_OUTBOUND_WEBHOOK_URL N7_OUTBOUND_WEBHOOK_URL; do
-    webhook="${!key:-}"
-    [[ -n "${webhook}" ]] && break
-  done
-  if [[ -z "${webhook}" ]]; then
-    return 1
-  fi
-  local payload
-  payload="$(python3 -c 'import json,sys; print(json.dumps({"msgtype":"markdown","markdown":{"content":sys.stdin.read()}}, ensure_ascii=False))' <<< "${content}")"
-  local http_code
-  http_code="$(
-    curl -sS -o /tmp/leadspace-ops-alert-resp.txt -w '%{http_code}' \
-      -X POST -H 'Content-Type: application/json; charset=utf-8' \
-      -d "${payload}" \
-      "${webhook}" || echo "000"
-  )"
-  [[ "${http_code}" == "200" ]]
-}
+if send_via_webhook; then
+  echo "${now_epoch}" > "${state_file}"
+  echo "$(date -Iseconds) [ops-alert] 已推运维小群：${title}"
+  exit 0
+fi
 
 if send_via_app; then
   echo "${now_epoch}" > "${state_file}"
@@ -122,12 +125,6 @@ if send_via_app; then
   exit 0
 fi
 
-if send_via_webhook; then
-  echo "${now_epoch}" > "${state_file}"
-  echo "$(date -Iseconds) [ops-alert] 已推群 Webhook：${title}"
-  exit 0
-fi
-
-echo "$(date -Iseconds) [ops-alert] 未配置 WECOM_* / Webhook，仅日志：${title}"
+echo "$(date -Iseconds) [ops-alert] 未配置 OPS_ALERT_WEBHOOK_URL（且应用消息不可用），仅日志：${title}"
 echo "${content}"
 exit 0

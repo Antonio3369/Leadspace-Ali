@@ -1,5 +1,5 @@
 /**
- * 小绿盒外推：业务走企微群 Webhook；运维告警优先走自建应用（推个人）。
+ * 小绿盒外推：业务走企微群 Webhook；运维告警走运维小群（不进业务群）。
  * 旁路推送，失败只打日志，不挡站内通知 / 关单事务。
  */
 
@@ -19,6 +19,11 @@ function publicBaseUrl(): string {
 
 export function xlvOutboundWebhookUrl(): string | null {
   return process.env.XLV_OUTBOUND_WEBHOOK_URL?.trim() || null;
+}
+
+/** 运维紧急告警专用；勿回退到业务群 Webhook */
+export function opsAlertWebhookUrl(): string | null {
+  return process.env.OPS_ALERT_WEBHOOK_URL?.trim() || null;
 }
 
 export function buildXlvFollowUpDoneMarkdown(
@@ -95,13 +100,22 @@ export async function notifyXlvOutboundOpsAlert(
   detail: string
 ): Promise<void> {
   const content = buildXlvOpsAlertMarkdown(title, detail);
-  // 优先推个人企微应用；未配置再回退业务群 Webhook（兼容旧环境）
-  const sentToApp = await pushWeComOpsAppMarkdown(content);
-  if (sentToApp) return;
 
-  const url = xlvOutboundWebhookUrl();
-  if (!url) return;
-  await pushWeComWebhookMarkdown(url, content);
+  // 1) 运维小群 Webhook（主体域名受限时的主通道）
+  const opsUrl = opsAlertWebhookUrl();
+  if (opsUrl) {
+    await pushWeComWebhookMarkdown(opsUrl, content);
+    return;
+  }
+
+  // 2) 可选：自建应用推个人（需企业可信 IP；域名主体校验失败时不可用）
+  try {
+    const sentToApp = await pushWeComOpsAppMarkdown(content);
+    if (sentToApp) return;
+  } catch (err) {
+    console.error("[xlv-ops] wecom app message failed:", err);
+  }
+  // 故意不回退 XLV_OUTBOUND_WEBHOOK_URL，避免内存/宕机刷业务群
 }
 
 function summarizeXlvImportResult(result: unknown): string {

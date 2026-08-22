@@ -36,7 +36,7 @@ if ! curl -sf -o /dev/null --max-time 8 http://127.0.0.1:3001/login; then
   exit 1
 fi
 
-# 3. 小绿盒运维 API（卡死导入 / 内存 → 个人企微应用；业务群不收内存）
+# 3. 小绿盒运维 API（卡死导入 / 内存 → 运维小群；业务群不收内存）
 if [[ -n "${XLV_OPS_CRON_SECRET:-}" ]]; then
   code="$(
     curl -sS -o /tmp/xlv-ops-health.json -w '%{http_code}' \

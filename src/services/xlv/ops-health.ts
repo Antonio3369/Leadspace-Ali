@@ -53,7 +53,7 @@ export async function runXlvOpsHealthCheck(): Promise<XlvOpsHealthResult> {
     console.warn(
       `[xlv-ops-health] memory_high rss=${rssMb}MB threshold=${MEM_WARN_RSS_MB}MB`
     );
-    // 推个人企微应用（不进业务群）
+    // 推运维小群（不进业务群）
     await alert(
       "memory_high",
       "应用内存过高",

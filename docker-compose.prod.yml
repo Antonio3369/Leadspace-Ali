@@ -61,12 +61,14 @@ services:
       # N7 关单外推企微群；未设置则跳过
       N7_OUTBOUND_WEBHOOK_URL: ${N7_OUTBOUND_WEBHOOK_URL:-}
       N7_PUBLIC_BASE_URL: ${N7_PUBLIC_BASE_URL:-${AUTH_URL:-https://ali.orblead.com}}
-      # 小绿盒企微外推（关单 / 撤机 / 运维告警）；未设置则跳过
+      # 小绿盒企微外推（关单 / 撤机 / 导入成功 → 业务群）；未设置则跳过
       XLV_OUTBOUND_WEBHOOK_URL: ${XLV_OUTBOUND_WEBHOOK_URL:-}
       XLV_PUBLIC_BASE_URL: ${XLV_PUBLIC_BASE_URL:-${AUTH_URL:-https://ali.orblead.com}}
       XLV_OPS_CRON_SECRET: ${XLV_OPS_CRON_SECRET:-}
       XLV_OPS_MEM_WARN_MB: ${XLV_OPS_MEM_WARN_MB:-1200}
-      # 企微自建应用 · 运维告警推个人（未设置则运维告警可回退业务群 Webhook）
+      # 运维紧急告警 → 运维小群（不进业务群）
+      OPS_ALERT_WEBHOOK_URL: ${OPS_ALERT_WEBHOOK_URL:-}
+      # 可选：自建应用推个人（需企业可信 IP）
       WECOM_CORP_ID: ${WECOM_CORP_ID:-}
       WECOM_AGENT_ID: ${WECOM_AGENT_ID:-}
       WECOM_AGENT_SECRET: ${WECOM_AGENT_SECRET:-}
