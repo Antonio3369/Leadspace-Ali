@@ -11,15 +11,15 @@ export type ImportRestartContext = {
 };
 
 export function formatImportRestartNotice(context: ImportRestartContext = {}) {
-  const fileLabel = context.fileName ? `「${context.fileName}」` : "上次文件";
+  const fileLabel = context.fileName ? `「${context.fileName}」` : "这份文件";
   const progressLabel =
     context.progress != null && context.progress > 0
-      ? `（约 ${context.progress}% 时已中断）`
+      ? `（约 ${context.progress}% 时中断）`
       : "";
 
   return {
-    title: "请勿立即重复上传",
-    body: `${fileLabel}导入${progressLabel}因系统维护中断。大表导入可能已部分或全部写入，请先核对看板/设备数据；仅当确认缺失时，再重新选择文件导入。`,
+    title: "导入未成功",
+    body: `${fileLabel}${progressLabel}没有导完，不能算成功。请重新选择文件再传一遍。`,
   };
 }
 

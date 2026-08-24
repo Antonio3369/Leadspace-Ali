@@ -1,0 +1,24 @@
+---
+description: 用户说「F1」= 更新 Leadspace.Ali.md、commit、push、部署生产
+alwaysApply: true
+---
+
+# F1 = 发布流水线
+
+当用户消息为 **「F1」**（或明确引用 F1 发布）时，表示当前工作区改动已就绪，执行完整发布：
+
+1. **更新 `Leadspace.Ali.md`**：最后更新行、§1.1 相关约定、§1.2 已上线/待部署；写清 commit hash 与本次功能摘要
+2. **Git commit**：暂存相关改动；commit message 聚焦 why；**不**提交 `.env` 等密钥
+3. **Push**：`origin main` + `github main`（双远程）
+4. **部署**：`./deploy/push-and-deploy.sh`（rsync → 远程 `server-deploy.sh`）
+5. **可选企微**（若本次涉及小绿盒外推或用户刚部署过需补推）：`./deploy/post-deploy-notify.sh <commit> ...`；负责人群汇总依赖 `db-init` 内 `XLV_OUTBOUND_WEBHOOK_URL`
+
+## 原则
+
+- **自主跑完**，不逐步确认（见 autonomous-execution）
+- 部署前若本地落后/超前远程，先处理分叉
+- 完成后简短汇报：commit、推送、部署状态、验证入口 URL
+
+## 非 F1
+
+用户只说「commit」「部署」等单步时，**不要**自动展开为全套 F1，除非用户明确要全套。

@@ -135,6 +135,31 @@ export async function notifyXlvOutboundImportSuccess(opts: {
   await pushXlvOpsMarkdown(buildXlvImportSuccessMarkdown(opts));
 }
 
+export function buildXlvImportFailedMarkdown(opts: {
+  fileName: string;
+  uploadedByName: string;
+  errorMessage: string;
+}): string {
+  const reason = opts.errorMessage.trim() || "导入失败";
+  const link = `${publicBaseUrl()}/xlv/admin/import`;
+  return [
+    "**【小绿盒 · 运维】数据上传失败**",
+    `> 时间：${new Date().toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" })}`,
+    `> 文件：${opts.fileName}`,
+    `> 上传人：${opts.uploadedByName}`,
+    `> 原因：${reason}`,
+    `> 请重新上传。 [打开导入页](${link})`,
+  ].join("\n");
+}
+
+export async function notifyXlvOutboundImportFailed(opts: {
+  fileName: string;
+  uploadedByName: string;
+  errorMessage: string;
+}): Promise<void> {
+  await pushXlvOpsMarkdown(buildXlvImportFailedMarkdown(opts));
+}
+
 function companyBoardRankPrefix(rank: number): string {
   if (rank === 1) return "🥇";
   if (rank === 2) return "🥈";

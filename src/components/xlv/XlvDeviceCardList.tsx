@@ -18,6 +18,7 @@ import {
 } from "@/lib/xlv-rules";
 import type { XlvDeviceListItem } from "@/services/xlv/analytics";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
+import { XlvRelocationBadge } from "@/components/xlv/XlvRelocationBadge";
 import { XlvFollowUpStatusCell } from "@/components/xlv/XlvFollowUpStatusCell";
 
 function progressLine(d: XlvDeviceListItem) {
@@ -145,6 +146,12 @@ export function XlvDeviceCardList({
                           compact
                         />
                       ) : null}
+                      {d.relocation?.fromStore ? (
+                        <XlvRelocationBadge
+                          fromStore={d.relocation.fromStore}
+                          compact
+                        />
+                      ) : null}
                       {d.firstTxnDate || d.lastTxnDate ? (
                         <div className="text-xs tabular-nums text-[#64748b] leading-snug">
                           {d.firstTxnDate ? <p>首笔 {d.firstTxnDate}</p> : null}
@@ -162,6 +169,11 @@ export function XlvDeviceCardList({
                         {merchant}
                       </p>
                     )}
+                    {d.relocation?.fromStore ? (
+                      <p className="text-[11px] text-[#7c3aed] truncate">
+                        原门店 {d.relocation.fromStore}
+                      </p>
+                    ) : null}
                     <p className="text-[0.7rem] text-[#94a3b8] font-mono truncate">
                       {d.deviceSn}
                     </p>

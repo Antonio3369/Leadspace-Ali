@@ -7,6 +7,21 @@ export type XlvImportColumnStatus = {
 
 export type XlvImportFormat = "raw" | "roster" | "assignment";
 
+export function inferXlvImportFormat(
+  fileName: string,
+  result: unknown
+): XlvImportFormat {
+  if (result && typeof result === "object") {
+    const format = (result as { format?: unknown }).format;
+    if (format === "raw" || format === "roster" || format === "assignment") {
+      return format;
+    }
+  }
+  if (/归属/.test(fileName)) return "assignment";
+  if (/名册|组织/.test(fileName)) return "roster";
+  return "raw";
+}
+
 export type XlvImportSummary = {
   format: XlvImportFormat;
   sheetName: string;

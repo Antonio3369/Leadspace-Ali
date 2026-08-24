@@ -66,6 +66,8 @@ export function XlvTodayView({
   const searchParams = useSearchParams();
   const manager = searchParams.get("manager") ?? "";
   const operator = searchParams.get("operator") ?? "";
+  const queue = searchParams.get("queue");
+  const focusQueue = queue === "P0" || queue === "P1" || queue === "P2" ? queue : null;
 
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,6 +87,12 @@ export function XlvTodayView({
   dataRef.current = data;
 
   useRestoreListScroll(pathname, active && !loading && !!data);
+
+  useEffect(() => {
+    if (!active || !data || focusQueue !== "P2") return;
+    const el = document.getElementById("queue-P2");
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [active, data, focusQueue]);
 
   const pushQuery = useCallback(
     (patch: Record<string, string | null>) => {
@@ -197,6 +205,25 @@ export function XlvTodayView({
   const showManagerFilter = role === "DIRECTOR";
   const showOperatorFilter = role === "DIRECTOR" || role === "MANAGER";
 
+  function withTodayQuery(patch: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(patch)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    const q = params.toString();
+    return `${pathname}${q ? `?${q}` : ""}`;
+  }
+
+  function followUpHref(priority: "P0" | "P1") {
+    const params = new URLSearchParams();
+    params.set("follow", "pending");
+    params.set("priority", priority);
+    if (manager) params.set("manager", manager);
+    if (operator) params.set("operator", operator);
+    return `${xlvPath("/follow-up")}?${params.toString()}`;
+  }
+
   const shortcuts = data
     ? [
         {
@@ -204,7 +231,7 @@ export function XlvTodayView({
           label: "优先催办",
           value: data.counts.P0,
           hint: "单笔沉默 / 沉睡≥7天",
-          href: `${xlvPath("/follow-up")}?follow=pending&priority=P0`,
+          href: followUpHref("P0"),
           tone: "red" as const,
         },
         {
@@ -212,7 +239,7 @@ export function XlvTodayView({
           label: "疑似沉睡",
           value: data.counts.P1,
           hint: "2 天≤沉睡＜7 天",
-          href: `${xlvPath("/follow-up")}?follow=pending&priority=P1`,
+          href: followUpHref("P1"),
           tone: "amber" as const,
         },
         {
@@ -220,7 +247,7 @@ export function XlvTodayView({
           label: "考核将到期",
           value: data.counts.P2,
           hint: `两月窗口剩≤${XLV_ASSESSMENT_EXPIRING_DAYS}天`,
-          href: `${xlvPath("/alerts")}?status=in_progress`,
+          href: `${withTodayQuery({ queue: "P2" })}#queue-P2`,
           tone: "sky" as const,
         },
       ]
@@ -240,48 +267,36 @@ export function XlvTodayView({
   const sections = data
     ? [
         {
-          key: "P0",
+          key: "P0" as const,
           title: "优先催办",
           count: data.counts.P0,
           devices: data.queues.P0,
           empty: "暂无优先催办项",
           showFollowUp: true,
           showQualification: false,
-          more: moreLink(
-            data.counts.P0,
-            data.queues.P0.length,
-            `${xlvPath("/follow-up")}?follow=pending&priority=P0`
-          ),
+          more: moreLink(data.counts.P0, data.queues.P0.length, followUpHref("P0")),
         },
         {
-          key: "P1",
+          key: "P1" as const,
           title: "疑似沉睡",
           count: data.counts.P1,
           devices: data.queues.P1,
           empty: "暂无疑似沉睡待回访",
           showFollowUp: true,
           showQualification: false,
-          more: moreLink(
-            data.counts.P1,
-            data.queues.P1.length,
-            `${xlvPath("/follow-up")}?follow=pending&priority=P1`
-          ),
+          more: moreLink(data.counts.P1, data.queues.P1.length, followUpHref("P1")),
         },
         {
-          key: "P2",
+          key: "P2" as const,
           title: "考核将到期",
           count: data.counts.P2,
           devices: data.queues.P2,
           empty: "暂无考核将到期设备",
           showFollowUp: false,
           showQualification: true,
-          more: moreLink(
-            data.counts.P2,
-            data.queues.P2.length,
-            `${xlvPath("/alerts")}?status=in_progress`
-          ),
+          more: null,
         },
-      ]
+      ].filter((section) => !focusQueue || section.key === focusQueue)
     : [];
 
   return (
@@ -394,8 +409,24 @@ export function XlvTodayView({
               ))}
             </div>
 
+          {focusQueue === "P2" ? (
+            <p className="text-sm text-[#64748b]">
+              正在看考核将到期的 {data.counts.P2} 台。
+              <Link
+                href={withTodayQuery({ queue: null })}
+                className="ml-2 font-medium text-[#2563eb] hover:text-[#1d4ed8]"
+              >
+                返回全部待办
+              </Link>
+            </p>
+          ) : null}
+
           {sections.map((section) => (
-            <section key={section.key} className="space-y-3">
+            <section
+              key={section.key}
+              id={`queue-${section.key}`}
+              className="space-y-3 scroll-mt-4"
+            >
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="text-base font-semibold text-[#111827]">
                   {section.title}{" "}

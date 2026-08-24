@@ -36,6 +36,10 @@ import { normalizeXlvStatDate } from "@/lib/xlv-stat-date";
 import { withXlvBoardCache } from "./board-cache";
 import { withXlvHeavyGate } from "./xlv-heavy-gate";
 import { loadSalesStockForOperator } from "./inventory/service";
+import {
+  attachXlvRelocations,
+  loadXlvRelocationsBySn,
+} from "./relocation";
 
 function isoDate(d: Date | null | undefined) {
   return d ? d.toISOString().slice(0, 10) : null;
@@ -427,6 +431,29 @@ export async function getXlvStaffDevices(
     staffName
   );
 
+  const devicesOut = withStatus.map((d) => ({
+    deviceSn: d.deviceSn,
+    merchantName: d.merchantName,
+    activationMerchantName: d.activationMerchantName,
+    operatorName: d.operatorName,
+    managerName: d.managerName,
+    companyName: d.companyName,
+    cumulativeUsers: d.cumulativeUsers,
+    cumulativeTxns: d.cumulativeTxns,
+    sleepDays: d.sleepDays,
+    lastTxnDate: isoDate(d.lastTxnDate),
+    firstTxnDate: isoDate(d.firstTxnDate),
+    qualificationStatus: d.qualificationStatus,
+    qualificationGap: {
+      usersGap: d.qualificationDetail.usersGap,
+      txnsGap: d.qualificationDetail.txnsGap,
+      line: xlvQualificationGapLine(d.qualificationDetail),
+    },
+    followUpDone: d.followUpDone,
+    relocation: null as { fromStore: string; toStore: string } | null,
+  }));
+  await attachXlvRelocations(devicesOut);
+
   return {
     manager: {
       key: opts.managerKey,
@@ -437,26 +464,7 @@ export async function getXlvStaffDevices(
       name: staffName,
     },
     undeployedStock,
-    devices: withStatus.map((d) => ({
-      deviceSn: d.deviceSn,
-      merchantName: d.merchantName,
-      activationMerchantName: d.activationMerchantName,
-      operatorName: d.operatorName,
-      managerName: d.managerName,
-      companyName: d.companyName,
-      cumulativeUsers: d.cumulativeUsers,
-      cumulativeTxns: d.cumulativeTxns,
-      sleepDays: d.sleepDays,
-      lastTxnDate: isoDate(d.lastTxnDate),
-      firstTxnDate: isoDate(d.firstTxnDate),
-      qualificationStatus: d.qualificationStatus,
-      qualificationGap: {
-        usersGap: d.qualificationDetail.usersGap,
-        txnsGap: d.qualificationDetail.txnsGap,
-        line: xlvQualificationGapLine(d.qualificationDetail),
-      },
-      followUpDone: d.followUpDone,
-    })),
+    devices: devicesOut,
   };
 }
 
@@ -492,7 +500,10 @@ export async function getXlvDeviceDetail(user: SessionUser, deviceSn: string) {
     })
   );
 
-  return { device, qualificationDetail, txnTrend };
+  const relocation =
+    (await loadXlvRelocationsBySn([deviceSn])).get(deviceSn) ?? null;
+
+  return { device, qualificationDetail, txnTrend, relocation };
 }
 
 export type XlvManagerComplianceSnapshot = {

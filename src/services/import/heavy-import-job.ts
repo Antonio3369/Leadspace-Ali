@@ -14,6 +14,7 @@ import { invalidateXlvBoardCache } from "@/services/xlv/board-cache";
 import { importExcelFile } from "@/services/import/excel-importer";
 import {
   notifyXlvOutboundCompanyBoardSummary,
+  notifyXlvOutboundImportFailed,
   notifyXlvOutboundImportSuccess,
 } from "@/services/xlv/outbound-notifier";
 
@@ -96,6 +97,43 @@ export async function getActiveHeavyImportJob(opts: {
   return job ? presentHeavyImportJob(job) : null;
 }
 
+export async function listRecentHeavyImportJobs(opts: {
+  kind: HeavyImportKind;
+  uploadedById: string;
+  directorView: boolean;
+  take?: number;
+}) {
+  const jobs = await db.heavyImportJob.findMany({
+    where: {
+      kind: opts.kind,
+      ...(opts.directorView ? {} : { uploadedById: opts.uploadedById }),
+    },
+    orderBy: { createdAt: "desc" },
+    take: opts.take ?? 20,
+    select: {
+      id: true,
+      fileName: true,
+      status: true,
+      message: true,
+      errorMessage: true,
+      resultJson: true,
+      createdAt: true,
+      completedAt: true,
+    },
+  });
+
+  return jobs.map((job) => ({
+    id: job.id,
+    fileName: job.fileName,
+    status: job.status,
+    message: job.message,
+    errorMessage: job.errorMessage,
+    result: job.resultJson,
+    createdAt: job.createdAt,
+    completedAt: job.completedAt,
+  }));
+}
+
 /** 应用启动时：释放内存锁，并将孤儿导入任务标为失败（每进程仅执行一次） */
 const RECOVERED_KEY = Symbol.for("leadspace.heavyImport.recovered");
 
@@ -104,14 +142,23 @@ export async function recoverOrphanedHeavyImportJobs() {
   (globalThis as Record<symbol, boolean>)[RECOVERED_KEY] = true;
 
   resetImportLock();
+  const orphans = await db.heavyImportJob
+    .findMany({
+      where: { status: { in: ["PROCESSING", "PENDING"] } },
+      select: { id: true, kind: true, fileName: true, uploadedById: true },
+    })
+    .catch(() => []);
+  if (orphans.length === 0) return;
+
+  const interruptMessage = "服务重启导致导入中断，请重新上传。";
   const result = await db.heavyImportJob
     .updateMany({
-      where: { status: { in: ["PROCESSING", "PENDING"] } },
+      where: { id: { in: orphans.map((job) => job.id) } },
       data: {
         status: "FAILED",
         progress: 100,
         message: "导入已中断",
-        errorMessage: "服务重启导致导入中断，请重新上传。",
+        errorMessage: interruptMessage,
         completedAt: new Date(),
       },
     })
@@ -121,6 +168,30 @@ export async function recoverOrphanedHeavyImportJobs() {
       `[import] marked ${result.count} orphaned heavy import job(s) as FAILED`
     );
   }
+
+  for (const job of orphans) {
+    if (job.kind !== "xlv") continue;
+    void notifyXlvImportFailed(job, interruptMessage);
+  }
+}
+
+async function notifyXlvImportFailed(
+  job: { fileName: string; uploadedById: string },
+  errorMessage: string
+) {
+  const uploader = await db.user
+    .findUnique({
+      where: { id: job.uploadedById },
+      select: { name: true },
+    })
+    .catch(() => null);
+  await notifyXlvOutboundImportFailed({
+    fileName: job.fileName,
+    uploadedByName: uploader?.name?.trim() || "未知",
+    errorMessage,
+  }).catch((err) => {
+    console.warn("[xlv-outbound] import failed notify failed:", err);
+  });
 }
 
 const IMPORT_DIR =
@@ -212,8 +283,9 @@ export async function enqueueHeavyImport(opts: {
 async function runHeavyImportJob(jobId: string) {
   const filePath = filePathFor(jobId);
   let buffer: Buffer | null = null;
+  let job: HeavyImportJobRow | null = null;
   try {
-    const job = await db.heavyImportJob.findUnique({ where: { id: jobId } });
+    job = await db.heavyImportJob.findUnique({ where: { id: jobId } });
     if (!job) return;
 
     await db.heavyImportJob.update({
@@ -332,6 +404,9 @@ async function runHeavyImportJob(jobId: string) {
         },
       })
       .catch(() => undefined);
+    if (job?.kind === "xlv") {
+      void notifyXlvImportFailed(job, message);
+    }
   } finally {
     buffer = null;
     try {

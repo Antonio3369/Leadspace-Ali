@@ -22,6 +22,7 @@ import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 import { CopyTextButton } from "@/components/ui/CopyTextButton";
 import { XlvAssessmentPanel } from "@/components/xlv/XlvAssessmentPanel";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
+import { XlvRelocationBadge } from "@/components/xlv/XlvRelocationBadge";
 import { XlvFollowUpCloseForm } from "@/components/xlv/XlvFollowUpCloseForm";
 import type { XlvFollowUpPatchResult, XlvFollowUpReviewResult } from "@/lib/xlv-follow-up-client";
 import { XlvTxnActivityChart } from "@/components/xlv/XlvTxnActivityChart";
@@ -29,7 +30,7 @@ import type { XlvTxnActivityPoint } from "@/services/xlv/snapshot-daily";
 import type { XlvQualificationDetail } from "@/lib/xlv-rules";
 import { readResponseJson, getFetchErrorMessage } from "@/lib/fetch-json";
 import { emitXlvNotificationsChanged } from "@/lib/xlv-notifications-client";
-import { XLV_WITHDRAW_IMPORT_ENABLED } from "@/lib/xlv-inventory";
+import type { XlvRelocationHint } from "@/lib/xlv-relocation";
 
 interface Device {
   deviceSn: string;
@@ -99,6 +100,7 @@ export function XlvDeviceDetailView({
   const [pendingWithdraw, setPendingWithdraw] = useState<PendingWithdraw | null>(
     null
   );
+  const [relocation, setRelocation] = useState<XlvRelocationHint | null>(null);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -111,6 +113,7 @@ export function XlvDeviceDetailView({
       qualificationDetail?: XlvQualificationDetail;
       txnTrend?: XlvTxnActivityPoint[];
       pendingWithdraw?: PendingWithdraw | null;
+      relocation?: XlvRelocationHint | null;
     }>(res, "加载设备");
     if (!res.ok) throw new Error(json.error || "加载失败");
     const d = json.device;
@@ -137,6 +140,7 @@ export function XlvDeviceDetailView({
       byName: d.followUpReviewByName ?? null,
     });
     setPendingWithdraw(json.pendingWithdraw ?? null);
+    setRelocation(json.relocation ?? null);
     emitXlvNotificationsChanged();
   }, [sn]);
 
@@ -300,6 +304,9 @@ export function XlvDeviceDetailView({
               xlvShouldShowQualificationBadge(displayInput) ? (
                 <XlvQualificationBadge status={qualificationDetail.status} />
               ) : null}
+              {relocation?.fromStore ? (
+                <XlvRelocationBadge fromStore={relocation.fromStore} />
+              ) : null}
               <span className="text-xs font-mono text-[#94a3b8]">{device.deviceSn}</span>
               <CopyTextButton text={device.deviceSn} />
             </div>
@@ -317,6 +324,12 @@ export function XlvDeviceDetailView({
                 <dt className="text-[#94a3b8] text-xs">公司</dt>
                 <dd className="font-medium">{device.companyName || "—"}</dd>
               </div>
+              {relocation?.fromStore ? (
+                <div>
+                  <dt className="text-[#94a3b8] text-xs">原门店</dt>
+                  <dd className="font-medium">{relocation.fromStore}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt className="text-[#94a3b8] text-xs">首笔交易</dt>
                 <dd className="tabular-nums">{fmtDate(device.firstTxnDate)}</dd>

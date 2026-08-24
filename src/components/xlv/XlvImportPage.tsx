@@ -16,6 +16,7 @@ import {
 } from "@/lib/import-upload-client";
 import { ImportInterruptedNotice } from "@/components/import/ImportInterruptedNotice";
 import { ImportJobStatusPanel } from "@/components/import/ImportJobStatusPanel";
+import { XlvRecentImportOutcomes } from "@/components/xlv/XlvRecentImportOutcomes";
 import {
   NotionAlert,
   NotionButton,
@@ -51,7 +52,7 @@ const TAB_CONFIG: Record<
   raw: {
     title: "运营原始表",
     description:
-      "① 先传本表（微信运营导出，含「统计日期」「当日*」「累计*」）。按 SN + 统计日期写快照；大表约 3–8 分钟，上传后保持页面打开、勿重复点。若提示中断，请先查看看板再决定是否重传。",
+      "① 先传本表（微信运营导出，含「统计日期」「当日*」「累计*」）。按 SN + 统计日期写快照；大表约 3–8 分钟，上传后保持页面打开、勿重复点。未显示「已成功」就当没导上，请重传。",
     endpoint: "/api/import/xlv",
     buttonLabel: "导入原始表",
   },
@@ -65,7 +66,7 @@ const TAB_CONFIG: Record<
   assignment: {
     title: "SN 归属表",
     description:
-      "③ 最后传 SN 归属（「所属作业员」或「所属业务员」必填；经理可省略，从名册反查）。谁铺算谁的：表内 SN=已铺设；同 SN 换商户名=推断已撤机并铺到新商户。",
+      "③ 最后传 SN 归属（「所属作业员」或「所属业务员」必填；经理可省略，从名册反查）。谁铺算谁的：表内 SN=已铺设；同 SN 换商户名=推断已撤机并铺到新商户。中断或失败都要重传，不能当已导入。",
     endpoint: "/api/import/xlv",
     buttonLabel: "导入 SN 归属表",
   },
@@ -83,6 +84,7 @@ export function XlvImportPage() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<XlvImportResult | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [recentRefreshKey, setRecentRefreshKey] = useState(0);
 
   const config = TAB_CONFIG[tab];
   const resumeCheckedRef = useRef(false);
@@ -154,6 +156,7 @@ export function XlvImportPage() {
       setUploading(false);
       setProgress(0);
       setProgressLabel("");
+      setRecentRefreshKey((k) => k + 1);
     }
   }
 
@@ -246,6 +249,7 @@ export function XlvImportPage() {
       setProgress(0);
       setProgressLabel("");
       void refreshActiveJobPeek();
+      setRecentRefreshKey((k) => k + 1);
     }
   }
 
@@ -274,6 +278,8 @@ export function XlvImportPage() {
           </p>
         }
       />
+
+      <XlvRecentImportOutcomes refreshKey={recentRefreshKey} />
 
       <NotionTabs
         tabs={[
@@ -331,8 +337,6 @@ export function XlvImportPage() {
         ) ? (
           <ImportInterruptedNotice
             context={interrupted}
-            verifyHref={xlvPath("/board")}
-            verifyLabel="打开小绿盒看板核对"
             onDismiss={() => setInterrupted(null)}
           />
         ) : null}

@@ -29,9 +29,10 @@ import { syncXlvQualificationStatuses } from "@/services/xlv/recompute-qualifica
 import { countXlvQualificationSummary } from "@/services/xlv/recompute-qualification";
 import {
   resolveXlvDeviceSortMode,
-  sortXlvDevices,
   xlvDeviceListSqlOrderBy,
 } from "@/services/xlv/sort-devices";
+import type { XlvRelocationHint } from "@/lib/xlv-relocation";
+import { attachXlvRelocations } from "@/services/xlv/relocation";
 
 export interface XlvDashboardSummary {
   totalDevices: number;
@@ -70,6 +71,7 @@ export interface XlvDeviceListItem {
   alertKind: XlvDeviceAlertKind;
   qualificationStatus?: XlvQualificationStatus;
   qualificationGapLine?: string;
+  relocation?: XlvRelocationHint | null;
 }
 
 export interface XlvManagerStat {
@@ -132,6 +134,7 @@ function buildXlvDeviceListItems(
     alertKind: xlvEffectiveAlertKind(row),
     qualificationStatus: row.qualificationStatus as XlvQualificationStatus,
     qualificationGapLine: xlvQualificationGapLine(row.qualificationDetail),
+    relocation: null,
   }));
 }
 
@@ -354,6 +357,7 @@ async function loadXlvDashboardDevicesPage(
   }
 
   let devices = buildXlvDeviceListItems(enriched);
+  await attachXlvRelocations(devices);
   if (opts.qualificationStatus) {
     devices = devices.filter(
       (d) => d.qualificationStatus === opts.qualificationStatus

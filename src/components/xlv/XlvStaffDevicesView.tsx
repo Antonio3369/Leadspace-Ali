@@ -49,6 +49,7 @@ interface ApiDevice {
   qualificationStatus: XlvQualificationStatus;
   qualificationGap?: { usersGap: number; txnsGap: number; line: string };
   followUpDone?: boolean;
+  relocation?: { fromStore: string; toStore: string } | null;
 }
 
 interface ApiResponse {

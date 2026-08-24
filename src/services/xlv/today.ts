@@ -25,6 +25,7 @@ import {
 import { sortXlvDevices } from "@/services/xlv/sort-devices";
 import { withXlvBoardCache } from "./board-cache";
 import { withXlvHeavyGate } from "./xlv-heavy-gate";
+import { attachXlvRelocations } from "./relocation";
 
 export const XLV_TODAY_LIST_CAP = 40;
 
@@ -96,6 +97,7 @@ function mapTodayDevice(
       sleepDays: row.sleepDays,
       assessmentDaysLeft,
     }),
+    relocation: null,
   };
 }
 
@@ -237,6 +239,8 @@ async function loadXlvTodayQueues(
     }
   }
 
+  await attachXlvRelocations([...buckets.P0, ...buckets.P1, ...buckets.P2]);
+
   const operatorFilter = opts?.operatorName?.trim();
   const filteredBuckets = operatorFilter
     ? {
@@ -249,7 +253,8 @@ async function loadXlvTodayQueues(
   const queues = {
     P0: sortTodayQueue(filteredBuckets.P0, "P0").slice(0, XLV_TODAY_LIST_CAP),
     P1: sortTodayQueue(filteredBuckets.P1, "P1").slice(0, XLV_TODAY_LIST_CAP),
-    P2: sortTodayQueue(filteredBuckets.P2, "P2").slice(0, XLV_TODAY_LIST_CAP),
+    // 考核将到期必须能点开看全量，不能截成 40 台
+    P2: sortTodayQueue(filteredBuckets.P2, "P2"),
   };
 
   const counts = {
