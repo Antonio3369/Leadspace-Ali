@@ -31,6 +31,7 @@ import type { XlvQualificationDetail } from "@/lib/xlv-rules";
 import { readResponseJson, getFetchErrorMessage } from "@/lib/fetch-json";
 import { emitXlvNotificationsChanged } from "@/lib/xlv-notifications-client";
 import type { XlvRelocationHint } from "@/lib/xlv-relocation";
+import { XLV_WITHDRAW_IMPORT_ENABLED } from "@/lib/xlv-inventory";
 
 interface Device {
   deviceSn: string;
