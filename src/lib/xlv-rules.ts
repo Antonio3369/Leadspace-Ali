@@ -129,6 +129,7 @@ function pickAssessmentFocusMonth(
 export function assessXlvQualification(
   device: {
     firstTxnDate: Date | null;
+    lastTxnDate?: Date | null;
     relocatedAt?: Date | null;
     statDate?: Date | null;
     cumulativeUsers: number;
@@ -352,6 +353,7 @@ function formatYearMonth(y: number, m: number) {
 export function getXlvQualificationDetail(
   device: {
     firstTxnDate: Date | null;
+    lastTxnDate?: Date | null;
     relocatedAt?: Date | null;
     statDate?: Date | null;
     cumulativeUsers: number;
@@ -454,6 +456,10 @@ export function xlvQualificationMonthProgressLine(detail: XlvQualificationDetail
 export function xlvQualificationGapLine(detail: XlvQualificationDetail) {
   if (detail.status === "qualified") return "已达标";
   if (!detail.focusMonth) return "待首笔交易";
+  if (detail.focusMonth.users == null && detail.focusMonth.txns == null) {
+    const label = detail.focusMonth.label === "次月" ? "次月" : "装机月";
+    return `${label}尚未收款 · 目标 ${XLV_MONTHLY_USER_TARGET} 用户 + ${XLV_MONTHLY_TXN_TARGET} 笔`;
+  }
   const parts: string[] = [];
   if (detail.usersGap > 0) {
     parts.push(
@@ -481,6 +487,7 @@ export function xlvQualificationGapLine(detail: XlvQualificationDetail) {
 
 type XlvStoredGapDevice = {
   firstTxnDate: Date | null;
+  lastTxnDate?: Date | null;
   relocatedAt?: Date | null;
   statDate?: Date | null;
   cumulativeUsers: number;

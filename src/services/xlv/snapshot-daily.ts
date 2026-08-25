@@ -278,6 +278,7 @@ export function computeXlvMonthAssessmentTotals(
   month: number,
   device?: {
     firstTxnDate: Date | null;
+    lastTxnDate?: Date | null;
     statDate?: Date | null;
     cumulativeUsers: number;
     cumulativeTxns: number;
@@ -285,6 +286,14 @@ export function computeXlvMonthAssessmentTotals(
   allowInstallMonthFallback = false,
   snapshotsPreEnriched = false
 ): { users: number; txns: number; estimated: boolean } | null {
+  if (
+    device?.lastTxnDate &&
+    device.firstTxnDate &&
+    xlvStatDateKey(device.lastTxnDate) < xlvStatDateKey(device.firstTxnDate)
+  ) {
+    return null;
+  }
+
   const normalized = normalizeAssessmentSnapshots(snapshots);
   const enriched = snapshotsPreEnriched
     ? normalized
