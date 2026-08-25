@@ -11,6 +11,7 @@ import {
   xlvShouldShowSleepAlertBadge,
   xlvSleepAlertBadgeClass,
   xlvSleepAlertBadgeLabel,
+  xlvIsLegacyTxnBeforeRelocation,
 } from "@/lib/xlv-device-display";
 import {
   NotionAlert,
@@ -177,10 +178,16 @@ export function XlvDeviceDetailView({
       })
     : "active";
 
+  const hideLegacyTxn = xlvIsLegacyTxnBeforeRelocation({
+    relocated: Boolean(relocation?.fromStore),
+    assessmentStart: device?.firstTxnDate,
+    lastTxnDate: device?.lastTxnDate,
+  });
   const showFollowUp =
-    alertKind === "single_silence" ||
-    alertKind === "dormant" ||
-    followUp.done;
+    !hideLegacyTxn &&
+    (alertKind === "single_silence" ||
+      alertKind === "dormant" ||
+      followUp.done);
   const displayInput = {
     alertKind,
     qualificationStatus: qualificationDetail?.status,
@@ -298,7 +305,9 @@ export function XlvDeviceDetailView({
 
           <div className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              {xlvShouldShowSleepAlertBadge(displayInput) && sleepLabel ? (
+              {xlvShouldShowSleepAlertBadge(displayInput) &&
+              sleepLabel &&
+              !hideLegacyTxn ? (
                 <span
                   className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${xlvSleepAlertBadgeClass(alertKind)}`}
                 >
@@ -343,25 +352,35 @@ export function XlvDeviceDetailView({
               </div>
               <div>
                 <dt className="text-[#94a3b8] text-xs">末笔交易</dt>
-                <dd className="tabular-nums">{fmtDate(device.lastTxnDate)}</dd>
+                <dd className="tabular-nums">
+                  {hideLegacyTxn ? "新店暂无" : fmtDate(device.lastTxnDate)}
+                </dd>
               </div>
               <div>
                 <dt className="text-[#94a3b8] text-xs">沉睡天数</dt>
                 <dd className="tabular-nums font-semibold text-[#c41e3a]">
-                  {device.sleepDays} 天
+                  {hideLegacyTxn ? "—" : `${device.sleepDays} 天`}
                 </dd>
               </div>
               <div>
                 <dt className="text-[#94a3b8] text-xs">累计用户</dt>
-                <dd className="tabular-nums">{device.cumulativeUsers}</dd>
+                <dd className="tabular-nums">
+                  {hideLegacyTxn ? "—" : device.cumulativeUsers}
+                </dd>
               </div>
               <div>
                 <dt className="text-[#94a3b8] text-xs">累计笔数</dt>
-                <dd className="tabular-nums">{device.cumulativeTxns}</dd>
+                <dd className="tabular-nums">
+                  {hideLegacyTxn ? "—" : device.cumulativeTxns}
+                </dd>
               </div>
               <div>
                 <dt className="text-[#94a3b8] text-xs">累计金额</dt>
-                <dd className="tabular-nums">¥{device.cumulativeAmount.toFixed(2)}</dd>
+                <dd className="tabular-nums">
+                  {hideLegacyTxn
+                    ? "—"
+                    : `¥${device.cumulativeAmount.toFixed(2)}`}
+                </dd>
               </div>
             </dl>
           </div>
@@ -402,13 +421,24 @@ export function XlvDeviceDetailView({
           <section className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-[#111827] mb-3">
               交易趋势
-              {device.lastTxnDate ? (
+              {!hideLegacyTxn && device.lastTxnDate ? (
                 <span className="ml-2 text-xs font-normal text-[#94a3b8]">
                   末笔 {device.lastTxnDate}
                 </span>
               ) : null}
             </h2>
-            <XlvTxnActivityChart points={txnTrend} />
+            <XlvTxnActivityChart
+              points={
+                device.relocatedAt || relocation?.fromStore
+                  ? txnTrend.filter((p) => p.date >= (device.firstTxnDate ?? ""))
+                  : txnTrend
+              }
+              emptyText={
+                hideLegacyTxn || device.relocatedAt || relocation?.fromStore
+                  ? "新店暂无收款；旧店交易已从趋势中去掉。"
+                  : undefined
+              }
+            />
           </section>
         </div>
       ) : null}

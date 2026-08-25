@@ -5,6 +5,7 @@ import { xlvPath } from "@/lib/business-lines";
 import {
   xlvDeviceCardRightLabel,
   xlvDeviceCardRightTitleClass,
+  xlvIsLegacyTxnBeforeRelocation,
   xlvShouldShowQualificationBadge,
   xlvShouldShowSleepAlertBadge,
   xlvSleepAlertBadgeClass,
@@ -22,6 +23,15 @@ import { XlvRelocationBadge } from "@/components/xlv/XlvRelocationBadge";
 import { XlvFollowUpStatusCell } from "@/components/xlv/XlvFollowUpStatusCell";
 
 function progressLine(d: XlvDeviceListItem) {
+  if (
+    xlvIsLegacyTxnBeforeRelocation({
+      relocated: Boolean(d.relocation?.fromStore),
+      assessmentStart: d.firstTxnDate,
+      lastTxnDate: d.lastTxnDate,
+    })
+  ) {
+    return "新店暂无收款";
+  }
   return `至今累计 ${d.cumulativeUsers} 用户 · ${d.cumulativeTxns} 笔`;
 }
 
@@ -109,10 +119,16 @@ export function XlvDeviceCardList({
               cumulativeTxns: d.cumulativeTxns,
             };
             const right = xlvDeviceCardRightLabel(display, hideQualificationBadge);
-            const gap = gapLine(d);
+            const hideLegacyTxn = xlvIsLegacyTxnBeforeRelocation({
+              relocated: Boolean(d.relocation?.fromStore),
+              assessmentStart: d.firstTxnDate,
+              lastTxnDate: d.lastTxnDate,
+            });
+            const gap = hideLegacyTxn ? null : gapLine(d);
             const alertKind = xlvEffectiveAlertKind(d);
             const showFollowUp =
               showFollowUpStatus &&
+              !hideLegacyTxn &&
               "followUpDone" in d &&
               (alertKind === "single_silence" || alertKind === "dormant");
             const detailHref = xlvPath(
@@ -130,7 +146,9 @@ export function XlvDeviceCardList({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
-                      {shouldShowAlertBadge(d, hideAlertBadge) && sleepLabel ? (
+                      {shouldShowAlertBadge(d, hideAlertBadge) &&
+                      sleepLabel &&
+                      !hideLegacyTxn ? (
                         <span
                           className={`inline-flex rounded-md border px-1.5 py-0.5 text-xs font-semibold ${xlvSleepAlertBadgeClass(display.alertKind)}`}
                         >
@@ -152,7 +170,7 @@ export function XlvDeviceCardList({
                           compact
                         />
                       ) : null}
-                      {d.firstTxnDate || d.lastTxnDate ? (
+                      {d.firstTxnDate || (!hideLegacyTxn && d.lastTxnDate) ? (
                         <div className="text-xs tabular-nums text-[#64748b] leading-snug">
                           {d.firstTxnDate ? (
                             <p>
@@ -160,7 +178,9 @@ export function XlvDeviceCardList({
                               {d.firstTxnDate}
                             </p>
                           ) : null}
-                          {d.lastTxnDate ? <p>末笔 {d.lastTxnDate}</p> : null}
+                          {!hideLegacyTxn && d.lastTxnDate ? (
+                            <p>末笔 {d.lastTxnDate}</p>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
@@ -279,7 +299,7 @@ export function XlvDeviceCardList({
                         done={Boolean((d as XlvDeviceListItem & { followUpDone?: boolean }).followUpDone)}
                         suppressDetailLink={linkToDetail}
                       />
-                    ) : (
+                    ) : hideLegacyTxn ? null : (
                       <>
                         {right.title ? (
                           <p

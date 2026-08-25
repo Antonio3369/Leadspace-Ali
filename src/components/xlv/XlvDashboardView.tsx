@@ -8,6 +8,7 @@ import { getCurrentMonthRange, n7DateRangeQuery } from "@/lib/n7-date";
 import { fetchRetryNotice, getFetchErrorMessage, isFetchAbortedError } from "@/lib/fetch-json";
 import { readXlvApiCache } from "@/lib/xlv-api-cache";
 import { fetchXlvJson } from "@/lib/xlv-fetch";
+import { searchParamsToQueryString } from "@/lib/search-query";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
   parseXlvAlertKind,
@@ -131,7 +132,7 @@ export function XlvDashboardView({
         if (value) params.set(key, value);
         else params.delete(key);
       }
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      router.replace(`${pathname}?${searchParamsToQueryString(params)}`, { scroll: false });
     },
     [pathname, router, searchParams]
   );
@@ -201,7 +202,7 @@ export function XlvDashboardView({
       expandMonth,
       0
     );
-    const devicesUrl = `/api/xlv/dashboard/devices?${listParams.toString()}`;
+    const devicesUrl = `/api/xlv/dashboard/devices?${searchParamsToQueryString(listParams)}`;
 
     if (loadedFilterKey === filterKey) {
       return () => {
@@ -296,7 +297,7 @@ export function XlvDashboardView({
       expandMonth,
       devices.length
     );
-    const url = `/api/xlv/dashboard/devices?${listParams.toString()}`;
+    const url = `/api/xlv/dashboard/devices?${searchParamsToQueryString(listParams)}`;
     try {
       const json = await fetchXlvJson<DevicesResponse>(url, {
         context: "加载更多商户",
@@ -457,7 +458,9 @@ export function XlvDashboardView({
   const activeShortcut = status ?? (alert !== "all" ? alert : null);
 
   const listTitle =
-    expandMonth && status === "qualified"
+    search.trim()
+      ? "搜索结果"
+      : expandMonth && status === "qualified"
       ? "本月拓展 · 已达标"
       : expandMonth
         ? "本月拓展商户"
@@ -606,7 +609,11 @@ export function XlvDashboardView({
               linkToDetail
               activeShortcut={activeShortcut}
               emptyText={
-                hasDrill ? "当前筛选下暂无设备" : "暂无数据，请先导入运营表"
+                search.trim()
+                  ? "未找到匹配设备（已在全部设备中搜索，含库存）"
+                  : hasDrill
+                    ? "当前筛选下暂无设备"
+                    : "暂无数据，请先导入运营表"
               }
               onPickOperator={(name) => pushQuery({ operator: name })}
               onPickManager={(name) => pushQuery({ manager: name })}

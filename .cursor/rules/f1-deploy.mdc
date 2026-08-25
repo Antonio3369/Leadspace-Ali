@@ -10,8 +10,8 @@ alwaysApply: true
 1. **更新 `Leadspace.Ali.md`**：最后更新行、§1.1 相关约定、§1.2 已上线/待部署；写清 commit hash 与本次功能摘要
 2. **Git commit**：暂存相关改动；commit message 聚焦 why；**不**提交 `.env` 等密钥
 3. **Push**：`origin main` + `github main`（双远程）
-4. **部署**：`./deploy/push-and-deploy.sh`（rsync → 远程 `server-deploy.sh`）
-5. **可选企微**（若本次涉及小绿盒外推或用户刚部署过需补推）：`./deploy/post-deploy-notify.sh <commit> ...`；负责人群汇总依赖 `db-init` 内 `XLV_OUTBOUND_WEBHOOK_URL`
+4. **部署**：`./deploy/push-and-deploy.sh`（rsync → 远程 `server-deploy.sh` → **运维小群「部署成功」**）
+5. **可选负责人群**（仅当本次要补推分公司汇总）：`./deploy/post-deploy-notify.sh <commit> ...`（该脚本还会再推一遍运维小群 + `xlv-push-company-summary`；日常 F1 不要用它代替第 4 步）
 
 ## 原则
 

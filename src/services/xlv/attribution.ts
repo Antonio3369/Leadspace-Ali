@@ -7,7 +7,7 @@ import {
   isXlvOperatorNotInRoster,
   isXlvPlaceholderName,
 } from "@/lib/xlv-rules";
-import { buildXlvAssignedDeviceWhere } from "@/services/xlv/xlv-scope";
+import { buildXlvAssignedDeviceWhere, buildXlvTextSearchWhere } from "@/services/xlv/xlv-scope";
 import {
   buildXlvRosterPairSet,
   loadXlvRosterEntries,
@@ -190,14 +190,7 @@ function buildUnattachedWhere(opts: {
 
   const q = opts.q?.trim();
   if (q) {
-    parts.push({
-      OR: [
-        { deviceSn: { contains: q, mode: "insensitive" } },
-        { merchantName: { contains: q, mode: "insensitive" } },
-        { operatorName: { contains: q, mode: "insensitive" } },
-        { managerName: { contains: q, mode: "insensitive" } },
-      ],
-    });
+    parts.push(buildXlvTextSearchWhere(q));
   }
 
   return { AND: parts };

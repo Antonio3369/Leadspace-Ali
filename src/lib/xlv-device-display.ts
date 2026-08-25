@@ -5,6 +5,16 @@ import {
   xlvEffectiveAlertKind,
 } from "@/lib/xlv-rules";
 
+/** 移机后：末笔早于考核起算 = 仍是旧店交易，新店卡片不展示 */
+export function xlvIsLegacyTxnBeforeRelocation(opts: {
+  relocated: boolean;
+  assessmentStart: string | null | undefined;
+  lastTxnDate: string | null | undefined;
+}): boolean {
+  if (!opts.relocated || !opts.assessmentStart || !opts.lastTxnDate) return false;
+  return opts.lastTxnDate < opts.assessmentStart;
+}
+
 export type XlvDeviceDisplayInput = {
   alertKind: XlvDeviceAlertKind;
   qualificationStatus?: XlvQualificationStatus | null;

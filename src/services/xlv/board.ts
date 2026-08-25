@@ -501,10 +501,9 @@ export async function getXlvDeviceDetail(user: SessionUser, deviceSn: string) {
     await syncXlvQualificationStatus(deviceSn, qualificationDetail.status);
     device = { ...device, qualificationStatus: qualificationDetail.status };
   }
-  const txnTrend = buildXlvTxnActivityTrend(snapshots, { skipEnrich: true }).map(
-    (p) => ({
-      ...p,
-    })
+  const assessmentStart = xlvAssessmentStartIso(device);
+  const txnTrend = buildXlvTxnActivityTrend(snapshots, { skipEnrich: true }).filter(
+    (p) => !assessmentStart || p.date >= assessmentStart
   );
 
   const relocation =

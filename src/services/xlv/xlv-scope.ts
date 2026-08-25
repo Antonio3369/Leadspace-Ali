@@ -151,6 +151,31 @@ export function buildXlvAlertWhere(
   return {};
 }
 
+/** Prisma `contains` 走 LIKE：转义 % _ \，避免 SN 里的符号被当通配符 */
+function xlvLikeContains(q: string) {
+  const escaped = q.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+  return { contains: escaped, mode: "insensitive" as const };
+}
+
+/** 商户名 / SN / 队员 / 经理；SN 额外做精确匹配（含 *） */
+export function buildXlvTextSearchWhere(
+  query: string
+): Prisma.XlvDeviceRecordWhereInput {
+  const q = query.trim();
+  if (!q) return {};
+  const like = xlvLikeContains(q);
+  return {
+    OR: [
+      { deviceSn: { equals: q, mode: "insensitive" } },
+      { deviceSn: like },
+      { merchantName: like },
+      { activationMerchantName: like },
+      { operatorName: like },
+      { managerName: like },
+    ],
+  };
+}
+
 export function buildXlvDeviceWhere(
   user: SessionUser,
   opts?: {
@@ -164,10 +189,17 @@ export function buildXlvDeviceWhere(
   }
 ): Prisma.XlvDeviceRecordWhereInput {
   assertCanViewXlv(user);
+  const q = opts?.search?.trim();
+  const searching = Boolean(q);
   const parts: Prisma.XlvDeviceRecordWhereInput[] = [buildXlvRoleWhere(user)];
 
   const managerFilter = opts?.managerName?.trim();
   const viewingInventory = managerFilter === XLV_INVENTORY_MANAGER_LABEL;
+
+  if (searching) {
+    parts.push(buildXlvTextSearchWhere(q!));
+    return parts.length === 1 ? parts[0]! : { AND: parts };
+  }
 
   if (opts?.alert && opts.alert !== "all") {
     parts.push(buildXlvAlertWhere(opts.alert));
@@ -189,18 +221,6 @@ export function buildXlvDeviceWhere(
     opts?.operatorName?.trim()
   ) {
     parts.push({ operatorName: opts.operatorName.trim() });
-  }
-
-  const q = opts?.search?.trim();
-  if (q) {
-    parts.push({
-      OR: [
-        { deviceSn: { contains: q, mode: "insensitive" } },
-        { merchantName: { contains: q, mode: "insensitive" } },
-        { operatorName: { contains: q, mode: "insensitive" } },
-        { managerName: { contains: q, mode: "insensitive" } },
-      ],
-    });
   }
 
   if (opts?.qualificationStatus) {

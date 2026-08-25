@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { readResponseJson, getFetchErrorMessage } from "@/lib/fetch-json";
+import { searchParamsToQueryString } from "@/lib/search-query";
 import { xlvPath } from "@/lib/business-lines";
 import {
   NotionAlert,
@@ -95,7 +96,7 @@ export function XlvAttributionPage() {
         offset: String(offset),
       });
       if (search) params.set("q", search);
-      const res = await fetch(`/api/xlv/admin/attribution?${params}`);
+      const res = await fetch(`/api/xlv/admin/attribution?${searchParamsToQueryString(params)}`);
       const json = await readResponseJson<{
         error?: string;
         devices?: UnattachedDevice[];

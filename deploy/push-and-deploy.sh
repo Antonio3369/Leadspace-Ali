@@ -36,4 +36,9 @@ REMOTE
 echo "==> 远程构建并启动..."
 ssh "${SERVER}" "chmod +x ${REMOTE_DIR}/deploy/*.sh && cd ${REMOTE_DIR} && ./deploy/server-deploy.sh"
 
+COMMIT="$(git -C "${LOCAL_DIR}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+echo "==> 运维小群：部署成功 ${COMMIT}"
+ssh "${SERVER}" "cd ${REMOTE_DIR} && ./deploy/ops-alert.sh 部署成功 $(printf '%q' "> 版本：${COMMIT}
+> 站点已更新，见 https://ali.orblead.com") deploy_${COMMIT}"
+
 echo "==> 完成。下一步：配置 DNS ali.orblead.com -> 43.136.25.181，然后运行 SSL 配置脚本"

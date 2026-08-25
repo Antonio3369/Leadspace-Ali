@@ -48,7 +48,13 @@ function ChartTooltip({
   );
 }
 
-export function XlvTxnActivityChart({ points }: { points: XlvTxnActivityPoint[] }) {
+export function XlvTxnActivityChart({
+  points,
+  emptyText,
+}: {
+  points: XlvTxnActivityPoint[];
+  emptyText?: string;
+}) {
   const chartData: ChartPoint[] = points.map((point) => ({
     ...point,
     label: point.date.slice(5),
@@ -58,7 +64,8 @@ export function XlvTxnActivityChart({ points }: { points: XlvTxnActivityPoint[] 
   if (chartData.length === 0) {
     return (
       <p className="text-sm text-[#94a3b8] py-6 text-center">
-        暂无收款记录；导入多日运营表后，将按有交易的日期展示笔数。
+        {emptyText ??
+          "暂无收款记录；导入多日运营表后，将按有交易的日期展示笔数。"}
       </p>
     );
   }

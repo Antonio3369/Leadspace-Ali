@@ -9,6 +9,7 @@ import {
   readResponseJson,
 } from "@/lib/fetch-json";
 import { xlvPath } from "@/lib/business-lines";
+import { searchParamsToQueryString } from "@/lib/search-query";
 import { useRestoreListScroll } from "@/hooks/useRestoreListScroll";
 import {
   NotionAlert,
@@ -73,7 +74,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
         if (value) params.set(key, value);
         else params.delete(key);
       }
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      router.replace(`${pathname}?${searchParamsToQueryString(params)}`, { scroll: false });
     },
     [pathname, router, searchParams]
   );
@@ -102,7 +103,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
     if (operator) params.set("operator", operator);
     if (search) params.set("q", search);
 
-    fetchJsonWithRetry<ApiResponse>(`/api/xlv/follow-up?${params.toString()}`, undefined, {
+    fetchJsonWithRetry<ApiResponse>(`/api/xlv/follow-up?${searchParamsToQueryString(params)}`, undefined, {
       context: "加载回访",
       onRetry: (attempt, reason) => {
         if (!cancelled) {
@@ -153,7 +154,7 @@ export function XlvFollowUpView({ role }: { role: string }) {
       if (operator) params.set("operator", operator);
       if (search) params.set("q", search);
 
-      const res = await fetch(`/api/xlv/follow-up/export?${params}`);
+      const res = await fetch(`/api/xlv/follow-up/export?${searchParamsToQueryString(params)}`);
       if (!res.ok) {
         const json = await readResponseJson<{ error?: string }>(res, "导出");
         throw new Error(json.error ?? "导出失败");
