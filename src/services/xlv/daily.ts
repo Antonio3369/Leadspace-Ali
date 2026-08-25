@@ -160,6 +160,8 @@ export async function getXlvDailyPerformance(
   return withXlvHeavyGate(() => loadXlvDailyPerformance(user, opts));
 }
 
+/** 只拉所选日期范围内的关单设备；折线/排行与 summary 同口径，不再扫历史关单全量 */
+
 async function loadXlvDailyPerformance(
   user: SessionUser,
   opts: {
@@ -174,15 +176,10 @@ async function loadXlvDailyPerformance(
     throw new Error("请选择有效日期范围");
   }
 
-  const enriched = await loadFollowedDevicesWithWake(user);
-
-  const fromMs = from.getTime();
-  const toMs = to.getTime() + 24 * 60 * 60 * 1000 - 1;
-
-  const inPeriod = enriched.filter(
-    (d) =>
-      d.followUpAt.getTime() >= fromMs && d.followUpAt.getTime() <= toMs
-  );
+  const inPeriod = await loadFollowedDevicesWithWake(user, {
+    gte: from,
+    lte: to,
+  });
 
   const byDay = new Map<string, XlvDailyPoint>();
   for (const key of eachDayKey(from, to)) {
@@ -196,7 +193,7 @@ async function loadXlvDailyPerformance(
     byDay.set(key, point);
   }
 
-  for (const d of enriched) {
+  for (const d of inPeriod) {
     if (!d.wakeUpDate) continue;
     const point = byDay.get(d.wakeUpDate);
     if (!point) continue;

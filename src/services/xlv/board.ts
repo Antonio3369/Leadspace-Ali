@@ -11,12 +11,11 @@ import {
   XLV_COMPLIANCE_TARGET_RATE,
   xlvEffectiveAlertKind,
   xlvManagerDisplayName,
-  xlvQualificationGapLine,
+  xlvStoredQualificationGap,
 } from "@/lib/xlv-rules";
 import {
   buildXlvQualificationDetail,
-  loadXlvSnapshotMap,
-  attachXlvQualificationDetails,
+  loadXlvSnapshotMapAfterFollowUp,
 } from "@/services/xlv/assessment";
 import { syncXlvQualificationStatus } from "@/services/xlv/recompute-qualification";
 import {
@@ -221,9 +220,7 @@ async function aggregateBoardDevices(
   }
 
   if (opts?.includeFollowUpMetrics && monthFollowed.length > 0) {
-    const snapshotMap = await loadXlvSnapshotMap(
-      [...new Set(monthFollowed.map((d) => d.deviceSn))]
-    );
+    const snapshotMap = await loadXlvSnapshotMapAfterFollowUp(monthFollowed);
     for (const d of monthFollowed) {
       const wakeUpDate = detectXlvWakeUpDate(
         d,
@@ -396,13 +393,25 @@ export async function getXlvStaffDevices(
   const devices = await db.xlvDeviceRecord.findMany({
     where,
     orderBy: { deviceSn: "asc" },
+    select: {
+      deviceSn: true,
+      merchantName: true,
+      activationMerchantName: true,
+      operatorName: true,
+      managerName: true,
+      companyName: true,
+      cumulativeUsers: true,
+      cumulativeTxns: true,
+      sleepDays: true,
+      lastTxnDate: true,
+      firstTxnDate: true,
+      statDate: true,
+      qualificationStatus: true,
+      followUpDone: true,
+    },
   });
 
-  const snapshotMap = await loadXlvSnapshotMap(devices.map((d) => d.deviceSn));
-  const withStatus = sortXlvDevices(
-    attachXlvQualificationDetails(devices, snapshotMap),
-    "risk"
-  );
+  const withStatus = sortXlvDevices(devices, "risk");
 
   const managerUser = opts.managerKey.startsWith("name:")
     ? null
@@ -444,11 +453,7 @@ export async function getXlvStaffDevices(
     lastTxnDate: isoDate(d.lastTxnDate),
     firstTxnDate: isoDate(d.firstTxnDate),
     qualificationStatus: d.qualificationStatus,
-    qualificationGap: {
-      usersGap: d.qualificationDetail.usersGap,
-      txnsGap: d.qualificationDetail.txnsGap,
-      line: xlvQualificationGapLine(d.qualificationDetail),
-    },
+    qualificationGap: xlvStoredQualificationGap(d),
     followUpDone: d.followUpDone,
     relocation: null as { fromStore: string; toStore: string } | null,
   }));

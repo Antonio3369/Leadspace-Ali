@@ -512,11 +512,8 @@ export async function importXlvExcelFileFromPath(
   opts?: { onProgress?: XlvImportProgress }
 ): Promise<XlvImportResult> {
   const buffer = fs.readFileSync(filePath);
-  try {
-    return await importXlvExcelBuffer(buffer, fileName, uploadedById, opts);
-  } finally {
-    // 解析后释放文件缓冲引用，降低大表导入峰值内存
-  }
+  const parsed = parseXlvExcelBuffer(buffer);
+  return importParsedXlvExcel(parsed, fileName, uploadedById, opts);
 }
 
 async function importXlvExcelBuffer(
@@ -527,8 +524,17 @@ async function importXlvExcelBuffer(
 ): Promise<XlvImportResult> {
   const onProgress = opts?.onProgress;
   await onProgress?.(16, "正在解析 Excel…");
-
   const parsed = parseXlvExcelBuffer(buffer);
+  return importParsedXlvExcel(parsed, fileName, uploadedById, opts);
+}
+
+async function importParsedXlvExcel(
+  parsed: ReturnType<typeof parseXlvExcelBuffer>,
+  fileName: string,
+  uploadedById: string,
+  opts?: { onProgress?: XlvImportProgress }
+): Promise<XlvImportResult> {
+  const onProgress = opts?.onProgress;
   await onProgress?.(18, `解析完成 ${parsed.rows.length.toLocaleString()} 行…`);
   if (parsed.errors.length && parsed.rows.length === 0) {
     return {

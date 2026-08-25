@@ -432,26 +432,46 @@ export function xlvQualificationGapLine(detail: XlvQualificationDetail) {
   return gapText;
 }
 
-/** 列表用落库达标状态写缺口文案，避免为整表拉快照；装机月/次月细节按累计近似 */
-export function xlvStoredQualificationGapLine(device: {
+type XlvStoredGapDevice = {
   firstTxnDate: Date | null;
   statDate?: Date | null;
   cumulativeUsers: number;
   cumulativeTxns: number;
   qualificationStatus: XlvQualificationStatus;
-}): string {
-  if (device.qualificationStatus === "qualified") return "已达标";
-  if (!device.firstTxnDate) return "待首笔交易";
+};
+
+/** 列表用落库达标状态写缺口，避免为整表拉快照；装机月/次月细节按累计近似 */
+export function xlvStoredQualificationGap(device: XlvStoredGapDevice): {
+  usersGap: number;
+  txnsGap: number;
+  line: string;
+} {
+  if (device.qualificationStatus === "qualified") {
+    return { usersGap: 0, txnsGap: 0, line: "已达标" };
+  }
+  if (!device.firstTxnDate) {
+    return {
+      usersGap: XLV_MONTHLY_USER_TARGET,
+      txnsGap: XLV_MONTHLY_TXN_TARGET,
+      line: "待首笔交易",
+    };
+  }
   const detail = getXlvQualificationDetail(
     device,
     [],
     device.statDate ?? undefined,
     true
   );
-  return xlvQualificationGapLine({
-    ...detail,
-    status: device.qualificationStatus,
-  });
+  const withStatus = { ...detail, status: device.qualificationStatus };
+  return {
+    usersGap: withStatus.usersGap,
+    txnsGap: withStatus.txnsGap,
+    line: xlvQualificationGapLine(withStatus),
+  };
+}
+
+export function xlvStoredQualificationGapLine(device: XlvStoredGapDevice): string {
+  return xlvStoredQualificationGap(device).line;
 }
 
 export function xlvQualificationMonthResultLabel(row: XlvQualificationMonthRow) {

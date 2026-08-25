@@ -11,7 +11,7 @@ import {
   isXlvUnassignedManager,
   type XlvQualificationStatus,
   xlvEffectiveAlertKind,
-  xlvQualificationGapLine,
+  xlvStoredQualificationGapLine,
   xlvManagerDisplayName,
 } from "@/lib/xlv-rules";
 import {
@@ -21,11 +21,6 @@ import {
   buildXlvOperationalDeviceWhere,
   buildXlvRoleWhere,
 } from "@/services/xlv/xlv-scope";
-import {
-  attachXlvQualificationDetails,
-  loadXlvSnapshotMap,
-} from "@/services/xlv/assessment";
-import { syncXlvQualificationStatuses } from "@/services/xlv/recompute-qualification";
 import { countXlvQualificationSummary } from "@/services/xlv/recompute-qualification";
 import {
   resolveXlvDeviceSortMode,
@@ -99,6 +94,8 @@ type XlvListDeviceRow = {
   sleepDays: number;
   lastTxnDate: Date | null;
   firstTxnDate: Date | null;
+  statDate: Date | null;
+  qualificationStatus: XlvQualificationStatus;
 };
 
 const LIST_DEVICE_SELECT = {
@@ -113,13 +110,12 @@ const LIST_DEVICE_SELECT = {
   sleepDays: true,
   lastTxnDate: true,
   firstTxnDate: true,
+  statDate: true,
   qualificationStatus: true,
 } as const;
 
-function buildXlvDeviceListItems(
-  enriched: ReturnType<typeof attachXlvQualificationDetails<XlvListDeviceRow>>
-): XlvDeviceListItem[] {
-  return enriched.map((row) => ({
+function buildXlvDeviceListItems(rows: XlvListDeviceRow[]): XlvDeviceListItem[] {
+  return rows.map((row) => ({
     deviceSn: row.deviceSn,
     merchantName: row.merchantName,
     activationMerchantName: row.activationMerchantName,
@@ -132,8 +128,8 @@ function buildXlvDeviceListItems(
     lastTxnDate: isoDate(row.lastTxnDate),
     firstTxnDate: isoDate(row.firstTxnDate),
     alertKind: xlvEffectiveAlertKind(row),
-    qualificationStatus: row.qualificationStatus as XlvQualificationStatus,
-    qualificationGapLine: xlvQualificationGapLine(row.qualificationDetail),
+    qualificationStatus: row.qualificationStatus,
+    qualificationGapLine: xlvStoredQualificationGapLine(row),
     relocation: null,
   }));
 }
@@ -342,21 +338,8 @@ async function loadXlvDashboardDevicesPage(
       select: LIST_DEVICE_SELECT,
     }),
   ]);
-  const snapshotMap = await loadXlvSnapshotMap(pageRows.map((r) => r.deviceSn));
-  const enriched = attachXlvQualificationDetails(pageRows, snapshotMap);
 
-  const heals = pageRows.flatMap((row) => {
-    const computed = enriched.find((e) => e.deviceSn === row.deviceSn);
-    if (!computed || row.qualificationStatus === computed.qualificationStatus) {
-      return [];
-    }
-    return [{ deviceSn: row.deviceSn, status: computed.qualificationStatus }];
-  });
-  if (heals.length > 0) {
-    void syncXlvQualificationStatuses(heals).catch(() => undefined);
-  }
-
-  let devices = buildXlvDeviceListItems(enriched);
+  let devices = buildXlvDeviceListItems(pageRows);
   await attachXlvRelocations(devices);
   if (opts.qualificationStatus) {
     devices = devices.filter(

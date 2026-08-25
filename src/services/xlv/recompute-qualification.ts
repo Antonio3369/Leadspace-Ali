@@ -60,7 +60,10 @@ export async function recomputeXlvQualificationForDevice(
   });
   if (!device) return "in_progress";
 
-  const snapshotMap = await loadXlvSnapshotMap([deviceSn]);
+  const snapshotMap = await loadXlvSnapshotMap(
+    [deviceSn],
+    device.firstTxnDate ? { statDateFrom: device.firstTxnDate } : undefined
+  );
   const snapshots = snapshotMap.get(deviceSn) ?? [];
   const status = xlvQualificationOf(device, snapshots);
 
@@ -75,20 +78,56 @@ export async function recomputeXlvQualificationForDevice(
   return status;
 }
 
-/** 导入后：仅重算本批涉及的设备（分批，降低峰值内存） */
+/** 导入后：仅重算本批涉及的设备（分批拉快照，按下界 firstTxnDate） */
 export async function recomputeXlvQualificationForDevices(
   deviceSns: string[],
   opts?: { onProgress?: (done: number, total: number) => void | Promise<void> }
 ) {
   const unique = [...new Set(deviceSns.filter(Boolean))];
   const total = unique.length;
-  const CHUNK = 25;
+  const CHUNK = 80;
 
   for (let i = 0; i < unique.length; i += CHUNK) {
     const slice = unique.slice(i, i + CHUNK);
-    for (const sn of slice) {
-      await recomputeXlvQualificationForDevice(sn);
+    const devices = await db.xlvDeviceRecord.findMany({
+      where: { deviceSn: { in: slice } },
+      select: DEVICE_QUAL_SELECT,
+    });
+    if (devices.length === 0) {
+      await opts?.onProgress?.(Math.min(i + slice.length, total), total);
+      continue;
     }
+
+    const earliestFirstTxn = devices.reduce<Date | undefined>((min, d) => {
+      if (!d.firstTxnDate) return min;
+      if (!min || d.firstTxnDate < min) return d.firstTxnDate;
+      return min;
+    }, undefined);
+
+    const snapshotMap = await loadXlvSnapshotMap(
+      devices.map((d) => d.deviceSn),
+      earliestFirstTxn ? { statDateFrom: earliestFirstTxn } : undefined
+    );
+
+    const byStatus = new Map<XlvQualificationStatus, string[]>();
+    for (const device of devices) {
+      const snapshots = snapshotMap.get(device.deviceSn) ?? [];
+      const status = xlvQualificationOf(device, snapshots);
+      const list = byStatus.get(status) ?? [];
+      list.push(device.deviceSn);
+      byStatus.set(status, list);
+    }
+
+    const assessedAt = new Date();
+    await Promise.all(
+      [...byStatus.entries()].map(([status, sns]) =>
+        db.xlvDeviceRecord.updateMany({
+          where: { deviceSn: { in: sns } },
+          data: { qualificationStatus: status, qualificationAssessedAt: assessedAt },
+        })
+      )
+    );
+
     await opts?.onProgress?.(Math.min(i + slice.length, total), total);
   }
 }

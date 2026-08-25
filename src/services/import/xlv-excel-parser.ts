@@ -169,6 +169,9 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
     defval: "",
     raw: false,
   }) as unknown[][];
+  for (const name of workbook.SheetNames) {
+    delete workbook.Sheets[name];
+  }
 
   if (matrix.length < 2) {
     return {

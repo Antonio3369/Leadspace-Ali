@@ -16,7 +16,7 @@ import {
   XLV_COMPLIANCE_TARGET_RATE,
   xlvEffectiveAlertKind,
 } from "@/lib/xlv-rules";
-import { loadXlvSnapshotMap } from "@/services/xlv/assessment";
+import { loadXlvSnapshotMapAfterFollowUp } from "@/services/xlv/assessment";
 import { withXlvBoardCache } from "./board-cache";
 import { withXlvHeavyGate } from "./xlv-heavy-gate";
 import { buildXlvOperationalDeviceWhere } from "./xlv-scope";
@@ -221,9 +221,7 @@ async function aggregateCompanyBoard(
   }
 
   if (monthFollowed.length > 0) {
-    const snapshotMap = await loadXlvSnapshotMap(
-      [...new Set(monthFollowed.map((d) => d.deviceSn))]
-    );
+    const snapshotMap = await loadXlvSnapshotMapAfterFollowUp(monthFollowed);
     for (const d of monthFollowed) {
       const wakeUpDate = detectXlvWakeUpDate(
         d,

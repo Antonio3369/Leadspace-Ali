@@ -3,12 +3,19 @@
 const HEAVY_GATE_TIMEOUT_MS = 120_000;
 /** 允许 2 路重查询并行（如看板 + 待办）；原先串行会导致切 Tab 排队 30s+ */
 const MAX_CONCURRENT = 2;
+/** RSS 贴阈值时改串行，避免看板+待办叠加重算 */
+const RSS_SERIALIZE_MB = 1000;
 
 let running = 0;
 const waitQueue: Array<() => void> = [];
 
+function maxConcurrentNow() {
+  const rssMb = process.memoryUsage().rss / 1024 / 1024;
+  return rssMb >= RSS_SERIALIZE_MB ? 1 : MAX_CONCURRENT;
+}
+
 function acquire(): Promise<void> {
-  if (running < MAX_CONCURRENT) {
+  if (running < maxConcurrentNow()) {
     running += 1;
     return Promise.resolve();
   }

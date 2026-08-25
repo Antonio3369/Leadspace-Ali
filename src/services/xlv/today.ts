@@ -2,7 +2,6 @@ import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import type { SessionUser } from "@/lib/permissions";
 import {
-  classifyXlvAlert,
   classifyXlvTodayPriority,
   getXlvAssessmentDaysRemaining,
   XLV_MONTHLY_TXN_TARGET,
@@ -10,7 +9,7 @@ import {
   XLV_SLEEP_THRESHOLD_DAYS,
   type XlvTodayPriority,
   xlvEffectiveAlertKind,
-  xlvQualificationGapLine,
+  xlvStoredQualificationGapLine,
   xlvTodayReason,
 } from "@/lib/xlv-rules";
 import type { XlvFollowUpDeviceItem } from "@/services/xlv/follow-up";
@@ -18,10 +17,6 @@ import {
   assertCanViewXlv,
   buildXlvDeviceWhere,
 } from "@/services/xlv/xlv-scope";
-import {
-  attachXlvQualificationDetails,
-  loadXlvSnapshotMap,
-} from "@/services/xlv/assessment";
 import { sortXlvDevices } from "@/services/xlv/sort-devices";
 import { withXlvBoardCache } from "./board-cache";
 import { withXlvHeavyGate } from "./xlv-heavy-gate";
@@ -53,7 +48,6 @@ function mapTodayDevice(
     lastTxnDate: Date | null;
     firstTxnDate: Date | null;
     qualificationStatus: import("@/lib/xlv-rules").XlvQualificationStatus;
-    qualificationDetail: import("@/lib/xlv-rules").XlvQualificationDetail;
     followUpDone: boolean;
     followUpNote: string | null;
     followUpAt: Date | null;
@@ -83,7 +77,7 @@ function mapTodayDevice(
     firstTxnDate: isoDate(row.firstTxnDate),
     alertKind,
     qualificationStatus: row.qualificationStatus,
-    qualificationGapLine: xlvQualificationGapLine(row.qualificationDetail),
+    qualificationGapLine: xlvStoredQualificationGapLine(row),
     followUpDone: row.followUpDone,
     followUpNote: row.followUpNote,
     followUpAt: row.followUpAt?.toISOString() ?? null,
@@ -205,9 +199,6 @@ async function loadXlvTodayQueues(
     select: TODAY_DEVICE_SELECT,
   });
 
-  const snapshotMap = await loadXlvSnapshotMap(rows.map((r) => r.deviceSn));
-  const enriched = attachXlvQualificationDetails(rows, snapshotMap);
-
   const buckets: Record<XlvTodayPriority, XlvTodayDeviceItem[]> = {
     P0: [],
     P1: [],
@@ -215,7 +206,7 @@ async function loadXlvTodayQueues(
   };
   const operatorCounts = new Map<string, number>();
 
-  for (const row of enriched) {
+  for (const row of rows) {
     const asOf = row.statDate ?? new Date();
     const assessmentDaysLeft = getXlvAssessmentDaysRemaining(
       row.firstTxnDate,

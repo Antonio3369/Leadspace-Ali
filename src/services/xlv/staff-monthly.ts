@@ -4,7 +4,7 @@ import type { SessionUser } from "@/lib/permissions";
 import { PermissionError } from "@/lib/permissions";
 import type { XlvQualificationStatus } from "@/lib/xlv-rules";
 import { detectXlvWakeUpDate } from "@/lib/xlv-wake-up";
-import { attachXlvQualificationDetails, loadXlvSnapshotMap } from "@/services/xlv/assessment";
+import { loadXlvSnapshotMapAfterFollowUp } from "@/services/xlv/assessment";
 import {
   assertCanViewXlv,
   assertManagerOwnsXlvKey,
@@ -38,12 +38,6 @@ export type XlvStaffMonthlySummary = {
 
 function isoDate(d: Date | null | undefined) {
   return d ? d.toISOString().slice(0, 10) : null;
-}
-
-function dateInRange(d: Date | null | undefined, from: Date, to: Date) {
-  if (!d) return false;
-  const t = d.getTime();
-  return t >= from.getTime() && t <= to.getTime();
 }
 
 function ratePercent(n: number, d: number) {
@@ -84,32 +78,55 @@ export async function getXlvStaffMonthlyPerformance(
   const staffWhere = await buildXlvStaffDeviceWhere(opts.staffKey);
   const roleWhere = buildXlvRoleWhere(user);
 
-  const devices = await db.xlvDeviceRecord.findMany({
-    where: {
-      AND: [roleWhere, buildXlvAssignedDeviceWhere(), managerWhere, staffWhere],
-    },
-    orderBy: { deviceSn: "asc" },
-    select: {
-      deviceSn: true,
-      merchantName: true,
-      activationMerchantName: true,
-      operatorName: true,
-      managerName: true,
-      firstTxnDate: true,
-      followUpDone: true,
-      followUpAt: true,
-      sleepDays: true,
-      lastTxnDate: true,
-      statDate: true,
-      cumulativeUsers: true,
-      cumulativeTxns: true,
-    },
-  });
+  const expandWhere = {
+    AND: [
+      roleWhere,
+      buildXlvAssignedDeviceWhere(),
+      managerWhere,
+      staffWhere,
+      { firstTxnDate: { gte: from, lte: to } },
+    ],
+  };
+  const followWhere = {
+    AND: [
+      roleWhere,
+      buildXlvAssignedDeviceWhere(),
+      managerWhere,
+      staffWhere,
+      { followUpAt: { gte: from, lte: to } },
+    ],
+  };
 
-  const snapshotMap = await loadXlvSnapshotMap(devices.map((d) => d.deviceSn));
-  const enriched = attachXlvQualificationDetails(devices, snapshotMap);
+  const STAFF_MONTHLY_SELECT = {
+    deviceSn: true,
+    merchantName: true,
+    activationMerchantName: true,
+    operatorName: true,
+    managerName: true,
+    firstTxnDate: true,
+    followUpDone: true,
+    followUpAt: true,
+    sleepDays: true,
+    lastTxnDate: true,
+    statDate: true,
+    cumulativeUsers: true,
+    cumulativeTxns: true,
+    qualificationStatus: true,
+  } as const;
 
-  const expanded = enriched.filter((d) => dateInRange(d.firstTxnDate, from, to));
+  const [expanded, followed] = await Promise.all([
+    db.xlvDeviceRecord.findMany({
+      where: expandWhere,
+      orderBy: { deviceSn: "asc" },
+      select: STAFF_MONTHLY_SELECT,
+    }),
+    db.xlvDeviceRecord.findMany({
+      where: followWhere,
+      orderBy: { deviceSn: "asc" },
+      select: STAFF_MONTHLY_SELECT,
+    }),
+  ]);
+
   const expandCount = expanded.length;
   const qualifiedCount = expanded.filter(
     (d) => d.qualificationStatus === "qualified"
@@ -121,14 +138,15 @@ export async function getXlvStaffMonthlyPerformance(
     (d) => d.qualificationStatus === "invalid"
   ).length;
 
+  const snapshotMap = await loadXlvSnapshotMapAfterFollowUp(followed);
+
   const followUpDevices: Array<{
-    device: (typeof enriched)[0];
+    device: (typeof followed)[0];
     woken: boolean;
   }> = [];
 
-  for (const row of enriched) {
-    if (!row.followUpDone || !row.followUpAt) continue;
-    if (!dateInRange(row.followUpAt, from, to)) continue;
+  for (const row of followed) {
+    if (!row.followUpAt) continue;
     const snapshots = snapshotMap.get(row.deviceSn) ?? [];
     const wakeUpDate = detectXlvWakeUpDate(row, row.followUpAt, snapshots);
     followUpDevices.push({ device: row, woken: wakeUpDate !== null });
@@ -138,7 +156,10 @@ export async function getXlvStaffMonthlyPerformance(
   const wakeUpCount = followUpDevices.filter((d) => d.woken).length;
   const stillDormantCount = followUpCount - wakeUpCount;
 
-  const mapDevice = (d: (typeof enriched)[0], extra?: { woken?: boolean }) =>
+  const mapDevice = (
+    d: (typeof expanded)[0] | (typeof followed)[0],
+    extra?: { woken?: boolean }
+  ) =>
     ({
       deviceSn: d.deviceSn,
       merchantName: d.merchantName ?? d.activationMerchantName,
@@ -148,12 +169,13 @@ export async function getXlvStaffMonthlyPerformance(
       woken: extra?.woken ?? false,
     }) satisfies XlvStaffMonthlyDeviceRow;
 
+  const nameSource = expanded[0] ?? followed[0];
   const staffName =
-    devices[0]?.operatorName?.trim() ||
+    nameSource?.operatorName?.trim() ||
     (opts.staffKey.startsWith("name:")
       ? opts.staffKey.slice(5)
       : "未分配");
-  const managerName = devices[0]?.managerName?.trim() || "—";
+  const managerName = nameSource?.managerName?.trim() || "—";
 
   return {
     dateFrom,
