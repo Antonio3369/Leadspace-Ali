@@ -46,6 +46,7 @@ interface Device {
   sleepDays: number;
   lastTxnDate: string | null;
   firstTxnDate: string | null;
+  relocatedAt?: string | null;
   statDate: string | null;
   dailyTxns: number;
   dailyUsers: number;
@@ -119,10 +120,13 @@ export function XlvDeviceDetailView({
     if (!res.ok) throw new Error(json.error || "加载失败");
     const d = json.device;
     if (!d) throw new Error("设备数据为空");
+    const first = d.firstTxnDate ? String(d.firstTxnDate).slice(0, 10) : null;
+    const reloc = d.relocatedAt ? String(d.relocatedAt).slice(0, 10) : null;
     setDevice({
       ...d,
       lastTxnDate: d.lastTxnDate ? String(d.lastTxnDate).slice(0, 10) : null,
-      firstTxnDate: d.firstTxnDate ? String(d.firstTxnDate).slice(0, 10) : null,
+      firstTxnDate: reloc && (!first || first < reloc) ? reloc : first,
+      relocatedAt: reloc,
       statDate: d.statDate ? String(d.statDate).slice(0, 10) : null,
     });
     setQualificationDetail(json.qualificationDetail ?? null);
@@ -332,7 +336,9 @@ export function XlvDeviceDetailView({
                 </div>
               ) : null}
               <div>
-                <dt className="text-[#94a3b8] text-xs">首笔交易</dt>
+                <dt className="text-[#94a3b8] text-xs">
+                  {relocation?.fromStore ? "移机后考核起算" : "首笔交易"}
+                </dt>
                 <dd className="tabular-nums">{fmtDate(device.firstTxnDate)}</dd>
               </div>
               <div>

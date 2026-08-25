@@ -12,6 +12,7 @@ import {
   xlvEffectiveAlertKind,
   xlvManagerDisplayName,
   xlvStoredQualificationGap,
+  xlvAssessmentStartIso,
 } from "@/lib/xlv-rules";
 import {
   buildXlvQualificationDetail,
@@ -405,6 +406,7 @@ export async function getXlvStaffDevices(
       sleepDays: true,
       lastTxnDate: true,
       firstTxnDate: true,
+      relocatedAt: true,
       statDate: true,
       qualificationStatus: true,
       followUpDone: true,
@@ -451,7 +453,7 @@ export async function getXlvStaffDevices(
     cumulativeTxns: d.cumulativeTxns,
     sleepDays: d.sleepDays,
     lastTxnDate: isoDate(d.lastTxnDate),
-    firstTxnDate: isoDate(d.firstTxnDate),
+    firstTxnDate: xlvAssessmentStartIso(d),
     qualificationStatus: d.qualificationStatus,
     qualificationGap: xlvStoredQualificationGap(d),
     followUpDone: d.followUpDone,

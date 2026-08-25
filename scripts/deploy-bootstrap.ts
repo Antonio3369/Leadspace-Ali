@@ -60,6 +60,20 @@ async function main() {
     `    重挂 ${relink.totalRelinked} 台，停用孤儿旧号 ${relink.disabledOrphans}`
   );
 
+  console.log("==> 回填小绿盒移机考核起算日...");
+  const { backfillXlvRelocatedAtFromTransfers } = await import(
+    "../src/services/xlv/relocation"
+  );
+  const relocated = await backfillXlvRelocatedAtFromTransfers();
+  console.log(`    扫描流水 ${relocated.scanned}，回填 ${relocated.devices} 台`);
+  if (relocated.deviceSns.length > 0) {
+    const { recomputeXlvQualificationForDevices } = await import(
+      "../src/services/xlv/recompute-qualification"
+    );
+    await recomputeXlvQualificationForDevices(relocated.deviceSns);
+    console.log(`    已重算移机设备考核 ${relocated.deviceSns.length} 台`);
+  }
+
   console.log("==> 回填小绿盒考核状态（仅未评估设备）...");
   const { backfillXlvQualificationIfNeeded } = await import(
     "../src/services/xlv/recompute-qualification"

@@ -327,6 +327,7 @@ export type AssignmentDeviceWrite = {
   sleepDays: number;
   isActivated: boolean;
   firstTxnDate: Date | null;
+  relocatedAt: Date | null;
   importBatchId: string;
 };
 
@@ -358,6 +359,7 @@ export async function bulkUpsertAssignmentDevices(
         sleepDays: r.sleepDays,
         isActivated: r.isActivated,
         firstTxnDate: r.firstTxnDate,
+        relocatedAt: r.relocatedAt,
         sourceMode: "MANUAL_UPLOAD" as const,
         importBatchId: r.importBatchId,
       })),
@@ -390,6 +392,7 @@ export async function bulkUpsertAssignmentDevices(
         "sleepDays" = v."sleepDays"::integer,
         "isActivated" = v."isActivated"::boolean,
         "firstTxnDate" = NULLIF(v."firstTxnDate", '')::timestamptz,
+        "relocatedAt" = NULLIF(v."relocatedAt", '')::timestamptz,
         "importBatchId" = NULLIF(v."importBatchId", '')::text,
         "updatedAt" = NOW()
       FROM (VALUES ${Prisma.join(
@@ -411,6 +414,7 @@ export async function bulkUpsertAssignmentDevices(
               ${r.sleepDays},
               ${r.isActivated},
               ${isoOrEmpty(r.firstTxnDate)},
+              ${isoOrEmpty(r.relocatedAt)},
               ${r.importBatchId}
             )`
         )
@@ -418,7 +422,7 @@ export async function bulkUpsertAssignmentDevices(
         "deviceSn", "operatorName", "managerName", "companyName", "merchantName",
         "salesUserId", "managerUserId", "statDate",
         "cumulativeUsers", "cumulativeTxns", "cumulativeAmount",
-        "lastTxnDate", "sleepDays", "isActivated", "firstTxnDate", "importBatchId"
+        "lastTxnDate", "sleepDays", "isActivated", "firstTxnDate", "relocatedAt", "importBatchId"
       )
       WHERE d."deviceSn" = v."deviceSn"::text
     `;

@@ -338,6 +338,8 @@ async function importAssignmentRows(
       sleepDays: number;
       isActivated: boolean;
       firstTxnDate: Date | null;
+      merchantName: string | null;
+      relocatedAt: Date | null;
     }
   >();
 
@@ -356,6 +358,8 @@ async function importAssignmentRows(
         sleepDays: true,
         isActivated: true,
         firstTxnDate: true,
+        merchantName: true,
+        relocatedAt: true,
       },
     });
     for (const row of found) existingBySn.set(row.deviceSn, row);
@@ -368,6 +372,7 @@ async function importAssignmentRows(
     managerName: string;
     operatorName: string;
     storeName?: string | null;
+    relocatedAt?: Date | null;
   }[] = [];
 
   for (const row of rows) {
@@ -402,6 +407,14 @@ async function importAssignmentRows(
     const existing = existingBySn.get(row.deviceSn);
     const salesUser = findUserInIndexes(indexes, operatorName);
     const managerUser = findManagerInIndexes(indexes, managerName);
+    const nextMerchant = row.merchantName?.trim() || "";
+    const prevMerchant = existing?.merchantName?.trim() || "";
+    const merchantMoved =
+      Boolean(prevMerchant && nextMerchant) &&
+      prevMerchant.replace(/\s+/g, "") !== nextMerchant.replace(/\s+/g, "");
+    const relocatedAt = merchantMoved
+      ? normalizeXlvStatDate(row.statDate ?? new Date())
+      : existing?.relocatedAt ?? null;
 
     const write: AssignmentDeviceWrite = {
       id: createId(),
@@ -420,6 +433,7 @@ async function importAssignmentRows(
       sleepDays: row.sleepDays || existing?.sleepDays || 0,
       isActivated: row.isActivated,
       firstTxnDate: row.firstTxnDate ?? existing?.firstTxnDate ?? null,
+      relocatedAt,
       importBatchId,
     };
 
@@ -432,6 +446,7 @@ async function importAssignmentRows(
         managerName,
         operatorName,
         storeName: row.merchantName,
+        relocatedAt,
       });
     }
 

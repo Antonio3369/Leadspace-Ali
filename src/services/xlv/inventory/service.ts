@@ -11,6 +11,7 @@ import {
   isXlvManagerSelfSale,
   xlvWithdrawReturnStatus,
 } from "@/lib/xlv-inventory";
+import { normalizeXlvStatDate } from "@/lib/xlv-stat-date";
 import { isXlvManagerSelfSale as isManagerSelfSaleRule } from "@/lib/xlv-rules";
 import {
   buildUserLookupIndexes,
@@ -532,6 +533,7 @@ export async function clearXlvOperationalStateOnWithdraw(deviceSn: string) {
       sleepDays: 0,
       lastTxnDate: null,
       firstTxnDate: null,
+      relocatedAt: null,
       isActivated: false,
       statDate: null,
       qualificationStatus: "in_progress",
@@ -752,6 +754,7 @@ export async function syncInventoryFromSnAttribution(
     managerName: string;
     operatorName: string;
     storeName?: string | null;
+    relocatedAt?: Date | null;
   }[],
   operatorUserId: string
 ): Promise<{ synced: number; skipped: number; merchantChanged: number }> {
@@ -857,6 +860,11 @@ export async function syncInventoryFromSnAttribution(
         { indexes }
       );
       merchantChanged++;
+      const relocatedAt = normalizeXlvStatDate(row.relocatedAt ?? new Date());
+      await db.xlvDeviceRecord.updateMany({
+        where: { deviceSn },
+        data: { relocatedAt },
+      });
     }
 
     await applyTransition(

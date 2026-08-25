@@ -36,6 +36,41 @@ export function isXlvCumulativeQualified(device: {
   return isXlvMonthlyTargetMet(device.cumulativeUsers, device.cumulativeTxns);
 }
 
+export type XlvAssessmentAnchor = {
+  firstTxnDate: Date | null;
+  relocatedAt?: Date | null;
+};
+
+/** 移机后考核从换商户日起算，忽略微信仍回写的旧商户首笔 */
+export function xlvAssessmentStartDate(device: XlvAssessmentAnchor): Date | null {
+  if (!device.relocatedAt) return device.firstTxnDate;
+  if (!device.firstTxnDate) return device.relocatedAt;
+  return xlvStatDateKey(device.firstTxnDate) >= xlvStatDateKey(device.relocatedAt)
+    ? device.firstTxnDate
+    : device.relocatedAt;
+}
+
+export function xlvAssessmentStartIso(device: XlvAssessmentAnchor): string | null {
+  const start = xlvAssessmentStartDate(device);
+  return start ? start.toISOString().slice(0, 10) : null;
+}
+
+function snapshotsForAssessment(
+  device: XlvAssessmentAnchor,
+  snapshots: XlvSnapshotPoint[]
+) {
+  const start = xlvAssessmentStartDate(device);
+  if (!start) return snapshots;
+  const startKey = xlvStatDateKey(start);
+  return snapshots.filter((s) => xlvStatDateKey(s.statDate) >= startKey);
+}
+
+function deviceForAssessment<T extends XlvAssessmentAnchor>(device: T): T {
+  const start = xlvAssessmentStartDate(device);
+  if (start === device.firstTxnDate) return device;
+  return { ...device, firstTxnDate: start };
+}
+
 type XlvSnapshotPoint = {
   deviceSn?: string;
   statDate: Date;
@@ -94,6 +129,7 @@ function pickAssessmentFocusMonth(
 export function assessXlvQualification(
   device: {
     firstTxnDate: Date | null;
+    relocatedAt?: Date | null;
     statDate?: Date | null;
     cumulativeUsers: number;
     cumulativeTxns: number;
@@ -102,15 +138,19 @@ export function assessXlvQualification(
   asOf?: Date,
   snapshotsPreEnriched = false
 ): XlvQualificationStatus {
-  if (isXlvCumulativeQualified(device)) return "qualified";
-  if (!device.firstTxnDate) return "in_progress";
-
-  const points = [...snapshots].sort(
+  const assessed = deviceForAssessment(device);
+  const points = snapshotsForAssessment(device, snapshots).sort(
     (a, b) => a.statDate.getTime() - b.statDate.getTime()
   );
+  // 移机后微信累计可能仍含旧店或已解绑只剩残量，不用终身累计直接判达标
+  if (!device.relocatedAt && isXlvCumulativeQualified(assessed)) {
+    return "qualified";
+  }
+  if (!assessed.firstTxnDate) return "in_progress";
+
   const reference = qualificationAsOf(asOf);
 
-  const { y: y0, m: m0 } = utcYearMonth(device.firstTxnDate);
+  const { y: y0, m: m0 } = utcYearMonth(assessed.firstTxnDate);
   const y1 = m0 === 12 ? y0 + 1 : y0;
   const m1 = m0 === 12 ? 1 : m0 + 1;
 
@@ -118,7 +158,7 @@ export function assessXlvQualification(
     points,
     y0,
     m0,
-    device,
+    assessed,
     true,
     snapshotsPreEnriched
   );
@@ -128,7 +168,7 @@ export function assessXlvQualification(
     points,
     y1,
     m1,
-    device,
+    assessed,
     false,
     snapshotsPreEnriched
   );
@@ -142,9 +182,12 @@ export function assessXlvQualification(
 /** 距两月考核窗口结束还剩多少天（已结束返回 null） */
 export function getXlvAssessmentDaysRemaining(
   firstTxnDate: Date | null,
-  asOf: Date = new Date()
+  asOf: Date = new Date(),
+  relocatedAt?: Date | null
 ): number | null {
-  if (!firstTxnDate) return null;
+  const start = xlvAssessmentStartDate({ firstTxnDate, relocatedAt });
+  if (!start) return null;
+  firstTxnDate = start;
 
   const { y: y0, m: m0 } = utcYearMonth(firstTxnDate);
   const y1 = m0 === 12 ? y0 + 1 : y0;
@@ -165,6 +208,7 @@ export function getXlvAssessmentDaysRemaining(
 export function isXlvAssessmentExpiringSoon(
   device: {
     firstTxnDate: Date | null;
+    relocatedAt?: Date | null;
     cumulativeUsers: number;
     cumulativeTxns: number;
   },
@@ -177,7 +221,8 @@ export function isXlvAssessmentExpiringSoon(
   }
   const remaining = getXlvAssessmentDaysRemaining(
     device.firstTxnDate,
-    qualificationAsOf(asOf)
+    qualificationAsOf(asOf),
+    device.relocatedAt
   );
   return remaining != null && remaining <= threshold;
 }
@@ -307,6 +352,7 @@ function formatYearMonth(y: number, m: number) {
 export function getXlvQualificationDetail(
   device: {
     firstTxnDate: Date | null;
+    relocatedAt?: Date | null;
     statDate?: Date | null;
     cumulativeUsers: number;
     cumulativeTxns: number;
@@ -315,7 +361,8 @@ export function getXlvQualificationDetail(
   asOf?: Date,
   snapshotsPreEnriched = false
 ): XlvQualificationDetail {
-  const points = [...snapshots].sort(
+  const assessed = deviceForAssessment(device);
+  const points = snapshotsForAssessment(device, snapshots).sort(
     (a, b) => a.statDate.getTime() - b.statDate.getTime()
   );
   const reference = qualificationAsOf(asOf);
@@ -326,7 +373,7 @@ export function getXlvQualificationDetail(
     snapshotsPreEnriched
   );
 
-  if (!device.firstTxnDate) {
+  if (!assessed.firstTxnDate) {
     return {
       status,
       usersGap: XLV_MONTHLY_USER_TARGET,
@@ -336,7 +383,7 @@ export function getXlvQualificationDetail(
     };
   }
 
-  const { y: y0, m: m0 } = utcYearMonth(device.firstTxnDate);
+  const { y: y0, m: m0 } = utcYearMonth(assessed.firstTxnDate);
   const y1 = m0 === 12 ? y0 + 1 : y0;
   const m1 = m0 === 12 ? 1 : m0 + 1;
 
@@ -350,7 +397,7 @@ export function getXlvQualificationDetail(
       points,
       y,
       m,
-      device,
+      assessed,
       label === "装机月",
       snapshotsPreEnriched
     );
@@ -434,6 +481,7 @@ export function xlvQualificationGapLine(detail: XlvQualificationDetail) {
 
 type XlvStoredGapDevice = {
   firstTxnDate: Date | null;
+  relocatedAt?: Date | null;
   statDate?: Date | null;
   cumulativeUsers: number;
   cumulativeTxns: number;
@@ -449,7 +497,7 @@ export function xlvStoredQualificationGap(device: XlvStoredGapDevice): {
   if (device.qualificationStatus === "qualified") {
     return { usersGap: 0, txnsGap: 0, line: "已达标" };
   }
-  if (!device.firstTxnDate) {
+  if (!xlvAssessmentStartDate(device)) {
     return {
       usersGap: XLV_MONTHLY_USER_TARGET,
       txnsGap: XLV_MONTHLY_TXN_TARGET,

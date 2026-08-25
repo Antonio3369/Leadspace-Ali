@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { XlvRelocationHint } from "@/lib/xlv-relocation";
+import { normalizeXlvStatDate } from "@/lib/xlv-stat-date";
 
 function readRelocationMeta(meta: unknown): XlvRelocationHint | null {
   if (!meta || typeof meta !== "object") return null;
@@ -34,6 +35,34 @@ export async function loadXlvRelocationsBySn(
   }
 
   return map;
+}
+
+export async function backfillXlvRelocatedAtFromTransfers() {
+  const rows = await db.xlvInventoryTransfer.findMany({
+    where: {
+      transferType: "deploy",
+      note: { startsWith: "SN归属换商铺设" },
+    },
+    orderBy: { createdAt: "asc" },
+    select: { deviceSn: true, createdAt: true, meta: true },
+  });
+
+  const latest = new Map<string, Date>();
+  for (const row of rows) {
+    if (!readRelocationMeta(row.meta)) continue;
+    latest.set(row.deviceSn, normalizeXlvStatDate(row.createdAt));
+  }
+
+  const sns = [...latest.keys()];
+  for (const deviceSn of sns) {
+    const relocatedAt = latest.get(deviceSn)!;
+    await db.xlvDeviceRecord.updateMany({
+      where: { deviceSn, relocatedAt: null },
+      data: { relocatedAt },
+    });
+  }
+
+  return { scanned: rows.length, devices: sns.length, deviceSns: sns };
 }
 
 export async function attachXlvRelocations<

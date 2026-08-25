@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import {
   XLV_SLEEP_THRESHOLD_DAYS,
   type XlvQualificationStatus,
+  xlvAssessmentStartDate,
 } from "@/lib/xlv-rules";
 import type { SessionUser } from "@/lib/permissions";
 import {
@@ -11,11 +12,12 @@ import {
 } from "@/services/xlv/xlv-scope";
 import { loadXlvSnapshotMap, xlvQualificationOf } from "@/services/xlv/assessment";
 
-export const XLV_QUALIFICATION_RULE_VERSION = "2026-08-install-boundary";
+export const XLV_QUALIFICATION_RULE_VERSION = "2026-08-relocation-assessment";
 
 const DEVICE_QUAL_SELECT = {
   deviceSn: true,
   firstTxnDate: true,
+  relocatedAt: true,
   cumulativeUsers: true,
   cumulativeTxns: true,
   sleepDays: true,
@@ -60,9 +62,10 @@ export async function recomputeXlvQualificationForDevice(
   });
   if (!device) return "in_progress";
 
+  const start = xlvAssessmentStartDate(device);
   const snapshotMap = await loadXlvSnapshotMap(
     [deviceSn],
-    device.firstTxnDate ? { statDateFrom: device.firstTxnDate } : undefined
+    start ? { statDateFrom: start } : undefined
   );
   const snapshots = snapshotMap.get(deviceSn) ?? [];
   const status = xlvQualificationOf(device, snapshots);
@@ -98,15 +101,16 @@ export async function recomputeXlvQualificationForDevices(
       continue;
     }
 
-    const earliestFirstTxn = devices.reduce<Date | undefined>((min, d) => {
-      if (!d.firstTxnDate) return min;
-      if (!min || d.firstTxnDate < min) return d.firstTxnDate;
+    const earliestStart = devices.reduce<Date | undefined>((min, d) => {
+      const start = xlvAssessmentStartDate(d);
+      if (!start) return min;
+      if (!min || start < min) return start;
       return min;
     }, undefined);
 
     const snapshotMap = await loadXlvSnapshotMap(
       devices.map((d) => d.deviceSn),
-      earliestFirstTxn ? { statDateFrom: earliestFirstTxn } : undefined
+      earliestStart ? { statDateFrom: earliestStart } : undefined
     );
 
     const byStatus = new Map<XlvQualificationStatus, string[]>();

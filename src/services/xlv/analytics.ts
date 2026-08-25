@@ -13,6 +13,7 @@ import {
   xlvEffectiveAlertKind,
   xlvStoredQualificationGapLine,
   xlvManagerDisplayName,
+  xlvAssessmentStartIso,
 } from "@/lib/xlv-rules";
 import {
   assertCanViewXlv,
@@ -94,6 +95,7 @@ type XlvListDeviceRow = {
   sleepDays: number;
   lastTxnDate: Date | null;
   firstTxnDate: Date | null;
+  relocatedAt: Date | null;
   statDate: Date | null;
   qualificationStatus: XlvQualificationStatus;
 };
@@ -110,6 +112,7 @@ const LIST_DEVICE_SELECT = {
   sleepDays: true,
   lastTxnDate: true,
   firstTxnDate: true,
+  relocatedAt: true,
   statDate: true,
   qualificationStatus: true,
 } as const;
@@ -126,7 +129,7 @@ function buildXlvDeviceListItems(rows: XlvListDeviceRow[]): XlvDeviceListItem[] 
     cumulativeTxns: row.cumulativeTxns,
     sleepDays: row.sleepDays,
     lastTxnDate: isoDate(row.lastTxnDate),
-    firstTxnDate: isoDate(row.firstTxnDate),
+    firstTxnDate: xlvAssessmentStartIso(row),
     alertKind: xlvEffectiveAlertKind(row),
     qualificationStatus: row.qualificationStatus,
     qualificationGapLine: xlvStoredQualificationGapLine(row),

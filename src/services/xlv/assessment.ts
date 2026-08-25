@@ -15,6 +15,7 @@ export type { XlvQualificationDetail, XlvQualificationStatus };
 export type XlvDeviceQualificationInput = {
   deviceSn: string;
   firstTxnDate: Date | null;
+  relocatedAt?: Date | null;
   cumulativeUsers: number;
   cumulativeTxns: number;
 };

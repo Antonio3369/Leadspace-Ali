@@ -154,7 +154,12 @@ export function XlvDeviceCardList({
                       ) : null}
                       {d.firstTxnDate || d.lastTxnDate ? (
                         <div className="text-xs tabular-nums text-[#64748b] leading-snug">
-                          {d.firstTxnDate ? <p>首笔 {d.firstTxnDate}</p> : null}
+                          {d.firstTxnDate ? (
+                            <p>
+                              {d.relocation?.fromStore ? "考核起算" : "首笔"}{" "}
+                              {d.firstTxnDate}
+                            </p>
+                          ) : null}
                           {d.lastTxnDate ? <p>末笔 {d.lastTxnDate}</p> : null}
                         </div>
                       ) : null}

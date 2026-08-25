@@ -11,6 +11,7 @@ import {
   xlvEffectiveAlertKind,
   xlvStoredQualificationGapLine,
   xlvTodayReason,
+  xlvAssessmentStartIso,
 } from "@/lib/xlv-rules";
 import type { XlvFollowUpDeviceItem } from "@/services/xlv/follow-up";
 import {
@@ -47,6 +48,7 @@ function mapTodayDevice(
     sleepDays: number;
     lastTxnDate: Date | null;
     firstTxnDate: Date | null;
+    relocatedAt: Date | null;
     qualificationStatus: import("@/lib/xlv-rules").XlvQualificationStatus;
     followUpDone: boolean;
     followUpNote: string | null;
@@ -74,7 +76,7 @@ function mapTodayDevice(
     cumulativeTxns: row.cumulativeTxns,
     sleepDays: row.sleepDays,
     lastTxnDate: isoDate(row.lastTxnDate),
-    firstTxnDate: isoDate(row.firstTxnDate),
+    firstTxnDate: xlvAssessmentStartIso(row),
     alertKind,
     qualificationStatus: row.qualificationStatus,
     qualificationGapLine: xlvStoredQualificationGapLine(row),
@@ -118,6 +120,7 @@ const TODAY_DEVICE_SELECT = {
   sleepDays: true,
   lastTxnDate: true,
   firstTxnDate: true,
+  relocatedAt: true,
   statDate: true,
   followUpDone: true,
   followUpNote: true,
@@ -210,7 +213,8 @@ async function loadXlvTodayQueues(
     const asOf = row.statDate ?? new Date();
     const assessmentDaysLeft = getXlvAssessmentDaysRemaining(
       row.firstTxnDate,
-      asOf
+      asOf,
+      row.relocatedAt
     );
     const priority = classifyXlvTodayPriority({
       sleepDays: row.sleepDays,

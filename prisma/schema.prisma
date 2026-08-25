@@ -509,6 +509,8 @@ model XlvDeviceRecord {
   sleepDays              Int                 @default(0)
   isActivated            Boolean             @default(false)
   firstTxnDate           DateTime?
+  /** SN 换商户（移机）日：考核窗口从此日起算，微信仍可能回写旧商户首笔 */
+  relocatedAt            DateTime?
   dailyUsers             Int                 @default(0)
   dailyTxns              Int                 @default(0)
   dailyAmount            Float               @default(0)
@@ -549,6 +551,7 @@ model XlvDeviceRecord {
   @@index([firstTxnDate])
   @@index([followUpDone])
   @@index([qualificationStatus])
+  @@index([relocatedAt])
 }
 
 /** 小绿盒：设备库存主档（一台 SN 一行） */

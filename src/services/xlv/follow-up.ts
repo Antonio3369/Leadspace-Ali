@@ -11,6 +11,7 @@ import {
   XLV_SLEEP_THRESHOLD_DAYS,
   xlvEffectiveAlertKind,
   xlvStoredQualificationGapLine,
+  xlvAssessmentStartIso,
 } from "@/lib/xlv-rules";
 import {
   assertCanViewXlv,
@@ -209,6 +210,7 @@ export async function loadXlvFollowUpDevices(
       sleepDays: true,
       lastTxnDate: true,
       firstTxnDate: true,
+      relocatedAt: true,
       statDate: true,
       followUpDone: true,
       followUpNote: true,
@@ -229,7 +231,8 @@ export async function loadXlvFollowUpDevices(
     const asOf = row.statDate ?? new Date();
     const assessmentDaysLeft = getXlvAssessmentDaysRemaining(
       row.firstTxnDate,
-      asOf
+      asOf,
+      row.relocatedAt
     );
     const todayPriority = classifyXlvTodayPriority({
       sleepDays: row.sleepDays,
@@ -259,7 +262,7 @@ export async function loadXlvFollowUpDevices(
       cumulativeTxns: row.cumulativeTxns,
       sleepDays: row.sleepDays,
       lastTxnDate: isoDate(row.lastTxnDate),
-      firstTxnDate: isoDate(row.firstTxnDate),
+      firstTxnDate: xlvAssessmentStartIso(row),
       alertKind: xlvEffectiveAlertKind({
         sleepDays: row.sleepDays,
         cumulativeTxns: row.cumulativeTxns,
