@@ -49,6 +49,7 @@ export const POST = auth(async (request) => {
   const url = new URL(request.url);
   const kind = parseKind(url.searchParams.get("kind"));
   const dryRun = url.searchParams.get("dryRun") === "1";
+  const skipExisting = url.searchParams.get("skipExisting") === "1";
 
   if (!kind) {
     return NextResponse.json(
@@ -175,12 +176,16 @@ export const POST = auth(async (request) => {
         return NextResponse.json({ error: parsed.errors.join("；") }, { status: 400 });
       }
       const rows = dedupeOpeningRows(parsed.rows);
-      const result = await importOpeningBalanceRows(rows, user.id, { dryRun });
+      const result = await importOpeningBalanceRows(rows, user.id, {
+        dryRun,
+        skipExisting,
+      });
       return NextResponse.json({
         kind,
         sheetName: parsed.sheetName,
         dedupedRows: rows.length,
         dryRun,
+        skipExisting,
         ...result,
       });
     }

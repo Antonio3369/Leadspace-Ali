@@ -190,6 +190,20 @@ async function loadSnAttributionSet() {
   return new Set(rows.map((r) => r.deviceSn));
 }
 
+async function loadExistingInventorySnSet(deviceSns: string[]) {
+  const existing = new Set<string>();
+  const unique = [...new Set(deviceSns.map((s) => s.trim()).filter(Boolean))];
+  for (let i = 0; i < unique.length; i += 400) {
+    const chunk = unique.slice(i, i + 400);
+    const rows = await db.xlvInventoryDevice.findMany({
+      where: { deviceSn: { in: chunk } },
+      select: { deviceSn: true },
+    });
+    for (const row of rows) existing.add(row.deviceSn);
+  }
+  return existing;
+}
+
 /** 库存 SN 须在 XlvDeviceRecord 存在（外键） */
 async function ensureDeviceRecordStub(
   deviceSn: string,
@@ -435,7 +449,7 @@ export async function importOpeningBalanceRows(
     operatorName: string;
   }[],
   operatorUserId: string,
-  opts?: { dryRun?: boolean }
+  opts?: { dryRun?: boolean; skipExisting?: boolean }
 ): Promise<InventoryImportResult & { deployedCount: number; stockCount: number }> {
   const batchId = createBatchId();
   const warnings: string[] = [];
@@ -445,16 +459,28 @@ export async function importOpeningBalanceRows(
   let stockCount = 0;
 
   const attributionSns = await loadSnAttributionSet();
+  const existingInventorySns = opts?.skipExisting
+    ? await loadExistingInventorySnSet(rows.map((r) => r.deviceSn))
+    : new Set<string>();
 
-  const planned = rows.map((row) => {
+  const planned = [];
+  for (const row of rows) {
+    if (opts?.skipExisting && existingInventorySns.has(row.deviceSn)) {
+      skippedRows++;
+      continue;
+    }
     const inSnAttribution = attributionSns.has(row.deviceSn);
     const status = openingStatusForRow(
       row.managerName,
       row.operatorName,
       inSnAttribution
     );
-    return { row, inSnAttribution, status };
-  });
+    planned.push({ row, inSnAttribution, status });
+  }
+
+  if (skippedRows > 0) {
+    warnings.push(`已有库存记录 ${skippedRows} 台，已跳过（不覆盖）`);
+  }
 
   for (const { status } of planned) {
     if (status === "deployed") deployedCount++;
@@ -462,7 +488,7 @@ export async function importOpeningBalanceRows(
   }
 
   if (opts?.dryRun) {
-    successRows = rows.length;
+    successRows = planned.length;
     return {
       batchId,
       totalRows: rows.length,
@@ -476,7 +502,7 @@ export async function importOpeningBalanceRows(
   }
 
   const indexes = await buildUserLookupIndexes();
-  await ensureInventoryDeviceRecords(rows);
+  await ensureInventoryDeviceRecords(planned.map((p) => p.row));
 
   for (const { row, inSnAttribution, status } of planned) {
     const deployedByRole =

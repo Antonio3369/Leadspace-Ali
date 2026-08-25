@@ -41,6 +41,7 @@ type ImportResult = {
   stockCount?: number;
   dedupedRows?: number;
   dryRun?: boolean;
+  skipExisting?: boolean;
 };
 
 type PendingItem = { deviceSn: string; channel: string | null; updatedAt: string };
@@ -78,7 +79,8 @@ const KIND_HINT: Record<InventoryKind, string> = {
   "allocate-sales": "列：设备SN、作业员（或所属业务员）",
   withdraw:
     "撤机（移机明细表）：进件日期、设备SN、所属业务员、所属经理、门店名称；同 SN 取最新进件日期；提交后通知归属人确认，同意后才回库并清零运营态",
-  opening: "期初表：设备SN、所属经理、渠道、作业员；须先导入 SN 归属表；在归属表内=已铺设，表外=库存",
+  opening:
+    "期初表：设备SN、所属经理、渠道、作业员；须先导入 SN 归属表；在归属表内=已铺设，表外=库存。默认同 SN 已有库存账则跳过；取消勾选才会覆盖（可改经理名）",
 };
 
 const KIND_BUTTON: Record<InventoryKind, string> = {
@@ -101,6 +103,7 @@ export function XlvInventoryPage({ isAdmin }: { isAdmin: boolean }) {
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dryRun, setDryRun] = useState(true);
+  const [skipExisting, setSkipExisting] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -146,6 +149,7 @@ export function XlvInventoryPage({ isAdmin }: { isAdmin: boolean }) {
       fd.append("file", uploadFile);
       const qs = new URLSearchParams({ kind });
       if (kind === "opening" && dryRun) qs.set("dryRun", "1");
+      if (kind === "opening" && skipExisting) qs.set("skipExisting", "1");
       const res = await fetch(`/api/xlv/inventory/import?${qs}`, {
         method: "POST",
         body: fd,
@@ -204,14 +208,24 @@ export function XlvInventoryPage({ isAdmin }: { isAdmin: boolean }) {
       <NotionPanel className="space-y-4">
         <NotionCallout tone="info">{KIND_HINT[kind]}</NotionCallout>
         {kind === "opening" && isAdmin && (
-          <label className="flex items-center gap-2 text-sm text-[#64748b]">
-            <input
-              type="checkbox"
-              checked={dryRun}
-              onChange={(e) => setDryRun(e.target.checked)}
-            />
-            仅预览（dry-run，不写库）
-          </label>
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm text-[#64748b]">
+              <input
+                type="checkbox"
+                checked={dryRun}
+                onChange={(e) => setDryRun(e.target.checked)}
+              />
+              仅预览（dry-run，不写库）
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#64748b]">
+              <input
+                type="checkbox"
+                checked={skipExisting}
+                onChange={(e) => setSkipExisting(e.target.checked)}
+              />
+              跳过已有库存记录（不覆盖已铺设 / 经理库 / 队员库）
+            </label>
+          </div>
         )}
 
         <input
@@ -371,8 +385,9 @@ export function XlvInventoryPage({ isAdmin }: { isAdmin: boolean }) {
           </p>
           {result.deployedCount != null && (
             <p>
-              期初预览：已铺设 {result.deployedCount}，库存 {result.stockCount}
+              期初：将写入已铺设 {result.deployedCount}，库存 {result.stockCount}
               {result.dryRun && "（未写库）"}
+              {result.skipExisting && result.skippedRows > 0 && "；已有记录已跳过"}
             </p>
           )}
           {result.warnings?.slice(0, 8).map((w) => (
