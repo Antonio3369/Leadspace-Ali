@@ -130,6 +130,20 @@ export function XlvImportSummaryPanel({ summary }: { summary: XlvImportSummary }
         </div>
       ) : null}
 
+      {summary.nextStep ? (
+        <p className="text-xs text-[#047857]">
+          {summary.nextStep}{" "}
+          {summary.format === "roster" ? (
+            <Link
+              href={xlvPath("/admin/attribution")}
+              className="font-medium text-[#2563eb] hover:text-[#1d4ed8]"
+            >
+              前往人员归属核对 →
+            </Link>
+          ) : null}
+        </p>
+      ) : null}
+
       {summary.warnings.length > 0 ? (
         <div>
           <p className="text-xs font-medium text-amber-800 mb-1">提示</p>

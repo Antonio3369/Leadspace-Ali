@@ -97,13 +97,21 @@ export async function notifyXlvOutboundOpsAlert(
 function summarizeXlvImportResult(result: unknown): string {
   if (!result || typeof result !== "object") return "已完成";
   const r = result as Record<string, unknown>;
-  const format =
-    r.format === "roster"
-      ? "组织名册"
-      : r.format === "raw"
-        ? "原始明细"
-        : String(r.format ?? "");
-  return `${format} · ${r.totalRows ?? "?"} 行 · 设备新增 ${r.createdDevices ?? 0} / 更新 ${r.updatedDevices ?? 0}`;
+  const summary =
+    r.summary && typeof r.summary === "object"
+      ? (r.summary as Record<string, unknown>)
+      : {};
+  const rows = r.importedRows ?? r.totalRows ?? "?";
+  if (r.format === "roster") {
+    return `组织名册 · ${rows} 行 · 新建 ${summary.rosterCreated ?? 0} / 更新 ${summary.rosterUpdated ?? 0}`;
+  }
+  if (r.format === "assignment") {
+    return `SN归属 · ${rows} 行 · 设备新增 ${r.createdDevices ?? 0} / 更新 ${r.updatedDevices ?? 0}`;
+  }
+  if (r.format === "raw") {
+    return `运营原始表 · ${rows} 行 · 设备新增 ${r.createdDevices ?? 0} / 更新 ${r.updatedDevices ?? 0}`;
+  }
+  return `已完成 · ${rows} 行`;
 }
 
 export function buildXlvImportSuccessMarkdown(opts: {
@@ -115,6 +123,14 @@ export function buildXlvImportSuccessMarkdown(opts: {
   const partialNote =
     opts.status === "PARTIAL" ? "（部分成功，请登录核对明细）" : "";
   const summary = summarizeXlvImportResult(opts.result);
+  const resultObj =
+    opts.result && typeof opts.result === "object"
+      ? (opts.result as { format?: string })
+      : {};
+  const nextStep =
+    opts.status === "SUCCESS" && resultObj.format === "roster"
+      ? "请到人员归属核对点击「从名册同步」"
+      : "";
   const link = `${publicBaseUrl()}/xlv/admin/import`;
   return [
     `**【小绿盒 · 运维】数据上传成功${partialNote}**`,
@@ -122,6 +138,7 @@ export function buildXlvImportSuccessMarkdown(opts: {
     `> 文件：${opts.fileName}`,
     `> 上传人：${opts.uploadedByName}`,
     `> 结果：${summary}`,
+    ...(nextStep ? [`> 下一步：${nextStep}`] : []),
     `> [打开导入页](${link})`,
   ].join("\n");
 }

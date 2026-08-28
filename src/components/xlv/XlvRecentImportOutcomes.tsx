@@ -66,14 +66,15 @@ function verdict(job: RecentJob | undefined) {
     return {
       tone: "text-[#047857]",
       title: "已成功",
-      detail: job.fileName,
+      detail:
+        job.message && job.message !== "导入完成" ? job.message : job.fileName,
     };
   }
   if (job.status === "PARTIAL") {
     return {
       tone: "text-[#b45309]",
-      title: "部分成功",
-      detail: job.fileName,
+      title: "部分成功，请核对本页摘要",
+      detail: job.errorMessage || job.message || job.fileName,
     };
   }
   return {

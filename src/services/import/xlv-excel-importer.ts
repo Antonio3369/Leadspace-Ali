@@ -14,7 +14,11 @@ import {
 } from "@/lib/xlv-rules";
 import { enrichXlvSnapshotDailyMetrics } from "@/services/xlv/snapshot-daily";
 import { normalizeXlvStatDate, xlvStatDateKey } from "@/lib/xlv-stat-date";
-import type { XlvImportFormat, XlvImportSummary } from "@/services/import/xlv-import-summary";
+import {
+  XLV_ROSTER_NEXT_STEP,
+  type XlvImportFormat,
+  type XlvImportSummary,
+} from "@/services/import/xlv-import-summary";
 import {
   buildXlvRosterIndex,
   buildXlvRosterPairSet,
@@ -648,11 +652,6 @@ async function importParsedXlvExcel(
     };
   } else if (parsed.format === "roster") {
     const result = await importRosterRows(rosterRows, importLog.id);
-    const rosterHint =
-      "名册已写入。设备经理/公司回填请前往「人员归属核对」点击「从名册同步」。";
-    if (!parsed.errors.includes(rosterHint)) {
-      parsed.errors.push(rosterHint);
-    }
     importSummary = {
       uniqueDevices: 0,
       snapshotsWritten: 0,
@@ -664,6 +663,8 @@ async function importParsedXlvExcel(
       rosterCreated: result.rosterCreated,
       rosterUpdated: result.rosterUpdated,
       uniqueOperators: result.uniqueOperators,
+      accountsCreated: result.accountsCreated,
+      accountsUpdated: result.accountsUpdated,
       devicesBackfilledFromRoster: result.devicesBackfilledFromRoster,
       managersInferredFromRoster: 0,
       unmatchedManagers: result.unmatchedManagers,
@@ -730,6 +731,10 @@ async function importParsedXlvExcel(
     unmatchedManagers: importSummary.unmatchedManagers ?? [],
     unmatchedOperators: importSummary.unmatchedOperators ?? [],
     warnings: parsed.errors,
+    nextStep:
+      parsed.format === "roster" && status === "SUCCESS"
+        ? XLV_ROSTER_NEXT_STEP
+        : undefined,
   };
 
   await db.importLog.update({

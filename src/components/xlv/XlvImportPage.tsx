@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/notion";
 import { XlvImportSummaryPanel } from "@/components/xlv/XlvImportSummaryPanel";
 import type { XlvImportSummary } from "@/services/import/xlv-import-summary";
+import { xlvImportDoneMessage } from "@/services/import/xlv-import-summary";
 
 type ImportTab = "raw" | "roster" | "assignment";
 
@@ -119,7 +120,9 @@ export function XlvImportPage() {
       );
       if (res) {
         setResult(res);
-        setMessage("导入完成");
+        setMessage(
+          xlvImportDoneMessage({ status: res.status as "SUCCESS" | "PARTIAL", format: res.format })
+        );
         setActiveJob(null);
         setInterrupted(null);
       } else {
@@ -140,7 +143,12 @@ export function XlvImportPage() {
           );
           if (res) {
             setResult(res);
-            setMessage("导入完成");
+            setMessage(
+              xlvImportDoneMessage({
+                status: res.status as "SUCCESS" | "PARTIAL",
+                format: res.format,
+              })
+            );
             setActiveJob(null);
           }
         } else {
@@ -206,7 +214,12 @@ export function XlvImportPage() {
         }
       );
       setResult(res);
-      setMessage("导入完成");
+      setMessage(
+        xlvImportDoneMessage({
+          status: res.status as "SUCCESS" | "PARTIAL",
+          format: res.format,
+        })
+      );
       setFile(null);
       setFileInputKey((k) => k + 1);
     } catch (err) {
@@ -223,7 +236,12 @@ export function XlvImportPage() {
           );
           if (res) {
             setResult(res);
-            setMessage("导入完成");
+            setMessage(
+              xlvImportDoneMessage({
+                status: res.status as "SUCCESS" | "PARTIAL",
+                format: res.format,
+              })
+            );
             setActiveJob(null);
             setFile(null);
             setFileInputKey((k) => k + 1);

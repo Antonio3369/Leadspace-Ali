@@ -12,6 +12,7 @@ import { importN7ExcelFile } from "@/services/import/n7-excel-importer";
 import { importXlvExcelFileFromPath } from "@/services/import/xlv-excel-importer";
 import { invalidateXlvBoardCache } from "@/services/xlv/board-cache";
 import { importExcelFile } from "@/services/import/excel-importer";
+import { xlvImportDoneMessage } from "@/services/import/xlv-import-summary";
 import {
   notifyXlvOutboundCompanyBoardSummary,
   notifyXlvOutboundImportFailed,
@@ -358,7 +359,13 @@ async function runHeavyImportJob(jobId: string) {
       data: {
         status: finalStatus,
         progress: 100,
-        message: finalStatus === "PARTIAL" ? "导入完成（部分成功）" : "导入完成",
+        message: xlvImportDoneMessage({
+          status: finalStatus,
+          format:
+            result && typeof result === "object"
+              ? (result as { format?: string }).format
+              : undefined,
+        }),
         resultJson: result as object,
         completedAt: new Date(),
       },

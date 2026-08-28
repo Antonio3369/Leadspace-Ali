@@ -7,6 +7,18 @@ export type XlvImportColumnStatus = {
 
 export type XlvImportFormat = "raw" | "roster" | "assignment";
 
+export const XLV_ROSTER_NEXT_STEP =
+  "名册已全部写入。请到「人员归属核对」点击「从名册同步」。";
+
+export function xlvImportDoneMessage(opts: {
+  status: "SUCCESS" | "PARTIAL";
+  format?: XlvImportFormat | string;
+}) {
+  if (opts.status === "PARTIAL") return "导入完成（部分成功，请核对本页摘要）";
+  if (opts.format === "roster") return XLV_ROSTER_NEXT_STEP;
+  return "导入完成";
+}
+
 export function inferXlvImportFormat(
   fileName: string,
   result: unknown
@@ -55,6 +67,8 @@ export type XlvImportSummary = {
   unmatchedManagers: string[];
   unmatchedOperators: string[];
   warnings: string[];
+  /** 成功后的下一步，不计入失败 */
+  nextStep?: string;
 };
 
 function headerLabel(headers: string[], idx: number) {

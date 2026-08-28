@@ -97,7 +97,16 @@ export function describeImportJobStatus(job: ImportJobSnapshot): {
       return {
         tone: "success",
         title: "导入已完成",
-        body: `「${job.fileName}」已成功导入，可看板核对数据。`,
+        body:
+          job.message && job.message !== "导入完成"
+            ? `「${job.fileName}」${job.message}`
+            : `「${job.fileName}」已成功导入，可看板核对数据。`,
+      };
+    case "PARTIAL":
+      return {
+        tone: "warning",
+        title: "导入完成（部分成功）",
+        body: `「${job.fileName}」已写入，请核对本页摘要。${job.message ? ` ${job.message}` : ""}`,
       };
     case "FAILED":
       return {
