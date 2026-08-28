@@ -147,7 +147,34 @@ function detectFormat(headers: string[]): XlvImportFormat {
   return "raw";
 }
 
+const MAX_IMPORT_COLUMNS = 80;
+
+/**
+ * 运营表常把整列格式刷到第 104 万行。dense 模式会按 !ref 矩形分配内存，
+ * sheet_to_json 也会扫空行。把范围收到真正有内容的单元格。
+ */
+function tightenSheetRef(sheet: XLSX.WorkSheet) {
+  let lastRow = 0;
+  let lastCol = 0;
+  let found = false;
+  for (const key of Object.keys(sheet)) {
+    if (key.charAt(0) === "!") continue;
+    const cell = sheet[key] as XLSX.CellObject | undefined;
+    if (cell == null || cell.v == null || cell.v === "") continue;
+    const addr = XLSX.utils.decode_cell(key);
+    found = true;
+    if (addr.r > lastRow) lastRow = addr.r;
+    if (addr.c > lastCol) lastCol = addr.c;
+  }
+  if (!found) return;
+  sheet["!ref"] = XLSX.utils.encode_range({
+    s: { r: 0, c: 0 },
+    e: { r: lastRow, c: Math.min(lastCol, MAX_IMPORT_COLUMNS - 1) },
+  });
+}
+
 export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
+  // 稀疏存储：只留有内容的格子。dense:true 会按 Excel 声明的巨大 !ref 分配整张矩形。
   const workbook = XLSX.read(buffer, {
     type: "buffer",
     cellDates: true,
@@ -156,7 +183,7 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
     sheetStubs: false,
     bookVBA: false,
     bookDeps: false,
-    dense: true,
+    dense: false,
   });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
@@ -164,14 +191,20 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
   }
 
   const sheet = workbook.Sheets[sheetName];
+  if (!sheet) {
+    return { format: "raw", sheetName, rows: [], errors: ["Excel 工作表为空"] };
+  }
+  tightenSheetRef(sheet);
+  for (const name of workbook.SheetNames) {
+    if (name !== sheetName) delete workbook.Sheets[name];
+  }
   const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
     defval: "",
     raw: false,
+    blankrows: false,
   }) as unknown[][];
-  for (const name of workbook.SheetNames) {
-    delete workbook.Sheets[name];
-  }
+  delete workbook.Sheets[sheetName];
 
   if (matrix.length < 2) {
     return {
@@ -418,5 +451,6 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
     errors.push("未解析到有效数据行");
   }
 
+  matrix.length = 0;
   return { format, sheetName, rows, errors, meta };
 }

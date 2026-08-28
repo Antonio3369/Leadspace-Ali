@@ -309,6 +309,19 @@ async function importRosterRows(rows: ParsedXlvRosterRow[], _importBatchId: stri
   };
 }
 
+function rssMb() {
+  return Math.round(process.memoryUsage().rss / 1024 / 1024);
+}
+
+function yieldImportTick() {
+  return new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+function maybeGc() {
+  const gc = (globalThis as { gc?: () => void }).gc;
+  if (typeof gc === "function") gc();
+}
+
 async function importAssignmentRows(
   rows: ParsedXlvAssignmentRow[],
   importBatchId: string,
@@ -320,185 +333,208 @@ async function importAssignmentRows(
   const rosterEntries = await loadXlvRosterEntries();
   const rosterByOperator = buildXlvRosterIndex(rosterEntries);
   const rosterPairs = buildXlvRosterPairSet(rosterEntries);
-  const snapshotsToWrite: SnapshotWrite[] = [];
   const indexes = await buildUserLookupIndexes();
 
-  await onProgress?.(22, `准备写入 SN 归属 ${rows.length.toLocaleString()} 行…`);
+  const lastBySn = new Map<string, ParsedXlvAssignmentRow>();
+  for (const row of rows) lastBySn.set(row.deviceSn, row);
+  const uniqueRows = [...lastBySn.values()];
+  const uniqueSns = uniqueRows.map((r) => r.deviceSn);
 
-  const uniqueSns = [...new Set(rows.map((r) => r.deviceSn))];
-  const existingBySn = new Map<
-    string,
-    {
-      deviceSn: string;
-      statDate: Date | null;
-      cumulativeUsers: number;
-      cumulativeTxns: number;
-      cumulativeAmount: number;
-      lastTxnDate: Date | null;
-      sleepDays: number;
-      isActivated: boolean;
-      firstTxnDate: Date | null;
-      merchantName: string | null;
-      relocatedAt: Date | null;
-    }
-  >();
-
-  const LOOKUP_CHUNK = 1000;
-  for (let i = 0; i < uniqueSns.length; i += LOOKUP_CHUNK) {
-    const slice = uniqueSns.slice(i, i + LOOKUP_CHUNK);
-    const found = await db.xlvDeviceRecord.findMany({
-      where: { deviceSn: { in: slice } },
-      select: {
-        deviceSn: true,
-        statDate: true,
-        cumulativeUsers: true,
-        cumulativeTxns: true,
-        cumulativeAmount: true,
-        lastTxnDate: true,
-        sleepDays: true,
-        isActivated: true,
-        firstTxnDate: true,
-        merchantName: true,
-        relocatedAt: true,
-      },
-    });
-    for (const row of found) existingBySn.set(row.deviceSn, row);
-  }
-
-  const creates: AssignmentDeviceWrite[] = [];
-  const updates: AssignmentDeviceWrite[] = [];
-  const inventoryRows: {
-    deviceSn: string;
-    managerName: string;
-    operatorName: string;
-    storeName?: string | null;
-    relocatedAt?: Date | null;
-  }[] = [];
-
-  for (const row of rows) {
-    let managerName = row.managerName.trim();
-    let companyName = row.companyName;
-
-    if (!managerName && row.operatorName.trim()) {
-      const resolved = resolveXlvManagerFromRoster(
-        rosterByOperator,
-        row.operatorName,
-        null
-      );
-      if (resolved && !resolved.ambiguous && resolved.managerName) {
-        managerName = resolved.managerName;
-        companyName = companyName ?? resolved.companyName;
-        managersInferredFromRoster += 1;
-      }
-    }
-
-    const operatorName = row.operatorName.trim();
-    if (
-      rosterPairs.size > 0 &&
-      operatorName &&
-      !isXlvPlaceholderName(operatorName) &&
-      !isXlvManagerSelfSale({ operatorName, managerName })
-    ) {
-      if (!rosterPairs.has(xlvRosterPairKey(managerName, operatorName))) {
-        unmatchedOperators.add(operatorName);
-      }
-    }
-
-    const existing = existingBySn.get(row.deviceSn);
-    const salesUser = findUserInIndexes(indexes, operatorName);
-    const managerUser = findManagerInIndexes(indexes, managerName);
-    const nextMerchant = row.merchantName?.trim() || "";
-    const prevMerchant = existing?.merchantName?.trim() || "";
-    const merchantMoved =
-      Boolean(prevMerchant && nextMerchant) &&
-      prevMerchant.replace(/\s+/g, "") !== nextMerchant.replace(/\s+/g, "");
-    const relocatedAt = merchantMoved
-      ? normalizeXlvStatDate(row.statDate ?? new Date())
-      : existing?.relocatedAt ?? null;
-
-    const write: AssignmentDeviceWrite = {
-      id: createId(),
-      deviceSn: row.deviceSn,
-      operatorName: row.operatorName,
-      managerName,
-      companyName,
-      merchantName: row.merchantName,
-      salesUserId: salesUser?.id ?? null,
-      managerUserId: managerUser?.id ?? null,
-      statDate: row.statDate ?? existing?.statDate ?? null,
-      cumulativeUsers: row.cumulativeUsers || existing?.cumulativeUsers || 0,
-      cumulativeTxns: row.cumulativeTxns || existing?.cumulativeTxns || 0,
-      cumulativeAmount: row.cumulativeAmount || existing?.cumulativeAmount || 0,
-      lastTxnDate: row.lastTxnDate ?? existing?.lastTxnDate ?? null,
-      sleepDays: row.sleepDays || existing?.sleepDays || 0,
-      isActivated: row.isActivated,
-      firstTxnDate: row.firstTxnDate ?? existing?.firstTxnDate ?? null,
-      relocatedAt,
-      importBatchId,
-    };
-
-    if (existing) updates.push(write);
-    else creates.push(write);
-
-    if (managerName && !isXlvPlaceholderName(operatorName)) {
-      inventoryRows.push({
-        deviceSn: row.deviceSn,
-        managerName,
-        operatorName,
-        storeName: row.merchantName,
-        relocatedAt,
-      });
-    }
-
-    if (row.statDate) {
-      snapshotsToWrite.push({
-        deviceSn: row.deviceSn,
-        statDate: normalizeXlvStatDate(row.statDate),
-        cumulativeUsers: row.cumulativeUsers,
-        cumulativeTxns: row.cumulativeTxns,
-        cumulativeAmount: row.cumulativeAmount,
-        lastTxnDate: row.lastTxnDate,
-        sleepDays: row.sleepDays,
-        isActivated: row.isActivated,
-        firstTxnDate: row.firstTxnDate,
-        dailyUsers: 0,
-        dailyTxns: 0,
-        dailyAmount: 0,
-        importBatchId,
-      });
-    }
-  }
-
-  await bulkUpsertAssignmentDevices(creates, updates, onProgress);
-
-  await onProgress?.(84, "按 SN 归属同步库存已铺设…");
-  const inventorySync = await syncInventoryFromSnAttribution(
-    inventoryRows,
-    uploadedById
+  console.info(
+    `[xlv-import] assignment start rows=${rows.length} unique=${uniqueRows.length} rssMb=${rssMb()}`
+  );
+  await onProgress?.(
+    22,
+    `准备写入 SN 归属 ${uniqueRows.length.toLocaleString()} 台…`
   );
 
-  let snapshotRows = 0;
-  if (snapshotsToWrite.length > 0) {
-    await onProgress?.(86, `写入快照 ${snapshotsToWrite.length.toLocaleString()} 条…`);
-    await upsertSnapshotsBulk(snapshotsToWrite, importBatchId, onProgress);
-    snapshotRows = snapshotsToWrite.length;
-    const affectedSns = [...new Set(rows.map((r) => r.deviceSn))];
-    await onProgress?.(90, `重算考核 ${affectedSns.length.toLocaleString()} 台…`);
-    await recomputeXlvQualificationForDevices(affectedSns, {
+  const CHUNK = 400;
+  const LOOKUP_CHUNK = 1000;
+  let createdDevices = 0;
+  let updatedDevices = 0;
+  let inventorySynced = 0;
+  const createdSns: string[] = [];
+  const relocatedSns: string[] = [];
+
+  for (let offset = 0; offset < uniqueRows.length; offset += CHUNK) {
+    const slice = uniqueRows.slice(offset, offset + CHUNK);
+    const sliceSns = slice.map((r) => r.deviceSn);
+    const pct = 22 + Math.round((offset / Math.max(uniqueRows.length, 1)) * 62);
+    await onProgress?.(
+      Math.min(pct, 84),
+      `写入 SN 归属 ${Math.min(offset + slice.length, uniqueRows.length).toLocaleString()} / ${uniqueRows.length.toLocaleString()}…`
+    );
+
+    const existingBySn = new Map<
+      string,
+      {
+        deviceSn: string;
+        statDate: Date | null;
+        cumulativeUsers: number;
+        cumulativeTxns: number;
+        cumulativeAmount: number;
+        lastTxnDate: Date | null;
+        sleepDays: number;
+        isActivated: boolean;
+        firstTxnDate: Date | null;
+        merchantName: string | null;
+        relocatedAt: Date | null;
+      }
+    >();
+    for (let i = 0; i < sliceSns.length; i += LOOKUP_CHUNK) {
+      const found = await db.xlvDeviceRecord.findMany({
+        where: { deviceSn: { in: sliceSns.slice(i, i + LOOKUP_CHUNK) } },
+        select: {
+          deviceSn: true,
+          statDate: true,
+          cumulativeUsers: true,
+          cumulativeTxns: true,
+          cumulativeAmount: true,
+          lastTxnDate: true,
+          sleepDays: true,
+          isActivated: true,
+          firstTxnDate: true,
+          merchantName: true,
+          relocatedAt: true,
+        },
+      });
+      for (const row of found) existingBySn.set(row.deviceSn, row);
+    }
+
+    const creates: AssignmentDeviceWrite[] = [];
+    const updates: AssignmentDeviceWrite[] = [];
+    const inventoryRows: {
+      deviceSn: string;
+      managerName: string;
+      operatorName: string;
+      storeName?: string | null;
+      relocatedAt?: Date | null;
+    }[] = [];
+
+    for (const row of slice) {
+      let managerName = row.managerName.trim();
+      let companyName = row.companyName;
+
+      if (!managerName && row.operatorName.trim()) {
+        const resolved = resolveXlvManagerFromRoster(
+          rosterByOperator,
+          row.operatorName,
+          null
+        );
+        if (resolved && !resolved.ambiguous && resolved.managerName) {
+          managerName = resolved.managerName;
+          companyName = companyName ?? resolved.companyName;
+          managersInferredFromRoster += 1;
+        }
+      }
+
+      const operatorName = row.operatorName.trim();
+      if (
+        rosterPairs.size > 0 &&
+        operatorName &&
+        !isXlvPlaceholderName(operatorName) &&
+        !isXlvManagerSelfSale({ operatorName, managerName })
+      ) {
+        if (!rosterPairs.has(xlvRosterPairKey(managerName, operatorName))) {
+          unmatchedOperators.add(operatorName);
+        }
+      }
+
+      const existing = existingBySn.get(row.deviceSn);
+      const salesUser = findUserInIndexes(indexes, operatorName);
+      const managerUser = findManagerInIndexes(indexes, managerName);
+      const nextMerchant = row.merchantName?.trim() || "";
+      const prevMerchant = existing?.merchantName?.trim() || "";
+      const merchantMoved =
+        Boolean(prevMerchant && nextMerchant) &&
+        prevMerchant.replace(/\s+/g, "") !== nextMerchant.replace(/\s+/g, "");
+      const relocatedAt = merchantMoved
+        ? normalizeXlvStatDate(row.statDate ?? new Date())
+        : existing?.relocatedAt ?? null;
+
+      const write: AssignmentDeviceWrite = {
+        id: createId(),
+        deviceSn: row.deviceSn,
+        operatorName: row.operatorName,
+        managerName,
+        companyName,
+        merchantName: row.merchantName,
+        salesUserId: salesUser?.id ?? null,
+        managerUserId: managerUser?.id ?? null,
+        statDate: row.statDate ?? existing?.statDate ?? null,
+        cumulativeUsers: row.cumulativeUsers || existing?.cumulativeUsers || 0,
+        cumulativeTxns: row.cumulativeTxns || existing?.cumulativeTxns || 0,
+        cumulativeAmount: row.cumulativeAmount || existing?.cumulativeAmount || 0,
+        lastTxnDate: row.lastTxnDate ?? existing?.lastTxnDate ?? null,
+        sleepDays: row.sleepDays || existing?.sleepDays || 0,
+        isActivated: row.isActivated,
+        firstTxnDate: row.firstTxnDate ?? existing?.firstTxnDate ?? null,
+        relocatedAt,
+        importBatchId,
+      };
+
+      if (existing) updates.push(write);
+      else {
+        creates.push(write);
+        createdSns.push(row.deviceSn);
+      }
+      if (merchantMoved) relocatedSns.push(row.deviceSn);
+
+      if (managerName && !isXlvPlaceholderName(operatorName)) {
+        inventoryRows.push({
+          deviceSn: row.deviceSn,
+          managerName,
+          operatorName,
+          storeName: row.merchantName,
+          relocatedAt,
+        });
+      }
+    }
+
+    await bulkUpsertAssignmentDevices(creates, updates);
+    createdDevices += creates.length;
+    updatedDevices += updates.length;
+
+    await onProgress?.(
+      Math.min(pct + 2, 86),
+      `同步库存 ${Math.min(offset + slice.length, uniqueRows.length).toLocaleString()} / ${uniqueRows.length.toLocaleString()}…`
+    );
+    const inventorySync = await syncInventoryFromSnAttribution(
+      inventoryRows,
+      uploadedById
+    );
+    inventorySynced += inventorySync.synced;
+    await yieldImportTick();
+  }
+
+  const recomputeSns = [...new Set([...createdSns, ...relocatedSns])];
+  if (recomputeSns.length > 0) {
+    await onProgress?.(
+      90,
+      `重算考核 ${recomputeSns.length.toLocaleString()} 台（新建/换商户）…`
+    );
+    await recomputeXlvQualificationForDevices(recomputeSns, {
       onProgress: async (done, total) => {
         const pct = 90 + Math.round((done / Math.max(total, 1)) * 8);
-        await onProgress?.(Math.min(pct, 98), `重算考核 ${done.toLocaleString()} / ${total.toLocaleString()}…`);
+        await onProgress?.(
+          Math.min(pct, 98),
+          `重算考核 ${done.toLocaleString()} / ${total.toLocaleString()}…`
+        );
       },
     });
   } else {
-    await onProgress?.(92, "归属写入完成（跳过考核重算）");
+    await onProgress?.(92, "归属写入完成（无需全量重算考核）");
   }
 
+  console.info(
+    `[xlv-import] assignment done created=${createdDevices} updated=${updatedDevices} rssMb=${rssMb()}`
+  );
+
   return {
-    snapshotRows,
-    createdDevices: creates.length,
-    updatedDevices: updates.length,
-    inventorySynced: inventorySync.synced,
+    snapshotRows: 0,
+    createdDevices,
+    updatedDevices,
+    inventorySynced,
     rosterRowsWritten: 0,
     rosterCreated: 0,
     rosterUpdated: 0,
@@ -526,8 +562,10 @@ export async function importXlvExcelFileFromPath(
   uploadedById: string,
   opts?: { onProgress?: XlvImportProgress }
 ): Promise<XlvImportResult> {
-  const buffer = fs.readFileSync(filePath);
+  let buffer: Buffer | null = fs.readFileSync(filePath);
   const parsed = parseXlvExcelBuffer(buffer);
+  buffer = null;
+  maybeGc();
   return importParsedXlvExcel(parsed, fileName, uploadedById, opts);
 }
 

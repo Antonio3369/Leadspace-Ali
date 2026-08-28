@@ -3,8 +3,8 @@ import type {
   XlvInventoryDeployedBy,
   XlvInventoryStatus,
   XlvInventoryTransferType,
-  Prisma,
 } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import {
   inferDeployedByRole,
@@ -770,9 +770,17 @@ function normalizeMerchantName(name: string | null | undefined) {
   return (name ?? "").trim().replace(/\s+/g, "");
 }
 
+const SN_SYNC_LOOKUP_CHUNK = 1000;
+const SN_SYNC_WRITE_CHUNK = 200;
+
+function isoOrEmpty(value: Date | null | undefined) {
+  return value ? value.toISOString() : "";
+}
+
 /**
  * SN 归属表为准：表内 SN = 已铺设，作业员/经理以归属表为准。
  * 同 SN 商户名变更 = 已从旧商户撤机并铺到新商户（流水记 withdraw + deploy）。
+ * 批量写库，避免逐台 find/update 把导入拖死或撑爆内存。
  */
 export async function syncInventoryFromSnAttribution(
   rows: {
@@ -786,34 +794,59 @@ export async function syncInventoryFromSnAttribution(
 ): Promise<{ synced: number; skipped: number; merchantChanged: number }> {
   const batchId = createBatchId();
   const indexes = await buildUserLookupIndexes();
-  let synced = 0;
   let skipped = 0;
-  let merchantChanged = 0;
 
-  const uniqueSns = [
-    ...new Set(rows.map((r) => r.deviceSn.trim()).filter(Boolean)),
-  ];
-  const invBySn = new Map(
-    (
-      await db.xlvInventoryDevice.findMany({
-        where: { deviceSn: { in: uniqueSns } },
-      })
-    ).map((r) => [r.deviceSn, r] as const)
-  );
-  const opsBySn = new Map(
-    (
-      await db.xlvDeviceRecord.findMany({
-        where: { deviceSn: { in: uniqueSns } },
+  const lastBySn = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    const deviceSn = row.deviceSn.trim();
+    if (deviceSn) lastBySn.set(deviceSn, row);
+  }
+  const uniqueSns = [...lastBySn.keys()];
+  skipped += Math.max(0, rows.length - uniqueSns.length);
+
+  type InvRow = Awaited<
+    ReturnType<typeof db.xlvInventoryDevice.findMany>
+  >[number];
+  const invBySn = new Map<string, InvRow>();
+  const opsBySn = new Map<
+    string,
+    { merchantName: string | null; activationMerchantName: string | null }
+  >();
+
+  for (let i = 0; i < uniqueSns.length; i += SN_SYNC_LOOKUP_CHUNK) {
+    const slice = uniqueSns.slice(i, i + SN_SYNC_LOOKUP_CHUNK);
+    const [invRows, opsRows] = await Promise.all([
+      db.xlvInventoryDevice.findMany({ where: { deviceSn: { in: slice } } }),
+      db.xlvDeviceRecord.findMany({
+        where: { deviceSn: { in: slice } },
         select: {
           deviceSn: true,
           merchantName: true,
           activationMerchantName: true,
         },
-      })
-    ).map((r) => [r.deviceSn, r] as const)
-  );
+      }),
+    ]);
+    for (const row of invRows) invBySn.set(row.deviceSn, row);
+    for (const row of opsRows) opsBySn.set(row.deviceSn, row);
+  }
 
-  for (const row of rows) {
+  type Planned = {
+    deviceSn: string;
+    managerName: string;
+    operatorName: string;
+    managerUserId: string | null;
+    salesUserId: string | null;
+    deployedByRole: ReturnType<typeof inferDeployedByRole>;
+    nextStore: string;
+    deployedAt: Date;
+    existing: InvRow | null;
+    storeChanged: boolean;
+    prevStoreRaw: string;
+    relocatedAt: Date;
+  };
+  const planned: Planned[] = [];
+
+  for (const row of lastBySn.values()) {
     const deviceSn = row.deviceSn.trim();
     const managerName = row.managerName.trim();
     const operatorName = row.operatorName.trim();
@@ -847,7 +880,6 @@ export async function syncInventoryFromSnAttribution(
       continue;
     }
 
-    // 事业部库存/待确认等中间态不强制覆盖
     if (
       existing &&
       ["admin_stock", "pending_mgr_confirm"].includes(existing.status)
@@ -857,77 +889,186 @@ export async function syncInventoryFromSnAttribution(
     }
 
     const deployedByRole = inferDeployedByRole(managerName, operatorName);
-
-    // 同 SN 换商户：先记撤机流水，再记铺设到新商户
-    if (storeChanged && existing?.status === "deployed") {
-      const returnStatus = xlvWithdrawReturnStatus(existing.deployedByRole);
-      await applyTransition(
-        deviceSn,
-        {
-          status: returnStatus,
-          managerName: existing.managerName,
-          operatorName:
-            returnStatus === "sales_stock" ? existing.operatorName : "",
-          deployedByRole: null,
-          deployedStoreName: null,
-          deployedAt: null,
-        },
-        {
-          type: "withdraw",
-          batchId,
-          operatorUserId,
-          note: `SN归属推断撤机：${prevStoreRaw}`,
-          meta: {
-            source: "sn_attribution",
-            fromStore: prevStoreRaw,
-            toStore: nextStore,
-          },
-        },
-        { indexes }
-      );
-      merchantChanged++;
-      const relocatedAt = normalizeXlvStatDate(row.relocatedAt ?? new Date());
-      await db.xlvDeviceRecord.updateMany({
-        where: { deviceSn },
-        data: { relocatedAt },
-      });
-    }
-
-    await applyTransition(
+    const managerUser = findManagerInIndexes(indexes, managerName);
+    const salesUser = findUserInIndexes(indexes, operatorName);
+    planned.push({
       deviceSn,
-      {
-        status: "deployed",
-        managerName,
-        operatorName,
-        deployedByRole,
-        deployedStoreName: nextStore || existing?.deployedStoreName || null,
-        deployedAt: storeChanged ? new Date() : existing?.deployedAt ?? new Date(),
-      },
-      {
-        type: "deploy",
-        batchId,
-        operatorUserId,
-        note: storeChanged
-          ? `SN归属换商铺设：${nextStore || "（无商户名）"}`
-          : "SN归属同步：已铺设",
-        meta: {
-          source: "sn_attribution",
-          ...(storeChanged
-            ? { fromStore: prevStoreRaw, toStore: nextStore }
-            : {}),
-        },
-      },
-      { indexes }
-    );
-    // refresh cache for subsequent duplicate SN rows in same batch
-    invBySn.set(
-      deviceSn,
-      (await db.xlvInventoryDevice.findUnique({ where: { deviceSn } }))!
-    );
-    synced++;
+      managerName,
+      operatorName,
+      managerUserId: managerUser?.id ?? null,
+      salesUserId: salesUser?.id ?? null,
+      deployedByRole,
+      nextStore,
+      deployedAt: storeChanged
+        ? new Date()
+        : existing?.deployedAt ?? new Date(),
+      existing,
+      storeChanged,
+      prevStoreRaw,
+      relocatedAt: normalizeXlvStatDate(row.relocatedAt ?? new Date()),
+    });
   }
 
-  return { synced, skipped, merchantChanged };
+  const missingStubs = planned.filter((p) => !p.existing);
+  if (missingStubs.length > 0) {
+    await ensureInventoryDeviceRecords(missingStubs);
+    for (let i = 0; i < missingStubs.length; i += SN_SYNC_WRITE_CHUNK) {
+      const slice = missingStubs.slice(i, i + SN_SYNC_WRITE_CHUNK);
+      await db.xlvInventoryDevice.createMany({
+        data: slice.map((p) => ({
+          id: createId(),
+          deviceSn: p.deviceSn,
+          status: "deployed" as const,
+          managerName: p.managerName,
+          operatorName: p.operatorName,
+          managerUserId: p.managerUserId,
+          salesUserId: p.salesUserId,
+          deployedByRole: p.deployedByRole,
+          deployedStoreName: p.nextStore || null,
+          deployedAt: p.deployedAt,
+          importBatchId: batchId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  const toUpdate = planned.filter((p) => p.existing);
+  for (let i = 0; i < toUpdate.length; i += SN_SYNC_WRITE_CHUNK) {
+    const chunk = toUpdate.slice(i, i + SN_SYNC_WRITE_CHUNK);
+    await db.$executeRaw`
+      UPDATE "XlvInventoryDevice" AS d
+      SET
+        status = 'deployed'::"XlvInventoryStatus",
+        "managerName" = v."managerName"::text,
+        "operatorName" = v."operatorName"::text,
+        "managerUserId" = NULLIF(v."managerUserId", '')::text,
+        "salesUserId" = NULLIF(v."salesUserId", '')::text,
+        "deployedByRole" = NULLIF(v."deployedByRole", '')::"XlvInventoryDeployedBy",
+        "deployedStoreName" = NULLIF(v."deployedStoreName", '')::text,
+        "deployedAt" = NULLIF(v."deployedAt", '')::timestamptz,
+        "importBatchId" = NULLIF(v."importBatchId", '')::text,
+        "updatedAt" = NOW()
+      FROM (VALUES ${Prisma.join(
+        chunk.map(
+          (p) =>
+            Prisma.sql`(
+              ${p.deviceSn},
+              ${p.managerName},
+              ${p.operatorName},
+              ${p.managerUserId ?? ""},
+              ${p.salesUserId ?? ""},
+              ${p.deployedByRole ?? ""},
+              ${p.nextStore || p.existing?.deployedStoreName || ""},
+              ${isoOrEmpty(p.deployedAt)},
+              ${batchId}
+            )`
+        )
+      )}) AS v(
+        "deviceSn", "managerName", "operatorName", "managerUserId", "salesUserId",
+        "deployedByRole", "deployedStoreName", "deployedAt", "importBatchId"
+      )
+      WHERE d."deviceSn" = v."deviceSn"::text
+    `;
+  }
+
+  type TransferWrite = {
+    id: string;
+    deviceSn: string;
+    transferType: XlvInventoryTransferType;
+    fromStatus: XlvInventoryStatus | null;
+    toStatus: XlvInventoryStatus;
+    fromManagerName: string | null;
+    fromOperatorName: string | null;
+    toManagerName: string;
+    toOperatorName: string;
+    batchId: string;
+    operatorUserId: string;
+    note: string;
+    meta: Prisma.InputJsonValue;
+  };
+  const transfers: TransferWrite[] = [];
+  const relocatedByDay = new Map<string, { sns: string[]; at: Date }>();
+
+  for (const p of planned) {
+    if (p.storeChanged && p.existing?.status === "deployed") {
+      const returnStatus = xlvWithdrawReturnStatus(p.existing.deployedByRole);
+      transfers.push({
+        id: createId(),
+        deviceSn: p.deviceSn,
+        transferType: "withdraw",
+        fromStatus: p.existing.status,
+        toStatus: returnStatus,
+        fromManagerName: p.existing.managerName,
+        fromOperatorName: p.existing.operatorName,
+        toManagerName: p.existing.managerName,
+        toOperatorName:
+          returnStatus === "sales_stock" ? p.existing.operatorName : "",
+        batchId,
+        operatorUserId,
+        note: `SN归属推断撤机：${p.prevStoreRaw}`,
+        meta: {
+          source: "sn_attribution",
+          fromStore: p.prevStoreRaw,
+          toStore: p.nextStore,
+        },
+      });
+      const day = p.relocatedAt.toISOString().slice(0, 10);
+      const group = relocatedByDay.get(day);
+      if (group) group.sns.push(p.deviceSn);
+      else relocatedByDay.set(day, { sns: [p.deviceSn], at: p.relocatedAt });
+    }
+
+    transfers.push({
+      id: createId(),
+      deviceSn: p.deviceSn,
+      transferType: "deploy",
+      fromStatus:
+        p.storeChanged && p.existing?.status === "deployed"
+          ? xlvWithdrawReturnStatus(p.existing.deployedByRole)
+          : p.existing?.status ?? null,
+      toStatus: "deployed",
+      fromManagerName: p.existing?.managerName ?? null,
+      fromOperatorName: p.existing?.operatorName ?? null,
+      toManagerName: p.managerName,
+      toOperatorName: p.operatorName,
+      batchId,
+      operatorUserId,
+      note: p.storeChanged
+        ? `SN归属换商铺设：${p.nextStore || "（无商户名）"}`
+        : "SN归属同步：已铺设",
+      meta: {
+        source: "sn_attribution",
+        ...(p.storeChanged
+          ? { fromStore: p.prevStoreRaw, toStore: p.nextStore }
+          : {}),
+      },
+    });
+  }
+
+  for (let i = 0; i < transfers.length; i += SN_SYNC_WRITE_CHUNK) {
+    await db.xlvInventoryTransfer.createMany({
+      data: transfers.slice(i, i + SN_SYNC_WRITE_CHUNK),
+    });
+  }
+
+  for (const group of relocatedByDay.values()) {
+    for (let i = 0; i < group.sns.length; i += SN_SYNC_LOOKUP_CHUNK) {
+      await db.xlvDeviceRecord.updateMany({
+        where: { deviceSn: { in: group.sns.slice(i, i + SN_SYNC_LOOKUP_CHUNK) } },
+        data: { relocatedAt: group.at },
+      });
+    }
+  }
+
+  return {
+    synced: planned.length,
+    skipped,
+    merchantChanged: [...relocatedByDay.values()].reduce(
+      (n, g) => n + g.sns.length,
+      0
+    ),
+  };
 }
 
 export async function getInventorySummary(forManagerName?: string | null) {

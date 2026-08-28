@@ -49,7 +49,7 @@ services:
     environment:
       NODE_ENV: production
       # 先于系统 OOM 触发 V8 回收，降低整机假死概率
-      NODE_OPTIONS: --max-old-space-size=1536
+      NODE_OPTIONS: --max-old-space-size=1536 --expose-gc
       # 容器内 /tmp 可写；任务结束后删文件，无需持久卷
       IMPORT_JOB_DIR: /tmp/leadspace-import-jobs
       N7_FOLLOW_UP_UPLOAD_DIR: /app/data/n7-follow-up
