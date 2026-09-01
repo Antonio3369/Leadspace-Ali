@@ -262,7 +262,7 @@ function getXlvCalendarMonthEndCumulative(
   return null;
 }
 
-/** 考核月成绩：月末累计截面（装机月）或两月末截面差（次月），与微信表「累计*」口径一致 */
+/** 考核月成绩：月末累计截面（装机月）或相对上月末截面差（其后各自然月），与微信表「累计*」口径一致 */
 export function computeXlvMonthAssessmentTotals(
   snapshots: Array<{
     deviceSn?: string;

@@ -16,9 +16,17 @@ export const XLV_ASSESSMENT_EXPIRING_DAYS = 15;
 
 export type XlvTodayPriority = "P0" | "P1" | "P2";
 
-/** 自然月考核目标（首笔交易月为装机月，最多考核两个自然月） */
+/** 自然月考核目标（首笔交易月为装机月；2027 年 3 月前任意自然月达标即可） */
 export const XLV_MONTHLY_USER_TARGET = 20;
 export const XLV_MONTHLY_TXN_TARGET = 300;
+
+/** 政策窗口含该自然月；之后仍未达标才判无效 */
+export const XLV_ASSESSMENT_DEADLINE_YEAR = 2027;
+export const XLV_ASSESSMENT_DEADLINE_MONTH = 3;
+
+export function xlvAssessmentDeadlineLabel() {
+  return `${XLV_ASSESSMENT_DEADLINE_YEAR}年${XLV_ASSESSMENT_DEADLINE_MONTH}月`;
+}
 
 export type XlvQualificationStatus = "qualified" | "in_progress" | "invalid";
 
@@ -82,10 +90,6 @@ type XlvSnapshotPoint = {
   sleepDays?: number;
 };
 
-function utcYearMonth(d: Date) {
-  return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1 };
-}
-
 type YearMonth = { y: number; m: number };
 
 /** 考核日历月：按中国自然日，与导入 statDate 一致 */
@@ -103,26 +107,54 @@ function nextYearMonth(y: number, m: number): YearMonth {
   return m === 12 ? { y: y + 1, m: 1 } : { y, m: m + 1 };
 }
 
+function minYearMonth(a: YearMonth, b: YearMonth): YearMonth {
+  return compareYearMonth(a, b) <= 0 ? a : b;
+}
+
+function assessmentDeadlineMonth(): YearMonth {
+  return {
+    y: XLV_ASSESSMENT_DEADLINE_YEAR,
+    m: XLV_ASSESSMENT_DEADLINE_MONTH,
+  };
+}
+
 function qualificationAsOf(asOf?: Date) {
   return asOf ?? new Date();
 }
 
-function isAssessmentWindowClosed(reference: Date, secondMonthY: number, secondMonthM: number) {
-  const afterSecond = nextYearMonth(secondMonthY, secondMonthM);
-  return compareYearMonth(chinaYearMonth(reference), afterSecond) >= 0;
+function isAssessmentWindowClosed(reference: Date) {
+  const afterDeadline = nextYearMonth(
+    XLV_ASSESSMENT_DEADLINE_YEAR,
+    XLV_ASSESSMENT_DEADLINE_MONTH
+  );
+  return compareYearMonth(chinaYearMonth(reference), afterDeadline) >= 0;
+}
+
+/** 装机月至 min(当前月, 2027-03) 的考核自然月 */
+function listAssessmentYearMonths(start: Date, asOf: Date): YearMonth[] {
+  const from = chinaYearMonth(start);
+  const to = minYearMonth(chinaYearMonth(asOf), assessmentDeadlineMonth());
+  if (compareYearMonth(from, to) > 0) return [];
+  const months: YearMonth[] = [];
+  let cur = from;
+  while (compareYearMonth(cur, to) <= 0) {
+    months.push(cur);
+    cur = nextYearMonth(cur.y, cur.m);
+  }
+  return months;
+}
+
+function formatYearMonth(y: number, m: number) {
+  return `${y}-${String(m).padStart(2, "0")}`;
 }
 
 function pickAssessmentFocusMonth(
   reference: Date,
-  months: XlvQualificationMonthRow[],
-  secondMonthY: number,
-  secondMonthM: number
+  months: XlvQualificationMonthRow[]
 ) {
-  const second: YearMonth = { y: secondMonthY, m: secondMonthM };
-  if (compareYearMonth(chinaYearMonth(reference), second) >= 0) {
-    return months[1] ?? months[0] ?? null;
-  }
-  return months[0] ?? null;
+  const ref = chinaYearMonth(reference);
+  const period = formatYearMonth(ref.y, ref.m);
+  return months.find((row) => row.period === period) ?? months[months.length - 1] ?? null;
 }
 
 /** 方案 A：按实际收款日汇总判定达标 / 考核中 / 无效 */
@@ -150,37 +182,27 @@ export function assessXlvQualification(
   if (!assessed.firstTxnDate) return "in_progress";
 
   const reference = qualificationAsOf(asOf);
+  const monthDefs = listAssessmentYearMonths(assessed.firstTxnDate, reference);
 
-  const { y: y0, m: m0 } = utcYearMonth(assessed.firstTxnDate);
-  const y1 = m0 === 12 ? y0 + 1 : y0;
-  const m1 = m0 === 12 ? 1 : m0 + 1;
+  for (let i = 0; i < monthDefs.length; i++) {
+    const { y, m } = monthDefs[i]!;
+    const inc = computeXlvMonthAssessmentTotals(
+      points,
+      y,
+      m,
+      assessed,
+      i === 0,
+      snapshotsPreEnriched
+    );
+    if (inc && isXlvMonthlyTargetMet(inc.users, inc.txns)) return "qualified";
+  }
 
-  const inc0 = computeXlvMonthAssessmentTotals(
-    points,
-    y0,
-    m0,
-    assessed,
-    true,
-    snapshotsPreEnriched
-  );
-  if (inc0 && isXlvMonthlyTargetMet(inc0.users, inc0.txns)) return "qualified";
-
-  const inc1 = computeXlvMonthAssessmentTotals(
-    points,
-    y1,
-    m1,
-    assessed,
-    false,
-    snapshotsPreEnriched
-  );
-  if (inc1 && isXlvMonthlyTargetMet(inc1.users, inc1.txns)) return "qualified";
-
-  if (isAssessmentWindowClosed(reference, y1, m1)) return "invalid";
+  if (isAssessmentWindowClosed(reference)) return "invalid";
 
   return "in_progress";
 }
 
-/** 距两月考核窗口结束还剩多少天（已结束返回 null） */
+/** 距政策窗口（2027 年 3 月底）结束还剩多少天（已结束返回 null） */
 export function getXlvAssessmentDaysRemaining(
   firstTxnDate: Date | null,
   asOf: Date = new Date(),
@@ -188,16 +210,18 @@ export function getXlvAssessmentDaysRemaining(
 ): number | null {
   const start = xlvAssessmentStartDate({ firstTxnDate, relocatedAt });
   if (!start) return null;
-  firstTxnDate = start;
 
-  const { y: y0, m: m0 } = utcYearMonth(firstTxnDate);
-  const y1 = m0 === 12 ? y0 + 1 : y0;
-  const m1 = m0 === 12 ? 1 : m0 + 1;
-  const windowEndExclusive = new Date(Date.UTC(y1, m1, 1));
-
-  const asOfDay = new Date(
-    Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate())
+  const afterDeadline = nextYearMonth(
+    XLV_ASSESSMENT_DEADLINE_YEAR,
+    XLV_ASSESSMENT_DEADLINE_MONTH
   );
+  const windowEndExclusive = new Date(
+    Date.UTC(afterDeadline.y, afterDeadline.m - 1, 1)
+  );
+
+  const asOfKey = xlvStatDateKey(asOf);
+  const [ay, am, ad] = asOfKey.split("-").map(Number);
+  const asOfDay = new Date(Date.UTC(ay!, am! - 1, ad!));
   const msPerDay = 24 * 60 * 60 * 1000;
   const days = Math.ceil(
     (windowEndExclusive.getTime() - asOfDay.getTime()) / msPerDay
@@ -304,9 +328,9 @@ export const XLV_QUALIFICATION_LABELS: Record<XlvQualificationStatus, string> = 
 };
 
 export const XLV_QUALIFICATION_HINTS: Record<XlvQualificationStatus, string> = {
-  qualified: "自然月内达到 20 用户 + 300 笔",
-  in_progress: "考核窗口内，尚未达标",
-  invalid: "两月均未达标",
+  qualified: "任一自然月内达到 20 用户 + 300 笔",
+  in_progress: "2027年3月前尚未达标",
+  invalid: "2027年3月前均未达标",
 };
 
 export const XLV_QUALIFICATION_FILTERS: {
@@ -345,11 +369,11 @@ export type XlvQualificationDetail = {
   months: XlvQualificationMonthRow[];
 };
 
-function formatYearMonth(y: number, m: number) {
-  return `${y}-${String(m).padStart(2, "0")}`;
+function formatYearMonthLabel(y: number, m: number, isInstallMonth: boolean) {
+  return isInstallMonth ? "装机月" : `${y}年${m}月`;
 }
 
-/** 考核进度：当月增量、缺口、两月窗口明细 */
+/** 考核进度：当月增量、缺口、装机日至政策截止月的明细 */
 export function getXlvQualificationDetail(
   device: {
     firstTxnDate: Date | null;
@@ -385,26 +409,20 @@ export function getXlvQualificationDetail(
     };
   }
 
-  const { y: y0, m: m0 } = utcYearMonth(assessed.firstTxnDate);
-  const y1 = m0 === 12 ? y0 + 1 : y0;
-  const m1 = m0 === 12 ? 1 : m0 + 1;
+  const monthDefs = listAssessmentYearMonths(assessed.firstTxnDate, reference);
 
-  const monthDefs = [
-    { label: "装机月", y: y0, m: m0 },
-    { label: "次月", y: y1, m: m1 },
-  ] as const;
-
-  const months: XlvQualificationMonthRow[] = monthDefs.map(({ label, y, m }) => {
+  const months: XlvQualificationMonthRow[] = monthDefs.map(({ y, m }, index) => {
+    const isInstallMonth = index === 0;
     const inc = computeXlvMonthAssessmentTotals(
       points,
       y,
       m,
       assessed,
-      label === "装机月",
+      isInstallMonth,
       snapshotsPreEnriched
     );
     return {
-      label,
+      label: formatYearMonthLabel(y, m, isInstallMonth),
       period: formatYearMonth(y, m),
       users: inc?.users ?? null,
       txns: inc?.txns ?? null,
@@ -421,9 +439,9 @@ export function getXlvQualificationDetail(
   if (status === "qualified") {
     focusMonth = months.find((row) => row.met) ?? months[0] ?? null;
   } else if (status === "invalid") {
-    focusMonth = months[1] ?? months[0] ?? null;
+    focusMonth = months[months.length - 1] ?? months[0] ?? null;
   } else {
-    focusMonth = pickAssessmentFocusMonth(reference, months, y1, m1);
+    focusMonth = pickAssessmentFocusMonth(reference, months);
     if (focusMonth?.met) {
       focusMonth = months.find((row) => !row.met) ?? null;
     }
@@ -457,8 +475,7 @@ export function xlvQualificationGapLine(detail: XlvQualificationDetail) {
   if (detail.status === "qualified") return "已达标";
   if (!detail.focusMonth) return "待首笔交易";
   if (detail.focusMonth.users == null && detail.focusMonth.txns == null) {
-    const label = detail.focusMonth.label === "次月" ? "次月" : "装机月";
-    return `${label}尚未收款 · 目标 ${XLV_MONTHLY_USER_TARGET} 用户 + ${XLV_MONTHLY_TXN_TARGET} 笔`;
+    return `${detail.focusMonth.label}尚未收款 · 目标 ${XLV_MONTHLY_USER_TARGET} 用户 + ${XLV_MONTHLY_TXN_TARGET} 笔`;
   }
   const parts: string[] = [];
   if (detail.usersGap > 0) {
@@ -476,13 +493,7 @@ export function xlvQualificationGapLine(detail: XlvQualificationDetail) {
     );
   }
   const gapText = parts.length ? parts.join(" · ") : "当月接近达标";
-  if (detail.focusMonth?.label === "次月") {
-    return `次月重计 · ${gapText}`;
-  }
-  if (detail.focusMonth?.label === "装机月") {
-    return `装机月 · ${gapText}`;
-  }
-  return gapText;
+  return `${detail.focusMonth.label} · ${gapText}`;
 }
 
 type XlvStoredGapDevice = {
@@ -495,7 +506,7 @@ type XlvStoredGapDevice = {
   qualificationStatus: XlvQualificationStatus;
 };
 
-/** 列表用落库达标状态写缺口，避免为整表拉快照；装机月/次月细节按累计近似 */
+/** 列表用落库达标状态写缺口，避免为整表拉快照；无快照时仅装机月可按累计近似 */
 export function xlvStoredQualificationGap(device: XlvStoredGapDevice): {
   usersGap: number;
   txnsGap: number;

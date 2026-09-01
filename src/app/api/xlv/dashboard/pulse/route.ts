@@ -5,10 +5,14 @@ import { getXlvDashboardPulseSummary } from "@/services/xlv/analytics";
 
 export const maxDuration = 120;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await requireSessionUser();
-    const pulse = await getXlvDashboardPulseSummary(user);
+    const { searchParams } = new URL(request.url);
+    const pulse = await getXlvDashboardPulseSummary(user, {
+      dateFrom: searchParams.get("dateFrom"),
+      dateTo: searchParams.get("dateTo"),
+    });
     return NextResponse.json(pulse);
   } catch (err) {
     if (err instanceof PermissionError) {

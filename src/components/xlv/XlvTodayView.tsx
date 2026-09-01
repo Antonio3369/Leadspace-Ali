@@ -15,7 +15,7 @@ import {
   PageShell,
 } from "@/components/ui/notion";
 import { XlvDeviceCardList } from "@/components/xlv/XlvDeviceCardList";
-import { XLV_ASSESSMENT_EXPIRING_DAYS } from "@/lib/xlv-rules";
+import { XLV_ASSESSMENT_EXPIRING_DAYS, xlvAssessmentDeadlineLabel } from "@/lib/xlv-rules";
 import { XLV_NOTIFICATIONS_CHANGED } from "@/lib/xlv-notifications-client";
 import type { XlvTodayDeviceItem } from "@/services/xlv/today";
 
@@ -246,7 +246,7 @@ export function XlvTodayView({
           id: "p2",
           label: "考核将到期",
           value: data.counts.P2,
-          hint: `两月窗口剩≤${XLV_ASSESSMENT_EXPIRING_DAYS}天`,
+          hint: `${xlvAssessmentDeadlineLabel()}前剩≤${XLV_ASSESSMENT_EXPIRING_DAYS}天`,
           href: `${withTodayQuery({ queue: "P2" })}#queue-P2`,
           tone: "sky" as const,
         },

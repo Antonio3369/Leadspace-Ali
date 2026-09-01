@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { getCurrentMonthRange, parseN7DateRange } from "@/lib/n7-date";
+import { parseN7DateRange } from "@/lib/n7-date";
 import type { SessionUser } from "@/lib/permissions";
 import { xlvManagerDisplayName } from "@/lib/xlv-rules";
 import { xlvStatDateKey } from "@/lib/xlv-stat-date";
@@ -136,11 +136,15 @@ function wakeUpRateOf(devices: FollowedDevice[]) {
     : 0;
 }
 
-/** 本月关单唤醒率（与每日绩效 summary.wakeUpRate 同口径，不拉更早关单的历史快照） */
-export async function getXlvMonthWakeUpRate(user: SessionUser) {
+/** 所选区间关单唤醒率（与每日绩效 summary.wakeUpRate 同口径，不拉更早关单的历史快照） */
+export async function getXlvMonthWakeUpRate(
+  user: SessionUser,
+  opts?: { dateFrom?: string | null; dateTo?: string | null }
+) {
   return withXlvHeavyGate(async () => {
     assertCanViewXlv(user);
-    const { from, to } = getCurrentMonthRange();
+    const { from, to } = parseN7DateRange(opts ?? {});
+    if (!from || !to) return 0;
     const inPeriod = await loadFollowedDevicesWithWake(user, {
       gte: from,
       lte: to,

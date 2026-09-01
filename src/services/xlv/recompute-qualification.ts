@@ -12,7 +12,7 @@ import {
 } from "@/services/xlv/xlv-scope";
 import { loadXlvSnapshotMap, xlvQualificationOf } from "@/services/xlv/assessment";
 
-export const XLV_QUALIFICATION_RULE_VERSION = "2026-08-relocation-assessment";
+export const XLV_QUALIFICATION_RULE_VERSION = "2026-09-window-to-2027-03";
 
 const DEVICE_QUAL_SELECT = {
   deviceSn: true,
@@ -189,13 +189,18 @@ export async function countXlvQualificationSummary(user: SessionUser) {
   return { qualifiedCount, inProgressCount, invalidCount, active };
 }
 
-/** 若仍有设备从未评估，在部署引导中回填 */
+/** 若仍有设备从未评估，或按旧两月窗口判了无效，在部署引导中按新政策重算 */
 export async function backfillXlvQualificationIfNeeded() {
   const pending = await db.xlvDeviceRecord.count({
     where: {
       AND: [
         buildXlvAssignedDeviceWhere(),
-        { qualificationAssessedAt: null },
+        {
+          OR: [
+            { qualificationAssessedAt: null },
+            { qualificationStatus: "invalid" },
+          ],
+        },
       ],
     },
   });
@@ -205,7 +210,12 @@ export async function backfillXlvQualificationIfNeeded() {
     where: {
       AND: [
         buildXlvAssignedDeviceWhere(),
-        { qualificationAssessedAt: null },
+        {
+          OR: [
+            { qualificationAssessedAt: null },
+            { qualificationStatus: "invalid" },
+          ],
+        },
       ],
     },
     select: { deviceSn: true },

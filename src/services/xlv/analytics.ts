@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { getCurrentMonthRange } from "@/lib/n7-date";
+import { parseN7DateRange } from "@/lib/n7-date";
 import type { SessionUser } from "@/lib/permissions";
 import { getXlvMonthWakeUpRate } from "@/services/xlv/daily";
 import {
@@ -44,12 +44,16 @@ export interface XlvDashboardSummary {
 }
 
 export interface XlvDashboardPulseSummary {
+  dateFrom: string;
+  dateTo: string;
   monthExpandCount: number;
-  monthQualifyRate: number;
+  /** 所选月首笔里已达标台数 */
+  monthQualifiedCount: number;
+  /** 所选区间无拓展时为 null，界面显示 — */
+  monthQualifyRate: number | null;
   singleSilence: number;
   dormant: number;
   wakeUpRate: number;
-  qualifiedCount: number;
 }
 
 export interface XlvDeviceListItem {
@@ -240,9 +244,13 @@ export async function getXlvDashboardQualSummary(
 
 /** 设备页顶部六宫格：一眼看清拓展、达标率、沉睡与唤醒 */
 export async function getXlvDashboardPulseSummary(
-  user: SessionUser
+  user: SessionUser,
+  opts?: { dateFrom?: string | null; dateTo?: string | null }
 ): Promise<XlvDashboardPulseSummary> {
-  const { from, to } = getCurrentMonthRange();
+  const { from, to, dateFrom, dateTo } = parseN7DateRange(opts ?? {});
+  if (!from || !to) {
+    throw new Error("请选择有效日期范围");
+  }
   const expandWhere = {
     AND: [
       buildXlvRoleWhere(user),
@@ -251,28 +259,29 @@ export async function getXlvDashboardPulseSummary(
     ],
   };
 
-  const [fast, qual, expandCount, expandQualified, wakeUpRate] = await Promise.all([
+  const [fast, expandCount, expandQualified, wakeUpRate] = await Promise.all([
     getXlvDashboardSummaryFast(user),
-    getXlvDashboardQualSummary(user),
     db.xlvDeviceRecord.count({ where: expandWhere }),
     db.xlvDeviceRecord.count({
       where: { AND: [expandWhere, { qualificationStatus: "qualified" }] },
     }),
-    getXlvMonthWakeUpRate(user),
+    getXlvMonthWakeUpRate(user, { dateFrom, dateTo }),
   ]);
 
   const monthQualifyRate =
     expandCount > 0
       ? Math.round((expandQualified / expandCount) * 1000) / 10
-      : 0;
+      : null;
 
   return {
+    dateFrom,
+    dateTo,
     monthExpandCount: expandCount,
+    monthQualifiedCount: expandQualified,
     monthQualifyRate,
     singleSilence: fast.singleSilence,
     dormant: fast.dormant,
     wakeUpRate,
-    qualifiedCount: qual.qualifiedCount,
   };
 }
 

@@ -4,6 +4,7 @@ import type { XlvQualificationDetail } from "@/lib/xlv-rules";
 import {
   XLV_MONTHLY_TXN_TARGET,
   XLV_MONTHLY_USER_TARGET,
+  xlvAssessmentDeadlineLabel,
   xlvQualificationMonthResultLabel,
 } from "@/lib/xlv-rules";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
@@ -24,15 +25,16 @@ export function XlvAssessmentPanel({
 
       {firstTxnDate ? (
         <p className="text-xs text-[#64748b]">
-          装机月 {firstTxnDate} · 最多两个自然月达标（每月 {XLV_MONTHLY_USER_TARGET}{" "}
-          用户 + {XLV_MONTHLY_TXN_TARGET} 笔）
+          装机月 {firstTxnDate} 起至 {xlvAssessmentDeadlineLabel()}
+          ，任意自然月达标即可（每月 {XLV_MONTHLY_USER_TARGET} 用户 +{" "}
+          {XLV_MONTHLY_TXN_TARGET} 笔）
         </p>
       ) : (
         <p className="text-xs text-amber-700">暂无首笔交易，尚未进入考核窗口</p>
       )}
 
       {detail.months.length > 0 ? (
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-72">
           <table className="w-full min-w-[280px] text-xs">
             <thead>
               <tr className="text-left text-[#94a3b8] border-b border-[#f1f5f9]">

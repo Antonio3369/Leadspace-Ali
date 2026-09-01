@@ -74,7 +74,7 @@ async function main() {
     console.log(`    已重算移机设备考核 ${relocated.deviceSns.length} 台`);
   }
 
-  console.log("==> 回填小绿盒考核状态（仅未评估设备）...");
+  console.log("==> 回填小绿盒考核状态（未评估 + 旧两月窗口无效设备）...");
   const { backfillXlvQualificationIfNeeded } = await import(
     "../src/services/xlv/recompute-qualification"
   );

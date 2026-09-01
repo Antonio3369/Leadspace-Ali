@@ -1,10 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { xlvPath } from "@/lib/business-lines";
-import { formatDateInput } from "@/lib/ledger-date";
-import { getCurrentMonthRange, n7DateRangeQuery } from "@/lib/n7-date";
+import {
+  getCurrentMonthRange as getLedgerCurrentMonthRange,
+  getLastMonthRange,
+} from "@/lib/ledger-date";
+import {
+  applyN7DateRangeToParams,
+  n7DateRangeQuery,
+  readN7DateRangeFromSearchParams,
+} from "@/lib/n7-date";
 import { fetchRetryNotice, getFetchErrorMessage, isFetchAbortedError } from "@/lib/fetch-json";
 import { readXlvApiCache } from "@/lib/xlv-api-cache";
 import { fetchXlvJson } from "@/lib/xlv-fetch";
@@ -25,6 +32,7 @@ import {
   PageHeader,
   PageShell,
 } from "@/components/ui/notion";
+import { N7DateRangePicker } from "@/components/n7/N7DateRangePicker";
 import { XlvDeviceCardList } from "@/components/xlv/XlvDeviceCardList";
 import type {
   XlvDashboardSummary,
@@ -43,12 +51,14 @@ interface DevicesResponse {
 }
 
 interface PulseSummaryResponse {
+  dateFrom: string;
+  dateTo: string;
   monthExpandCount: number;
-  monthQualifyRate: number;
+  monthQualifiedCount: number;
+  monthQualifyRate: number | null;
   singleSilence: number;
   dormant: number;
   wakeUpRate: number;
-  qualifiedCount: number;
 }
 
 type PulseCardId =
@@ -66,17 +76,55 @@ function buildListQuery(
   operator: string,
   search: string,
   expandMonth: boolean,
+  dateFrom: string,
+  dateTo: string,
   offset: number
 ) {
   const params = new URLSearchParams();
   if (alert !== "all") params.set("alert", alert);
   if (status && alert === "all") params.set("status", status);
-  if (expandMonth) params.set("expand", "month");
+  if (expandMonth) {
+    params.set("expand", "month");
+    applyN7DateRangeToParams(params, dateFrom, dateTo);
+  }
   if (manager) params.set("manager", manager);
   if (operator) params.set("operator", operator);
   if (search) params.set("q", search);
   if (offset > 0) params.set("offset", String(offset));
   return params;
+}
+
+function xlvExpandPeriodCopy(dateFrom: string, dateTo: string) {
+  const cur = getLedgerCurrentMonthRange();
+  const last = getLastMonthRange();
+  if (dateFrom === cur.dateFrom && dateTo === cur.dateTo) {
+    return {
+      expandLabel: "本月拓展",
+      expandHint: "本月首笔",
+      qualifiedHint: "本月首笔已达标",
+      rateHint: "占本月拓展",
+      listExpand: "本月拓展商户",
+      listExpandQualified: "本月拓展 · 已达标",
+    };
+  }
+  if (dateFrom === last.dateFrom && dateTo === last.dateTo) {
+    return {
+      expandLabel: "上月拓展",
+      expandHint: "上月首笔",
+      qualifiedHint: "上月首笔已达标",
+      rateHint: "占上月拓展",
+      listExpand: "上月拓展商户",
+      listExpandQualified: "上月拓展 · 已达标",
+    };
+  }
+  return {
+    expandLabel: "期间拓展",
+    expandHint: `${dateFrom.slice(0, 7)} 首笔`,
+    qualifiedHint: `${dateFrom.slice(0, 7)} 首笔已达标`,
+    rateHint: "占期间拓展",
+    listExpand: "期间拓展商户",
+    listExpandQualified: "期间拓展 · 已达标",
+  };
 }
 
 function qualifyRateClass(rate: number) {
@@ -99,6 +147,9 @@ export function XlvDashboardView({
   const rawStatus = parseXlvQualificationStatus(searchParams.get("status"));
   const status = alert !== "all" ? null : rawStatus;
   const expandMonth = searchParams.get("expand") === "month";
+  const { dateFrom, dateTo } = readN7DateRangeFromSearchParams(searchParams);
+  const rangeQs = n7DateRangeQuery(dateFrom, dateTo);
+  const periodCopy = xlvExpandPeriodCopy(dateFrom, dateTo);
   const manager = searchParams.get("manager") ?? "";
   const operator = searchParams.get("operator") ?? "";
   const search = searchParams.get("q") ?? "";
@@ -120,7 +171,7 @@ export function XlvDashboardView({
   const [retryLabel, setRetryLabel] = useState("");
   const [searchDraft, setSearchDraft] = useState(search);
 
-  const filterKey = `${alert}|${status}|${expandMonth}|${manager}|${operator}|${search}`;
+  const filterKey = `${alert}|${status}|${expandMonth}|${manager}|${operator}|${search}|${expandMonth ? rangeQs : ""}`;
   const listLoading = loading && loadedFilterKey !== filterKey;
 
   useRestoreListScroll(pathname, active && !listLoading && devices.length > 0);
@@ -133,6 +184,17 @@ export function XlvDashboardView({
         else params.delete(key);
       }
       router.replace(`${pathname}?${searchParamsToQueryString(params)}`, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  const applyDateRange = useCallback(
+    (next: { dateFrom: string; dateTo: string }) => {
+      const params = new URLSearchParams(searchParams.toString());
+      applyN7DateRangeToParams(params, next.dateFrom, next.dateTo);
+      router.replace(`${pathname}?${searchParamsToQueryString(params)}`, {
+        scroll: false,
+      });
     },
     [pathname, router, searchParams]
   );
@@ -200,6 +262,8 @@ export function XlvDashboardView({
       operator,
       search,
       expandMonth,
+      dateFrom,
+      dateTo,
       0
     );
     const devicesUrl = `/api/xlv/dashboard/devices?${searchParamsToQueryString(listParams)}`;
@@ -258,14 +322,18 @@ export function XlvDashboardView({
     return () => {
       cancelled = true;
     };
-  }, [active, alert, status, expandMonth, manager, operator, search, filterKey, loadedFilterKey]);
+  }, [active, alert, status, expandMonth, dateFrom, dateTo, manager, operator, search, filterKey, loadedFilterKey]);
 
   useEffect(() => {
-    if (!active || pulseLoaded) return;
+    if (!active) return;
     let cancelled = false;
-    void fetchXlvJson<PulseSummaryResponse>("/api/xlv/dashboard/pulse", {
-      context: "加载指标",
-    })
+    setPulseLoaded(false);
+    void fetchXlvJson<PulseSummaryResponse>(
+      `/api/xlv/dashboard/pulse?${rangeQs}`,
+      {
+        context: "加载指标",
+      }
+    )
       .then((json) => {
         if (!cancelled) {
           setPulse(json);
@@ -276,7 +344,7 @@ export function XlvDashboardView({
     return () => {
       cancelled = true;
     };
-  }, [active, pulseLoaded]);
+  }, [active, rangeQs]);
 
   useEffect(() => {
     if (!filters.operators.length || !operator) return;
@@ -295,6 +363,8 @@ export function XlvDashboardView({
       operator,
       search,
       expandMonth,
+      dateFrom,
+      dateTo,
       devices.length
     );
     const url = `/api/xlv/dashboard/devices?${searchParamsToQueryString(listParams)}`;
@@ -315,6 +385,8 @@ export function XlvDashboardView({
     alert,
     status,
     expandMonth,
+    dateFrom,
+    dateTo,
     manager,
     operator,
     search,
@@ -328,39 +400,47 @@ export function XlvDashboardView({
     manager || operator || alert !== "all" || status || expandMonth || search
   );
 
-  const activePulseCard = useMemo((): PulseCardId | null => {
-    if (expandMonth && status === "qualified") return "qualify_rate";
-    if (expandMonth) return "expand";
-    if (alert === "single_silence") return "single_silence";
-    if (alert === "dormant" || alert === "sleep") return "dormant";
-    if (status === "qualified" && !expandMonth) return "qualified";
-    return null;
-  }, [alert, expandMonth, status]);
+  const monthQualifiedActive = expandMonth && status === "qualified";
+  const monthExpandActive = expandMonth && status !== "qualified";
+
+  function isPulseCardActive(id: PulseCardId) {
+    if (id === "qualified" || id === "qualify_rate") return monthQualifiedActive;
+    if (id === "expand") return monthExpandActive;
+    if (id === "single_silence") return alert === "single_silence";
+    if (id === "dormant") return alert === "dormant" || alert === "sleep";
+    return false;
+  }
 
   const pulseCards = pulse
     ? [
         {
           id: "expand" as const,
-          label: "本月拓展",
-          hint: "本月首笔",
+          label: periodCopy.expandLabel,
+          hint: periodCopy.expandHint,
           value: pulseLoaded ? pulse.monthExpandCount : null,
           tone: "sky" as const,
         },
         {
           id: "qualified" as const,
           label: "已达标",
-          hint: "自然月达标",
-          value: pulseLoaded ? pulse.qualifiedCount : null,
+          hint: periodCopy.qualifiedHint,
+          value: pulseLoaded ? pulse.monthQualifiedCount : null,
           tone: "green" as const,
         },
         {
           id: "qualify_rate" as const,
           label: "达标率",
-          hint: "占本月拓展",
-          value: pulseLoaded ? `${pulse.monthQualifyRate}%` : null,
+          hint: periodCopy.rateHint,
+          value: pulseLoaded
+            ? pulse.monthQualifyRate == null
+              ? "—"
+              : `${pulse.monthQualifyRate}%`
+            : null,
           tone: "green" as const,
           valueClass: pulseLoaded
-            ? qualifyRateClass(pulse.monthQualifyRate)
+            ? pulse.monthQualifyRate == null
+              ? "text-[#94a3b8]"
+              : qualifyRateClass(pulse.monthQualifyRate)
             : undefined,
         },
         {
@@ -405,14 +485,11 @@ export function XlvDashboardView({
 
   function selectPulseCard(id: PulseCardId) {
     if (id === "wake_rate") {
-      const { from, to } = getCurrentMonthRange();
-      router.push(
-        xlvPath(`/daily?${n7DateRangeQuery(formatDateInput(from), formatDateInput(to))}`)
-      );
+      router.push(xlvPath(`/daily?${rangeQs}`));
       return;
     }
 
-    const isActive = activePulseCard === id;
+    const isActive = isPulseCardActive(id);
 
     if (id === "expand") {
       pushQuery({
@@ -422,7 +499,7 @@ export function XlvDashboardView({
       });
       return;
     }
-    if (id === "qualify_rate") {
+    if (id === "qualify_rate" || id === "qualified") {
       pushQuery({
         expand: isActive ? null : "month",
         status: isActive ? null : "qualified",
@@ -444,14 +521,6 @@ export function XlvDashboardView({
         status: null,
         expand: null,
       });
-      return;
-    }
-    if (id === "qualified") {
-      pushQuery({
-        status: isActive ? null : "qualified",
-        alert: null,
-        expand: null,
-      });
     }
   }
 
@@ -461,12 +530,10 @@ export function XlvDashboardView({
     search.trim()
       ? "搜索结果"
       : expandMonth && status === "qualified"
-      ? "本月拓展 · 已达标"
+      ? periodCopy.listExpandQualified
       : expandMonth
-        ? "本月拓展商户"
-        : status === "qualified"
-          ? "已达标商户"
-          : alert === "single_silence"
+        ? periodCopy.listExpand
+        : alert === "single_silence"
             ? "单笔沉默商户"
             : alert === "dormant" || alert === "sleep"
               ? "沉睡商户"
@@ -503,7 +570,16 @@ export function XlvDashboardView({
           </div>
         }
         actions={
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <div className="flex flex-col items-stretch sm:items-end gap-2 w-full sm:w-auto">
+            <div className="hidden md:block">
+              <N7DateRangePicker
+                compact
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                dateLabel="首笔日期"
+                onChange={applyDateRange}
+              />
+            </div>
             <NotionInput
               placeholder="搜索 商户名/SN/队员"
               value={searchDraft}
@@ -514,6 +590,16 @@ export function XlvDashboardView({
           </div>
         }
       />
+
+      <div className="md:hidden sticky top-0 z-10 -mx-4 px-4 py-3 bg-[#f4f6f9]/95 backdrop-blur-sm border-b border-[#eef2f7]">
+        <N7DateRangePicker
+          compact
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          dateLabel="首笔日期"
+          onChange={applyDateRange}
+        />
+      </div>
 
       {error ? <NotionAlert tone="error">{error}</NotionAlert> : null}
       {retryLabel ? <NotionAlert tone="info">{retryLabel}</NotionAlert> : null}
@@ -532,7 +618,7 @@ export function XlvDashboardView({
               type="button"
               onClick={() => selectPulseCard(item.id)}
               className={`rounded-[14px] border px-3 py-3 text-left transition-colors ${toneClass[item.tone]} ${
-                activePulseCard === item.id ? "ring-2 ring-[#2563eb]/30" : ""
+                isPulseCardActive(item.id) ? "ring-2 ring-[#2563eb]/30" : ""
               }`}
             >
               <p className="text-xs text-[#64748b]">{item.hint}</p>
