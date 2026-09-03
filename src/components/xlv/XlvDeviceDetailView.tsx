@@ -389,6 +389,9 @@ export function XlvDeviceDetailView({
             <XlvAssessmentPanel
               detail={qualificationDetail}
               firstTxnDate={device.firstTxnDate}
+              hasTxnActivity={
+                device.cumulativeTxns > 0 || device.cumulativeUsers > 0
+              }
             />
           ) : null}
 

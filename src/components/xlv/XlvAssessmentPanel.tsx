@@ -12,9 +12,11 @@ import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
 export function XlvAssessmentPanel({
   detail,
   firstTxnDate,
+  hasTxnActivity = false,
 }: {
   detail: XlvQualificationDetail;
   firstTxnDate: string | null;
+  hasTxnActivity?: boolean;
 }) {
   return (
     <section className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm space-y-3">
@@ -29,8 +31,14 @@ export function XlvAssessmentPanel({
           ，任意自然月达标即可（每月 {XLV_MONTHLY_USER_TARGET} 用户 +{" "}
           {XLV_MONTHLY_TXN_TARGET} 笔）
         </p>
+      ) : hasTxnActivity ? (
+        <p className="text-xs text-amber-700">
+          已有累计交易，但运营表未给出首笔日期，暂无法按自然月考核。当前记为考核中（尚未达标）。
+        </p>
       ) : (
-        <p className="text-xs text-amber-700">暂无首笔交易，尚未进入考核窗口</p>
+        <p className="text-xs text-[#64748b]">
+          尚未产生交易，考核从首笔当月起算。当前记为考核中（尚未达标）。
+        </p>
       )}
 
       {detail.months.length > 0 ? (
