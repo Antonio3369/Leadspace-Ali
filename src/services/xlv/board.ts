@@ -32,7 +32,8 @@ import {
 } from "./xlv-scope";
 import { sortXlvDevices } from "./sort-devices";
 import { enrichXlvSnapshotDailyMetrics, buildXlvTxnActivityTrend } from "./snapshot-daily";
-import { normalizeXlvStatDate } from "@/lib/xlv-stat-date";
+import { normalizeXlvStatDate, xlvStatDateKey } from "@/lib/xlv-stat-date";
+import { inferXlvTxnDates } from "@/lib/xlv-txn-dates";
 import { withXlvBoardCache } from "./board-cache";
 import { withXlvHeavyGate } from "./xlv-heavy-gate";
 import { loadSalesStockForOperator } from "./inventory/service";
@@ -496,15 +497,52 @@ export async function getXlvDeviceDetail(user: SessionUser, deviceSn: string) {
   }));
 
   const snapshots = enrichXlvSnapshotDailyMetrics(rawSnapshots);
+  const inferred = inferXlvTxnDates(device, snapshots);
+  if (
+    inferred.firstTxnDate?.getTime() !== device.firstTxnDate?.getTime() ||
+    inferred.lastTxnDate?.getTime() !== device.lastTxnDate?.getTime()
+  ) {
+    await db.xlvDeviceRecord.update({
+      where: { deviceSn },
+      data: {
+        firstTxnDate: inferred.firstTxnDate,
+        lastTxnDate: inferred.lastTxnDate,
+      },
+    });
+    device = {
+      ...device,
+      firstTxnDate: inferred.firstTxnDate,
+      lastTxnDate: inferred.lastTxnDate,
+    };
+  }
+
   const qualificationDetail = buildXlvQualificationDetail(device, snapshots);
   if (device.qualificationStatus !== qualificationDetail.status) {
     await syncXlvQualificationStatus(deviceSn, qualificationDetail.status);
     device = { ...device, qualificationStatus: qualificationDetail.status };
   }
   const assessmentStart = xlvAssessmentStartIso(device);
-  const txnTrend = buildXlvTxnActivityTrend(snapshots, { skipEnrich: true }).filter(
+  let txnTrend = buildXlvTxnActivityTrend(snapshots, { skipEnrich: true }).filter(
     (p) => !assessmentStart || p.date >= assessmentStart
   );
+  if (
+    txnTrend.length === 0 &&
+    inferred.lastTxnDate &&
+    (device.cumulativeTxns > 0 || device.cumulativeUsers > 0)
+  ) {
+    const date = xlvStatDateKey(inferred.lastTxnDate);
+    txnTrend = [
+      {
+        date,
+        dailyTxns: device.dailyTxns > 0 ? device.dailyTxns : device.cumulativeTxns,
+        dailyUsers:
+          device.dailyUsers > 0 ? device.dailyUsers : device.cumulativeUsers,
+        cumulativeTxns: device.cumulativeTxns,
+        cumulativeUsers: device.cumulativeUsers,
+        sleepDays: device.sleepDays,
+      },
+    ];
+  }
 
   const relocation =
     (await loadXlvRelocationsBySn([deviceSn])).get(deviceSn) ?? null;

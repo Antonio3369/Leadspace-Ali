@@ -92,6 +92,14 @@ export function enrichXlvSnapshotDailyMetrics<T extends SnapshotDailyFields>(
       if (snap.dailyTxns <= 0 && txnsDelta != null) {
         snap.dailyTxns = txnsDelta;
       }
+    } else {
+      // 仅有一条截面、且无「当日」列时，把累计当作装机日活动，否则趋势图空白
+      if (snap.dailyUsers <= 0 && snap.cumulativeUsers > 0) {
+        snap.dailyUsers = snap.cumulativeUsers;
+      }
+      if (snap.dailyTxns <= 0 && snap.cumulativeTxns > 0) {
+        snap.dailyTxns = snap.cumulativeTxns;
+      }
     }
     previousBySn.set(snap.deviceSn, snap);
   }
