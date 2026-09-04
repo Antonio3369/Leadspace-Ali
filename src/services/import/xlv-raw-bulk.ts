@@ -67,6 +67,17 @@ function isoOrEmpty(value: Date | null | undefined) {
   return value ? value.toISOString() : "";
 }
 
+/** VALUES 首行若是整数 0，Postgres 会把整列推断成 integer，金额 20942.8 会直接炸 */
+function sqlInt(n: number) {
+  const v = Math.round(Number(n));
+  return Number.isFinite(v) ? v : 0;
+}
+
+function sqlFloat(n: number) {
+  const v = Number(n);
+  return Number.isFinite(v) ? v : 0;
+}
+
 /** 批量写入快照：每批一次查、一次删、一次插 */
 export async function upsertSnapshotsBulk(
   snapshots: SnapshotWrite[],
@@ -262,16 +273,16 @@ async function bulkUpdateXlvDevices(rows: DeviceRawUpdate[]) {
               ${r.agentId ?? ""},
               ${r.agentName ?? ""},
               ${r.activationMerchantName ?? ""},
-              ${r.cumulativeUsers},
-              ${r.cumulativeTxns},
-              ${r.cumulativeAmount},
+              ${sqlInt(r.cumulativeUsers)}::int,
+              ${sqlInt(r.cumulativeTxns)}::int,
+              ${sqlFloat(r.cumulativeAmount)}::float8,
               ${isoOrEmpty(r.lastTxnDate)},
-              ${r.sleepDays},
+              ${sqlInt(r.sleepDays)}::int,
               ${r.isActivated},
               ${isoOrEmpty(r.firstTxnDate)},
-              ${r.dailyUsers},
-              ${r.dailyTxns},
-              ${r.dailyAmount},
+              ${sqlInt(r.dailyUsers)}::int,
+              ${sqlInt(r.dailyTxns)}::int,
+              ${sqlFloat(r.dailyAmount)}::float8,
               ${r.merchantName ?? ""},
               ${r.companyName ?? ""},
               ${r.importBatchId}
@@ -352,11 +363,11 @@ export async function bulkUpsertAssignmentDevices(
         salesUserId: r.salesUserId,
         managerUserId: r.managerUserId,
         statDate: r.statDate,
-        cumulativeUsers: r.cumulativeUsers,
-        cumulativeTxns: r.cumulativeTxns,
-        cumulativeAmount: r.cumulativeAmount,
+        cumulativeUsers: sqlInt(r.cumulativeUsers),
+        cumulativeTxns: sqlInt(r.cumulativeTxns),
+        cumulativeAmount: sqlFloat(r.cumulativeAmount),
         lastTxnDate: r.lastTxnDate,
-        sleepDays: r.sleepDays,
+        sleepDays: sqlInt(r.sleepDays),
         isActivated: r.isActivated,
         firstTxnDate: r.firstTxnDate,
         relocatedAt: r.relocatedAt,
@@ -407,11 +418,11 @@ export async function bulkUpsertAssignmentDevices(
               ${r.salesUserId ?? ""},
               ${r.managerUserId ?? ""},
               ${isoOrEmpty(r.statDate)},
-              ${r.cumulativeUsers},
-              ${r.cumulativeTxns},
-              ${r.cumulativeAmount},
+              ${sqlInt(r.cumulativeUsers)}::int,
+              ${sqlInt(r.cumulativeTxns)}::int,
+              ${sqlFloat(r.cumulativeAmount)}::float8,
               ${isoOrEmpty(r.lastTxnDate)},
-              ${r.sleepDays},
+              ${sqlInt(r.sleepDays)}::int,
               ${r.isActivated},
               ${isoOrEmpty(r.firstTxnDate)},
               ${isoOrEmpty(r.relocatedAt)},
