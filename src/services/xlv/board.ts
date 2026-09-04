@@ -461,6 +461,7 @@ export async function getXlvStaffDevices(
     followUpDone: d.followUpDone,
     relocation: null as { fromStore: string; toStore: string } | null,
     monthProgressLine: undefined as string | undefined,
+    qualificationGapLine: undefined as string | undefined,
   }));
   await attachXlvRelocations(devicesOut);
   await attachXlvInProgressMonthProgress(devicesOut);
