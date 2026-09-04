@@ -496,6 +496,39 @@ export function xlvQualificationGapLine(detail: XlvQualificationDetail) {
   return `${detail.focusMonth.label} · ${gapText}`;
 }
 
+function listCalendarMonth(detail: XlvQualificationDetail): XlvQualificationMonthRow | null {
+  const period = xlvStatDateKey(new Date()).slice(0, 7);
+  return detail.months.find((row) => row.period === period) ?? detail.focusMonth;
+}
+
+/** 设备列表：考核中展示当月成绩 + 距目标缺口（至今累计只放详情） */
+export function xlvQualificationListProgress(detail: XlvQualificationDetail): {
+  monthLine: string;
+  gapLine: string;
+} {
+  const month = listCalendarMonth(detail);
+  if (!month) {
+    return { monthLine: "待首笔交易", gapLine: "待首笔交易" };
+  }
+  if (month.users == null && month.txns == null) {
+    return {
+      monthLine: `${month.label}尚无收款`,
+      gapLine: `距目标还差 ${XLV_MONTHLY_USER_TARGET} 用户 · ${XLV_MONTHLY_TXN_TARGET} 笔`,
+    };
+  }
+  const users = month.users ?? 0;
+  const txns = month.txns ?? 0;
+  const usersGap = Math.max(0, XLV_MONTHLY_USER_TARGET - users);
+  const txnsGap = Math.max(0, XLV_MONTHLY_TXN_TARGET - txns);
+  const title = month.label === "装机月" ? "装机月" : "当月";
+  const monthLine = `${title} ${users} 用户 · ${txns} 笔`;
+  const parts: string[] = [];
+  if (usersGap > 0) parts.push(`${usersGap} 用户`);
+  if (txnsGap > 0) parts.push(`${txnsGap} 笔`);
+  const gapLine = parts.length ? `距目标还差 ${parts.join(" · ")}` : "当月已达目标";
+  return { monthLine, gapLine };
+}
+
 type XlvStoredGapDevice = {
   firstTxnDate: Date | null;
   lastTxnDate?: Date | null;

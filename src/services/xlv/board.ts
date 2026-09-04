@@ -17,6 +17,7 @@ import {
 import {
   buildXlvQualificationDetail,
   loadXlvSnapshotMapAfterFollowUp,
+  attachXlvInProgressMonthProgress,
 } from "@/services/xlv/assessment";
 import { syncXlvQualificationStatus } from "@/services/xlv/recompute-qualification";
 import {
@@ -459,8 +460,18 @@ export async function getXlvStaffDevices(
     qualificationGap: xlvStoredQualificationGap(d),
     followUpDone: d.followUpDone,
     relocation: null as { fromStore: string; toStore: string } | null,
+    monthProgressLine: undefined as string | undefined,
   }));
   await attachXlvRelocations(devicesOut);
+  await attachXlvInProgressMonthProgress(devicesOut);
+  for (const d of devicesOut) {
+    if (d.qualificationGapLine) {
+      d.qualificationGap = {
+        ...d.qualificationGap,
+        line: d.qualificationGapLine,
+      };
+    }
+  }
 
   return {
     manager: {

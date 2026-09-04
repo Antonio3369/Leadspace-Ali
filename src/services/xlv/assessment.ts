@@ -1,7 +1,9 @@
 import { db } from "@/lib/db";
+import { normalizeXlvStatDate, xlvStatDateKey } from "@/lib/xlv-stat-date";
 import {
   assessXlvQualification,
   getXlvQualificationDetail,
+  xlvQualificationListProgress,
   type XlvQualificationDetail,
   type XlvQualificationStatus,
 } from "@/lib/xlv-rules";
@@ -45,6 +47,86 @@ export async function loadXlvSnapshotMap(
   }
 
   return loadXlvSnapshotMapSerial(deviceSns, opts);
+}
+
+function previousCalendarMonthStart(asOf = new Date()) {
+  const key = xlvStatDateKey(asOf);
+  const [y, m] = key.split("-").map(Number);
+  const prevM = m === 1 ? 12 : m - 1;
+  const prevY = m === 1 ? y - 1 : y;
+  return new Date(Date.UTC(prevY, prevM - 1, 1));
+}
+
+type XlvListMonthProgressItem = {
+  deviceSn: string;
+  qualificationStatus?: XlvQualificationStatus | string;
+  firstTxnDate: string | null;
+  lastTxnDate: string | null;
+  cumulativeUsers: number;
+  cumulativeTxns: number;
+  monthProgressLine?: string;
+  qualificationGapLine?: string;
+};
+
+/** 给列表里「考核中」补当月成绩，避免把终身累计显示成进度 */
+export async function attachXlvInProgressMonthProgress<
+  T extends XlvListMonthProgressItem,
+>(devices: T[]): Promise<T[]> {
+  const targets = devices.filter((d) => d.qualificationStatus === "in_progress");
+  if (targets.length === 0) return devices;
+
+  const snapshotMap = await loadXlvSnapshotMap(
+    targets.map((d) => d.deviceSn),
+    { statDateFrom: previousCalendarMonthStart() }
+  );
+
+  for (const d of targets) {
+    const snaps = [...(snapshotMap.get(d.deviceSn) ?? [])];
+    const latest = snaps[snaps.length - 1];
+    if (
+      !latest ||
+      latest.cumulativeTxns < d.cumulativeTxns ||
+      latest.cumulativeUsers < d.cumulativeUsers
+    ) {
+      snaps.push({
+        deviceSn: d.deviceSn,
+        statDate: d.lastTxnDate
+          ? normalizeXlvStatDate(d.lastTxnDate)
+          : new Date(),
+        cumulativeUsers: d.cumulativeUsers,
+        cumulativeTxns: d.cumulativeTxns,
+        dailyUsers: 0,
+        dailyTxns: 0,
+        sleepDays: 0,
+        lastTxnDate: d.lastTxnDate
+          ? normalizeXlvStatDate(d.lastTxnDate)
+          : null,
+      });
+    }
+
+    const detail = getXlvQualificationDetail(
+      {
+        firstTxnDate: d.firstTxnDate
+          ? normalizeXlvStatDate(d.firstTxnDate)
+          : null,
+        lastTxnDate: d.lastTxnDate
+          ? normalizeXlvStatDate(d.lastTxnDate)
+          : null,
+        cumulativeUsers: d.cumulativeUsers,
+        cumulativeTxns: d.cumulativeTxns,
+      },
+      snaps,
+      undefined,
+      true
+    );
+    const { monthLine, gapLine } = xlvQualificationListProgress(detail);
+    Object.assign(d, {
+      monthProgressLine: monthLine,
+      qualificationGapLine: gapLine,
+    });
+  }
+
+  return devices;
 }
 
 /**

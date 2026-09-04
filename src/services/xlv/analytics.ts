@@ -30,6 +30,7 @@ import {
 } from "@/services/xlv/sort-devices";
 import type { XlvRelocationHint } from "@/lib/xlv-relocation";
 import { attachXlvRelocations } from "@/services/xlv/relocation";
+import { attachXlvInProgressMonthProgress } from "@/services/xlv/assessment";
 
 export interface XlvDashboardSummary {
   totalDevices: number;
@@ -72,6 +73,8 @@ export interface XlvDeviceListItem {
   alertKind: XlvDeviceAlertKind;
   qualificationStatus?: XlvQualificationStatus;
   qualificationGapLine?: string;
+  /** 考核中：当月用户/笔数；已达标设备不展示 */
+  monthProgressLine?: string;
   relocation?: XlvRelocationHint | null;
 }
 
@@ -355,6 +358,7 @@ async function loadXlvDashboardDevicesPage(
 
   let devices = buildXlvDeviceListItems(pageRows);
   await attachXlvRelocations(devices);
+  await attachXlvInProgressMonthProgress(devices);
   if (opts.qualificationStatus) {
     devices = devices.filter(
       (d) => d.qualificationStatus === opts.qualificationStatus

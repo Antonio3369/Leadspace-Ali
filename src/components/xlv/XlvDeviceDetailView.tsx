@@ -363,19 +363,19 @@ export function XlvDeviceDetailView({
                 </dd>
               </div>
               <div>
-                <dt className="text-[#94a3b8] text-xs">累计用户</dt>
+                <dt className="text-[#94a3b8] text-xs">至今累计用户</dt>
                 <dd className="tabular-nums">
                   {hideLegacyTxn ? "—" : device.cumulativeUsers}
                 </dd>
               </div>
               <div>
-                <dt className="text-[#94a3b8] text-xs">累计笔数</dt>
+                <dt className="text-[#94a3b8] text-xs">至今累计笔数</dt>
                 <dd className="tabular-nums">
                   {hideLegacyTxn ? "—" : device.cumulativeTxns}
                 </dd>
               </div>
               <div>
-                <dt className="text-[#94a3b8] text-xs">累计金额</dt>
+                <dt className="text-[#94a3b8] text-xs">至今累计金额</dt>
                 <dd className="tabular-nums">
                   {hideLegacyTxn
                     ? "—"

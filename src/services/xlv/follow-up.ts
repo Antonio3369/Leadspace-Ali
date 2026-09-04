@@ -22,6 +22,7 @@ import {
 import { sortXlvDevices } from "@/services/xlv/sort-devices";
 import type { XlvDeviceListItem } from "@/services/xlv/analytics";
 import { attachXlvRelocations } from "@/services/xlv/relocation";
+import { attachXlvInProgressMonthProgress } from "@/services/xlv/assessment";
 import { withXlvHeavyGate } from "./xlv-heavy-gate";
 
 export type XlvFollowFilter = "pending" | "done" | "all";
@@ -280,6 +281,7 @@ export async function loadXlvFollowUpDevices(
   }
 
   await attachXlvRelocations(devices);
+  await attachXlvInProgressMonthProgress(devices);
 
   const counts = await getXlvFollowUpCounts(user);
   const displayCounts = opts.priority

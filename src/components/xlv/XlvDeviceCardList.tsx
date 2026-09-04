@@ -32,7 +32,10 @@ function progressLine(d: XlvDeviceListItem) {
   ) {
     return "新店暂无收款";
   }
-  return `至今累计 ${d.cumulativeUsers} 用户 · ${d.cumulativeTxns} 笔`;
+  if (d.qualificationStatus === "in_progress") {
+    return d.monthProgressLine ?? "当月成绩待快照";
+  }
+  return null;
 }
 
 function gapLine(d: XlvDeviceListItem) {
@@ -125,6 +128,7 @@ export function XlvDeviceCardList({
               lastTxnDate: d.lastTxnDate,
             });
             const gap = hideLegacyTxn ? null : gapLine(d);
+            const progress = hideLegacyTxn ? null : progressLine(d);
             const alertKind = xlvEffectiveAlertKind(d);
             const showFollowUp =
               showFollowUpStatus &&
@@ -204,11 +208,14 @@ export function XlvDeviceCardList({
                     </p>
 
                     <div className="text-xs leading-snug space-y-0.5">
-                      <p className="tabular-nums text-[#334155]">{progressLine(d)}</p>
+                      {progress ? (
+                        <p className="tabular-nums text-[#334155]">{progress}</p>
+                      ) : null}
                       {d.qualificationGapLine &&
                       showQualification &&
                       !hideQualificationBadge &&
-                      d.qualificationStatus !== "qualified" ? (
+                      d.qualificationStatus !== "qualified" &&
+                      d.qualificationGapLine !== progress ? (
                         <p
                           className={
                             d.qualificationStatus === "invalid"
@@ -216,7 +223,9 @@ export function XlvDeviceCardList({
                               : "text-sky-700"
                           }
                         >
-                          考核：{d.qualificationGapLine}
+                          {d.qualificationStatus === "in_progress"
+                            ? d.qualificationGapLine
+                            : `考核：${d.qualificationGapLine}`}
                         </p>
                       ) : null}
                       {gap ? (

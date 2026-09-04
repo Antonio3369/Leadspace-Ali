@@ -48,6 +48,7 @@ interface ApiDevice {
   firstTxnDate: string | null;
   qualificationStatus: XlvQualificationStatus;
   qualificationGap?: { usersGap: number; txnsGap: number; line: string };
+  monthProgressLine?: string;
   followUpDone?: boolean;
   relocation?: { fromStore: string; toStore: string } | null;
 }
@@ -64,6 +65,7 @@ function mapDevice(d: ApiDevice): XlvDeviceListItem {
     ...d,
     alertKind: xlvEffectiveAlertKind(d),
     qualificationGapLine: d.qualificationGap?.line,
+    monthProgressLine: d.monthProgressLine,
   };
 }
 
