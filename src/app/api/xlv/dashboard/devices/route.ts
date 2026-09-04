@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
 import { parseN7DateRange } from "@/lib/n7-date";
 import { PermissionError } from "@/lib/permissions";
+import { xlvCalendarDayRange } from "@/lib/xlv-stat-date";
 import { parseXlvAlertKind, parseXlvQualificationStatus } from "@/lib/xlv-rules";
 import {
   getXlvDashboardDevicesPage,
@@ -25,8 +26,12 @@ export async function GET(request: Request) {
       dateFrom: searchParams.get("dateFrom"),
       dateTo: searchParams.get("dateTo"),
     });
-    const expandFrom = expandMonth ? range.from : null;
-    const expandTo = expandMonth ? range.to : null;
+    const bounds =
+      expandMonth && range.dateFrom && range.dateTo
+        ? xlvCalendarDayRange(range.dateFrom, range.dateTo)
+        : null;
+    const expandFrom = bounds?.from ?? null;
+    const expandTo = bounds?.to ?? null;
 
     const offset = Math.max(0, Number(searchParams.get("offset") ?? "0") || 0);
     const limitRaw = Number(searchParams.get("limit") ?? String(XLV_DASHBOARD_PAGE_SIZE));

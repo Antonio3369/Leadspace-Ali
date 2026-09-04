@@ -146,13 +146,17 @@ export function XlvDashboardView({
   const alert = parseXlvAlertKind(searchParams.get("alert"));
   const rawStatus = parseXlvQualificationStatus(searchParams.get("status"));
   const status = alert !== "all" ? null : rawStatus;
-  const expandMonth = searchParams.get("expand") === "month";
-  const { dateFrom, dateTo } = readN7DateRangeFromSearchParams(searchParams);
-  const rangeQs = n7DateRangeQuery(dateFrom, dateTo);
-  const periodCopy = xlvExpandPeriodCopy(dateFrom, dateTo);
   const manager = searchParams.get("manager") ?? "";
   const operator = searchParams.get("operator") ?? "";
   const search = searchParams.get("q") ?? "";
+  const expandParam = searchParams.get("expand");
+  const { dateFrom, dateTo } = readN7DateRangeFromSearchParams(searchParams);
+  const rangeQs = n7DateRangeQuery(dateFrom, dateTo);
+  /** 日期条写着「首笔日期」：本月/上月默认就按首笔筛列表。expand=all 才看全部。 */
+  const filterByFirstTxn =
+    !search.trim() && alert === "all" && expandParam !== "all";
+  const expandMonth = filterByFirstTxn;
+  const periodCopy = xlvExpandPeriodCopy(dateFrom, dateTo);
 
   const [summary, setSummary] = useState<XlvDashboardSummary | null>(null);
   const [filters, setFilters] = useState<SummaryResponse["filters"]>({
@@ -192,11 +196,12 @@ export function XlvDashboardView({
     (next: { dateFrom: string; dateTo: string }) => {
       const params = new URLSearchParams(searchParams.toString());
       applyN7DateRangeToParams(params, next.dateFrom, next.dateTo);
+      if (alert === "all") params.set("expand", "month");
       router.replace(`${pathname}?${searchParamsToQueryString(params)}`, {
         scroll: false,
       });
     },
-    [pathname, router, searchParams]
+    [alert, pathname, router, searchParams]
   );
 
   useEffect(() => {
@@ -493,7 +498,7 @@ export function XlvDashboardView({
 
     if (id === "expand") {
       pushQuery({
-        expand: isActive ? null : "month",
+        expand: isActive ? "all" : "month",
         status: null,
         alert: null,
       });
@@ -501,7 +506,7 @@ export function XlvDashboardView({
     }
     if (id === "qualify_rate" || id === "qualified") {
       pushQuery({
-        expand: isActive ? null : "month",
+        expand: isActive ? "all" : "month",
         status: isActive ? null : "qualified",
         alert: null,
       });

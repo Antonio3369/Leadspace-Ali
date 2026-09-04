@@ -18,6 +18,14 @@ export function normalizeXlvStatDate(value: Date | string): Date {
   return new Date(Date.UTC(y, m - 1, d));
 }
 
+/** 首笔日期筛选用：与库内 UTC 零点日历日对齐 */
+export function xlvCalendarDayRange(dateFrom: string, dateTo: string) {
+  return {
+    from: normalizeXlvStatDate(dateFrom),
+    to: normalizeXlvStatDate(dateTo),
+  };
+}
+
 export function parseXlvStatDateFromCell(value: unknown): Date | null {
   if (value == null || value === "") return null;
 

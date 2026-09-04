@@ -117,19 +117,19 @@ export function buildXlvRawColumnMeta(
     },
     {
       id: "dailyUsers",
-      label: "当日交易用户数",
+      label: "当日/昨日交易用户数",
       matched: idx.dailyUsers >= 0,
       matchedHeader: headerLabel(headers, idx.dailyUsers),
     },
     {
       id: "dailyTxns",
-      label: "当日有效交易笔数",
+      label: "当日/昨日有效交易笔数",
       matched: idx.dailyTxns >= 0,
       matchedHeader: headerLabel(headers, idx.dailyTxns),
     },
     {
       id: "dailyAmount",
-      label: "当日有效交易金额",
+      label: "当日/昨日有效交易金额",
       matched: idx.dailyAmount >= 0,
       matchedHeader: headerLabel(headers, idx.dailyAmount),
     },

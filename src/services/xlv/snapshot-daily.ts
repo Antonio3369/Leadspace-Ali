@@ -93,12 +93,16 @@ export function enrichXlvSnapshotDailyMetrics<T extends SnapshotDailyFields>(
         snap.dailyTxns = txnsDelta;
       }
     } else {
-      // 仅有一条截面、且无「当日」列时，把累计当作装机日活动，否则趋势图空白
-      if (snap.dailyUsers <= 0 && snap.cumulativeUsers > 0) {
-        snap.dailyUsers = snap.cumulativeUsers;
-      }
-      if (snap.dailyTxns <= 0 && snap.cumulativeTxns > 0) {
-        snap.dailyTxns = snap.cumulativeTxns;
+      // 仅有一条截面、且无当日/昨日列时，把累计当作装机日活动，否则趋势图空白。
+      // 已有昨日笔数时不要把终身累计填进当日用户，否则装机月会被减成 0。
+      const hasExcelDaily = snap.dailyTxns > 0 || snap.dailyUsers > 0;
+      if (!hasExcelDaily) {
+        if (snap.dailyUsers <= 0 && snap.cumulativeUsers > 0) {
+          snap.dailyUsers = snap.cumulativeUsers;
+        }
+        if (snap.dailyTxns <= 0 && snap.cumulativeTxns > 0) {
+          snap.dailyTxns = snap.cumulativeTxns;
+        }
       }
     }
     previousBySn.set(snap.deviceSn, snap);

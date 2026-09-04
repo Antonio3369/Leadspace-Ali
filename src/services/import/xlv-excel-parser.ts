@@ -94,6 +94,15 @@ function parseNum(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** 用户/笔数：拒绝金额这类带小数的单元格，避免串列 */
+function parseCount(value: unknown): number {
+  if (value == null || value === "") return 0;
+  const n = parseNum(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  if (Math.abs(n - Math.round(n)) > 0.001) return 0;
+  return Math.round(n);
+}
+
 function parseBool(value: unknown): boolean {
   const s = cellStr(value);
   return s === "1" || s.toLowerCase() === "true" || s === "是";
@@ -130,6 +139,68 @@ function headerIndex(headers: string[], names: readonly string[]): number {
     if (partial >= 0) return partial;
   }
   return -1;
+}
+
+/** 累计/当日指标：只用前缀匹配，避免「金额」被当成「笔数」 */
+function metricHeaderIndex(headers: string[], prefixes: readonly string[]): number {
+  const normalized = headers.map(normalizeHeader);
+  for (const prefix of prefixes) {
+    const n = normalizeHeader(prefix);
+    const exact = normalized.indexOf(n);
+    if (exact >= 0) return exact;
+    const i = normalized.findIndex((h) => h.startsWith(n));
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+function yearHintFromMatrix(
+  matrix: unknown[][],
+  idxFirst: number,
+  idxLast: number
+): number | undefined {
+  const cap = Math.min(matrix.length, 50);
+  for (let i = 1; i < cap; i++) {
+    const row = matrix[i] as unknown[];
+    const d =
+      (idxLast >= 0 ? parseYmd(row[idxLast]) : null) ??
+      (idxFirst >= 0 ? parseYmd(row[idxFirst]) : null);
+    if (d) return d.getUTCFullYear();
+  }
+  return undefined;
+}
+
+/** 乐刷渠道后台导出：`0902_公司名_编号.xlsx` 或 `20260902_...` */
+export function inferXlvStatDateFromFileName(
+  fileName: string,
+  yearHint?: number
+): Date | null {
+  const base = String(fileName)
+    .replace(/\.[^.]+$/, "")
+    .replace(/\(\d+\)$/, "")
+    .trim();
+
+  const ymd = base.match(/(20\d{2})[._-]?(\d{2})[._-]?(\d{2})/);
+  if (ymd) {
+    const y = Number(ymd[1]);
+    const m = Number(ymd[2]);
+    const d = Number(ymd[3]);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      return new Date(Date.UTC(y, m - 1, d));
+    }
+  }
+
+  const md = base.match(/^(\d{2})(\d{2})(?:_|$)/);
+  if (md) {
+    const m = Number(md[1]);
+    const d = Number(md[2]);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      const y = yearHint ?? new Date().getFullYear();
+      return new Date(Date.UTC(y, m - 1, d));
+    }
+  }
+
+  return null;
 }
 
 function hasHeader(headers: string[], names: readonly string[]): boolean {
@@ -173,7 +244,10 @@ function tightenSheetRef(sheet: XLSX.WorkSheet) {
   });
 }
 
-export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
+export function parseXlvExcelBuffer(
+  buffer: Buffer,
+  fileName?: string
+): ParseXlvResult {
   // 稀疏存储：只留有内容的格子。dense:true 会按 Excel 声明的巨大 !ref 分配整张矩形。
   const workbook = XLSX.read(buffer, {
     type: "buffer",
@@ -262,17 +336,13 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
 
   const idxSn = headerIndex(headers, ["设备SN", "SN"]);
   const idxStat = headerIndex(headers, ["统计日期"]);
-  const idxUsers = headerIndex(headers, [
-    "累计交易用户数(单设备)",
-    "累计交易用户数(单设备名)",
+  const idxUsers = metricHeaderIndex(headers, [
+    "累计交易用户数",
+    "累积活跃用户数",
+    "累计活跃用户数",
   ]);
-  const idxTxns = headerIndex(headers, [
-    "累计有效交易笔数(交易金额>=1元)",
-    "累计有效交易笔数(交易金额>=1元）",
-    "累计有效交易笔数(金额>=1元)",
-    "累计有效交易笔数(金额>=1元）",
-  ]);
-  const idxAmount = headerIndex(headers, ["累计有效交易金额(高于200按200计)"]);
+  const idxTxns = metricHeaderIndex(headers, ["累计有效交易笔数"]);
+  const idxAmount = metricHeaderIndex(headers, ["累计有效交易金额"]);
 
   if (idxSn < 0) {
     return { format, sheetName, rows: [], errors: ["缺少列：设备SN"] };
@@ -328,19 +398,19 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
         managerName: idxMgr >= 0 ? cellStr(row[idxMgr]) : "",
         companyName: idxCompany >= 0 ? cellStr(row[idxCompany]) || null : null,
         merchantName: idxMerchant >= 0 ? cellStr(row[idxMerchant]) || null : null,
-        cumulativeUsers: idxUsers >= 0 ? parseNum(row[idxUsers]) : 0,
-        cumulativeTxns: idxTxns >= 0 ? parseNum(row[idxTxns]) : 0,
+        cumulativeUsers: idxUsers >= 0 ? parseCount(row[idxUsers]) : 0,
+        cumulativeTxns: idxTxns >= 0 ? parseCount(row[idxTxns]) : 0,
         cumulativeAmount: idxAmount >= 0 ? parseNum(row[idxAmount]) : 0,
         lastTxnDate: idxLast >= 0 ? parseYmd(row[idxLast]) : null,
-        sleepDays: idxSleep >= 0 ? parseNum(row[idxSleep]) : 0,
+        sleepDays: idxSleep >= 0 ? parseCount(row[idxSleep]) : 0,
         isActivated: idxActivated >= 0 ? parseBool(row[idxActivated]) : true,
         firstTxnDate: idxFirst >= 0 ? parseYmd(row[idxFirst]) : null,
         rowIndex: i + 1,
       });
     }
   } else {
-    const idxAgentId = headerIndex(headers, ["代理商id", "代理商ID"]);
-    const idxAgentName = headerIndex(headers, ["代理商名称"]);
+    const idxAgentId = headerIndex(headers, ["代理商id", "代理商ID", "一代编号"]);
+    const idxAgentName = headerIndex(headers, ["代理商名称", "一代名称"]);
     const idxActivationMerchant = headerIndex(headers, [
       "激活子商户名称（首笔交易）",
     ]);
@@ -348,23 +418,23 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
     const idxSleep = headerIndex(headers, ["沉睡天数"]);
     const idxActivated = headerIndex(headers, ["是否激活"]);
     const idxFirst = headerIndex(headers, ["首笔交易日期"]);
-    const idxDailyUsers = headerIndex(headers, [
-      "当日交易用户数(单设备)",
-      "当日交易用户数(单设备名)",
+    const idxDailyUsers = metricHeaderIndex(headers, [
+      "当日交易用户数",
+      "昨日交易用户数",
     ]);
-    const idxDailyTxns = headerIndex(headers, [
-      "当日有效交易笔数(交易金额>=1元)",
-      "当日有效交易笔数(交易金额>=1元）",
-      "当日有效交易笔数(金额>=1元)",
-      "当日有效交易笔数(金额>=1元）",
+    const idxDailyTxns = metricHeaderIndex(headers, [
+      "当日有效交易笔数",
+      "昨日有效交易笔数",
     ]);
-    const idxDailyTxnsFallback = headerIndex(headers, [
-      "当日交易笔数(单设备名)",
-      "当日交易笔数(单设备)",
+    const idxDailyTxnsFallback = metricHeaderIndex(headers, [
+      "当日交易笔数",
+      "昨日交易笔数",
     ]);
-    const idxDailyAmount = headerIndex(headers, [
-      "当日有效交易金额(高于200按200计)",
-      "当日交易金额(单设备实付金额)",
+    const idxDailyAmount = metricHeaderIndex(headers, [
+      "当日有效交易金额",
+      "当日交易金额",
+      "昨日有效交易金额",
+      "昨日交易金额",
     ]);
 
     meta = {
@@ -380,26 +450,45 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
       }),
     };
 
-    if (idxStat < 0) {
+    const yearHint = yearHintFromMatrix(matrix, idxFirst, idxLast);
+    const fileStatDate = inferXlvStatDateFromFileName(fileName ?? "", yearHint);
+    if (idxStat < 0 && fileStatDate) {
+      const statCol = meta.columns.find((col) => col.id === "stat");
+      if (statCol) {
+        statCol.matched = true;
+        statCol.matchedHeader = `文件名 ${fileStatDate.toISOString().slice(0, 10)}`;
+      }
+    }
+
+    if (idxStat < 0 && !fileStatDate) {
       return {
         format,
         sheetName,
         rows: [],
-        errors: ["原始表缺少列：统计日期"],
+        errors: [
+          "原始表缺少列：统计日期。乐刷渠道原表请保留文件名（如 0902_公司名_编号.xlsx），将按文件名补统计日",
+        ],
         meta,
       };
     }
 
+    const dailyTxnsHeaderIdx =
+      idxDailyTxns >= 0 ? idxDailyTxns : idxDailyTxnsFallback;
+    const usedYesterdayDaily =
+      dailyTxnsHeaderIdx >= 0 &&
+      normalizeHeader(headers[dailyTxnsHeaderIdx] ?? "").startsWith("昨日");
+
     for (let i = 1; i < matrix.length; i++) {
       const row = matrix[i] as unknown[];
       const deviceSn = cellStr(row[idxSn]);
-      const statDate = parseYmd(row[idxStat]);
+      const statDate =
+        idxStat >= 0 ? parseYmd(row[idxStat]) : fileStatDate;
       if (!deviceSn || !statDate) continue;
 
-      let dailyUsers = idxDailyUsers >= 0 ? parseNum(row[idxDailyUsers]) : 0;
-      let dailyTxns = idxDailyTxns >= 0 ? parseNum(row[idxDailyTxns]) : 0;
+      let dailyUsers = idxDailyUsers >= 0 ? parseCount(row[idxDailyUsers]) : 0;
+      let dailyTxns = idxDailyTxns >= 0 ? parseCount(row[idxDailyTxns]) : 0;
       if (dailyTxns === 0 && idxDailyTxnsFallback >= 0) {
-        dailyTxns = parseNum(row[idxDailyTxnsFallback]);
+        dailyTxns = parseCount(row[idxDailyTxnsFallback]);
       }
       const dailyAmount = idxDailyAmount >= 0 ? parseNum(row[idxDailyAmount]) : 0;
 
@@ -407,8 +496,8 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
         format: "raw",
         deviceSn,
         statDate,
-        cumulativeUsers: idxUsers >= 0 ? parseNum(row[idxUsers]) : 0,
-        cumulativeTxns: idxTxns >= 0 ? parseNum(row[idxTxns]) : 0,
+        cumulativeUsers: idxUsers >= 0 ? parseCount(row[idxUsers]) : 0,
+        cumulativeTxns: idxTxns >= 0 ? parseCount(row[idxTxns]) : 0,
         cumulativeAmount: idxAmount >= 0 ? parseNum(row[idxAmount]) : 0,
         agentId: idxAgentId >= 0 ? cellStr(row[idxAgentId]) || null : null,
         agentName: idxAgentName >= 0 ? cellStr(row[idxAgentName]) || null : null,
@@ -419,7 +508,7 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
         isActivated: idxActivated >= 0 ? parseBool(row[idxActivated]) : true,
         firstTxnDate: idxFirst >= 0 ? parseYmd(row[idxFirst]) : null,
         lastTxnDate: idxLast >= 0 ? parseYmd(row[idxLast]) : null,
-        sleepDays: idxSleep >= 0 ? parseNum(row[idxSleep]) : 0,
+        sleepDays: idxSleep >= 0 ? parseCount(row[idxSleep]) : 0,
         dailyUsers,
         dailyTxns,
         dailyAmount,
@@ -436,12 +525,12 @@ export function parseXlvExcelBuffer(buffer: Buffer): ParseXlvResult {
       if (idxUsers < 0) {
         errors.push("未识别「累计交易用户数」列，用户类指标将为 0");
       }
-      if (idxDailyUsers < 0) {
+      if (!usedYesterdayDaily && idxDailyUsers < 0) {
         errors.push(
           "未识别「当日交易用户数」列（常见表头含「单设备名」），将依赖累计差分"
         );
       }
-      if (idxDailyTxns < 0 && idxDailyTxnsFallback < 0) {
+      if (!usedYesterdayDaily && idxDailyTxns < 0 && idxDailyTxnsFallback < 0) {
         errors.push("未识别「当日有效交易笔数」列，将依赖累计差分");
       }
     }

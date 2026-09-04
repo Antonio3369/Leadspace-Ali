@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { parseN7DateRange } from "@/lib/n7-date";
+import { xlvCalendarDayRange } from "@/lib/xlv-stat-date";
 import type { SessionUser } from "@/lib/permissions";
 import { getXlvMonthWakeUpRate } from "@/services/xlv/daily";
 import {
@@ -247,10 +248,11 @@ export async function getXlvDashboardPulseSummary(
   user: SessionUser,
   opts?: { dateFrom?: string | null; dateTo?: string | null }
 ): Promise<XlvDashboardPulseSummary> {
-  const { from, to, dateFrom, dateTo } = parseN7DateRange(opts ?? {});
-  if (!from || !to) {
+  const { dateFrom, dateTo } = parseN7DateRange(opts ?? {});
+  if (!dateFrom || !dateTo) {
     throw new Error("请选择有效日期范围");
   }
+  const { from, to } = xlvCalendarDayRange(dateFrom, dateTo);
   const expandWhere = {
     AND: [
       buildXlvRoleWhere(user),
