@@ -3,21 +3,9 @@ import type { XlvBoardRow } from "@/services/xlv/board";
 export type XlvBoardViewSort = "compliance" | "pending" | "wake_rate";
 
 export const XLV_BOARD_VIEW_OPTIONS = [
-  {
-    id: "compliance" as const,
-    label: "看健康",
-    hint: "按每人自己的合规率从高到低。全队有没有到 90%，只看上面的全队合计。",
-  },
-  {
-    id: "pending" as const,
-    label: "该催谁",
-    hint: "按待跟进从多到少。排在前面是更该催的人，不是表现更好。",
-  },
-  {
-    id: "wake_rate" as const,
-    label: "跟进成效",
-    hint: "按本月唤醒率从高到低。看跟进之后有没有把设备救回来。",
-  },
+  { id: "compliance" as const, label: "看健康" },
+  { id: "pending" as const, label: "该催谁" },
+  { id: "wake_rate" as const, label: "跟进成效" },
 ] as const;
 
 export function parseXlvBoardViewSort(

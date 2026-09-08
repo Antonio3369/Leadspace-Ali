@@ -96,7 +96,6 @@ export function XlvSummaryStrip({
   scope?: "team" | "org";
 }) {
   const hasCompliance = summary.complianceRate != null;
-  const scopeLabel = scope === "org" ? "全部经理合计" : "全队合计";
   const headcount =
     summary.staffCount != null
       ? `${summary.staffCount} 名队员`
@@ -108,13 +107,12 @@ export function XlvSummaryStrip({
 
   return (
     <div className="space-y-2 rounded-[14px] border border-[#eef2f7] bg-white px-3 py-3">
-      <p className="text-[11px] font-medium tracking-wide text-[#94a3b8]">
-        {scopeLabel} · 不是下面某一个人
-      </p>
       {hasCompliance ? (
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
-            <p className="text-xs text-[#64748b]">合规台数 / 已铺设</p>
+            <p className="text-xs text-[#64748b]">
+              {scope === "org" ? "合计合规 / 已铺设" : "全队合规 / 已铺设"}
+            </p>
             <p
               className={`text-2xl font-bold tabular-nums leading-tight ${
                 metLine ? "text-emerald-700" : "text-[#b91c1c]"
@@ -154,9 +152,6 @@ export function XlvSummaryStrip({
         ]
           .filter(Boolean)
           .join(" · ")}
-      </p>
-      <p className="text-[11px] leading-relaxed text-[#94a3b8]">
-        终身已达标和合规不是一回事：考核中但仍在用的机器也算合规。下面名单是每人自己的台数，加起来才是上面的全队。
       </p>
     </div>
   );
@@ -208,11 +203,6 @@ export function XlvLeaderboardTable({
 
   return (
     <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm overflow-hidden">
-      <p className="border-b border-[#f1f5f9] bg-[#f8fafc] px-4 py-2 text-xs text-[#64748b]">
-        {mode === "managers"
-          ? "下面每位经理只算自己团队的设备"
-          : "下面每位队员只算自己名下的设备"}
-      </p>
       <ul className="divide-y divide-[#f1f5f9]" aria-label={`${nameHeader}名单`}>
         {rows.map((row, idx) => {
           const rank = idx + 1;

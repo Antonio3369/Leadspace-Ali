@@ -143,31 +143,29 @@ export function XlvStaffBoard({
         title={isHome ? "团队看板" : `${data?.manager.name ?? "经理"} · 队员`}
         kicker="微信小绿盒"
         meta={
-          <div className="space-y-1 text-sm text-[#64748b]">
-            <p>
-              顶栏是全队。下面每人只算自己的机器：有人 100%，全队仍可能不到
-              90%。
-            </p>
-            {statusFilter ? (
-              <p>
-                <button
-                  type="button"
-                  onClick={() => pushQuery({ status: null })}
-                  className="text-[#2563eb] hover:text-[#1d4ed8] font-medium"
-                >
-                  ← 清除考核筛选
-                </button>
-              </p>
-            ) : null}
-            {!isHome ? (
-              <HistoryBackLink
-                label="← 返回经理排行"
-                fallbackHref={xlvPath("/board")}
-                preferHistoryBack
-                className="inline-flex text-sm font-medium text-[#2563eb] hover:text-[#1d4ed8]"
-              />
-            ) : null}
-          </div>
+          statusFilter || !isHome ? (
+            <div className="space-y-1 text-sm text-[#64748b]">
+              {statusFilter ? (
+                <p>
+                  <button
+                    type="button"
+                    onClick={() => pushQuery({ status: null })}
+                    className="text-[#2563eb] hover:text-[#1d4ed8] font-medium"
+                  >
+                    ← 清除考核筛选
+                  </button>
+                </p>
+              ) : null}
+              {!isHome ? (
+                <HistoryBackLink
+                  label="← 返回经理排行"
+                  fallbackHref={xlvPath("/board")}
+                  preferHistoryBack
+                  className="inline-flex text-sm font-medium text-[#2563eb] hover:text-[#1d4ed8]"
+                />
+              ) : null}
+            </div>
+          ) : undefined
         }
       />
 
