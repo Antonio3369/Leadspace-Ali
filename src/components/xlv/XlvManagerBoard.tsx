@@ -196,7 +196,7 @@ export function XlvManagerBoard() {
           <XlvSummaryStrip
             summary={data.summary}
             showInvalid={false}
-            complianceLabel="整体合规率"
+            scope="org"
           />
           <XlvBoardSortBar
             sort={sort}

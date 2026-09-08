@@ -144,7 +144,10 @@ export function XlvStaffBoard({
         kicker="微信小绿盒"
         meta={
           <div className="space-y-1 text-sm text-[#64748b]">
-            <p>点人名看月报，点数字看设备。下面三个按钮只改名单顺序，不换一套数据。</p>
+            <p>
+              顶栏是全队。下面每人只算自己的机器：有人 100%，全队仍可能不到
+              90%。
+            </p>
             {statusFilter ? (
               <p>
                 <button
@@ -181,7 +184,7 @@ export function XlvStaffBoard({
           <XlvSummaryStrip
             summary={data.summary}
             showInvalid={false}
-            complianceLabel="团队合规率"
+            scope="team"
           />
           <XlvBoardSortBar
             sort={sort}

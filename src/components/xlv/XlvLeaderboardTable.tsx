@@ -74,7 +74,7 @@ function BoardMetricChip({
 export function XlvSummaryStrip({
   summary,
   showInvalid = true,
-  complianceLabel = "合规率",
+  scope = "team",
 }: {
   summary: {
     managerCount?: number;
@@ -92,86 +92,72 @@ export function XlvSummaryStrip({
     toleranceRemainingCount?: number;
   };
   showInvalid?: boolean;
-  complianceLabel?: string;
+  /** team = 一个经理的全队；org = 全部经理合计 */
+  scope?: "team" | "org";
 }) {
   const hasCompliance = summary.complianceRate != null;
+  const scopeLabel = scope === "org" ? "全部经理合计" : "全队合计";
+  const headcount =
+    summary.staffCount != null
+      ? `${summary.staffCount} 名队员`
+      : summary.managerCount != null
+        ? `${summary.managerCount} 名经理`
+        : null;
+  const gap = summary.complianceGapCount ?? 0;
+  const metLine = gap === 0;
 
   return (
-    <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-[#eef2f7] bg-white px-3 py-3 text-xs sm:grid-cols-4">
-      {summary.managerCount != null ? (
-        <div>
-          <p className="text-[#94a3b8]">经理数</p>
-          <p className="text-lg font-bold tabular-nums text-[#111827]">
-            {summary.managerCount}
-          </p>
-        </div>
-      ) : null}
-      {summary.staffCount != null ? (
-        <div>
-          <p className="text-[#94a3b8]">队员数</p>
-          <p className="text-lg font-bold tabular-nums text-[#111827]">
-            {summary.staffCount}
-          </p>
-        </div>
-      ) : null}
-      <div>
-        <p className="text-[#94a3b8]">已铺设</p>
-        <p className="text-lg font-bold tabular-nums text-[#111827]">
-          {summary.deployedCount}
-        </p>
-      </div>
-      <div>
-        <p className="text-[#94a3b8]">已达标</p>
-        <p className="text-lg font-bold tabular-nums text-emerald-700">
-          {summary.qualifiedCount}
-          {summary.qualifyRate != null ? (
-            <span className="ml-1 text-xs font-medium text-[#64748b]">
-              ({summary.qualifyRate}%)
-            </span>
-          ) : null}
-        </p>
-        {summary.deployedCount > 0 ? (
-          <p className="text-[10px] text-[#94a3b8] mt-0.5">占已铺设设备</p>
-        ) : null}
-        {(summary.inProgressCount ?? 0) > 0 ||
-        (showInvalid && (summary.invalidCount ?? 0) > 0) ? (
-          <p className="text-[10px] text-[#64748b] mt-1 tabular-nums">
-            考核中 {summary.inProgressCount ?? 0}
-            {showInvalid ? ` · 无效 ${summary.invalidCount ?? 0}` : ""}
-          </p>
-        ) : null}
-      </div>
+    <div className="space-y-2 rounded-[14px] border border-[#eef2f7] bg-white px-3 py-3">
+      <p className="text-[11px] font-medium tracking-wide text-[#94a3b8]">
+        {scopeLabel} · 不是下面某一个人
+      </p>
       {hasCompliance ? (
-        <div>
-          <p className="text-[#94a3b8]">{complianceLabel}</p>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <p className="text-xs text-[#64748b]">合规台数 / 已铺设</p>
+            <p
+              className={`text-2xl font-bold tabular-nums leading-tight ${
+                metLine ? "text-emerald-700" : "text-[#b91c1c]"
+              }`}
+            >
+              {summary.compliantCount}/{summary.deployedCount}
+              <span className="ml-2 text-lg font-semibold">
+                {summary.complianceRate}%
+              </span>
+            </p>
+          </div>
           <p
-            className={`text-lg font-bold tabular-nums ${
-              (summary.complianceGapCount ?? 0) === 0
-                ? "text-emerald-700"
-                : "text-[#b91c1c]"
+            className={`text-sm font-medium tabular-nums ${
+              metLine ? "text-emerald-700" : "text-[#b91c1c]"
             }`}
           >
-            {summary.complianceRate}%
-            <span className="ml-1 text-xs font-semibold">
-              {(summary.complianceGapCount ?? 0) === 0 ? "✓" : ""}
-            </span>
-          </p>
-          <p className="text-[10px] text-[#64748b] mt-0.5 tabular-nums">
-            合规 {summary.compliantCount ?? 0}/{summary.deployedCount}
-          </p>
-          <p
-            className={`text-[10px] mt-1 tabular-nums ${
-              (summary.complianceGapCount ?? 0) === 0
-                ? "text-emerald-700"
-                : "font-medium text-[#b91c1c]"
-            }`}
-          >
-            {(summary.complianceGapCount ?? 0) > 0
-              ? `距离 ${XLV_COMPLIANCE_TARGET_RATE}% 还差 ${summary.complianceGapCount} 台`
-              : `容错剩余 ${summary.toleranceRemainingCount ?? 0} 台`}
+            {metLine
+              ? `已过 ${XLV_COMPLIANCE_TARGET_RATE}% 线`
+              : `全队还差 ${gap} 台到 ${XLV_COMPLIANCE_TARGET_RATE}%`}
           </p>
         </div>
-      ) : null}
+      ) : (
+        <p className="text-lg font-bold tabular-nums text-[#111827]">
+          已铺设 {summary.deployedCount}
+        </p>
+      )}
+      <p className="text-xs tabular-nums text-[#64748b]">
+        {[
+          headcount,
+          `终身已达标 ${summary.qualifiedCount} 台`,
+          (summary.inProgressCount ?? 0) > 0
+            ? `考核中（有动销）${summary.inProgressCount} 台`
+            : null,
+          showInvalid && (summary.invalidCount ?? 0) > 0
+            ? `无效 ${summary.invalidCount} 台`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </p>
+      <p className="text-[11px] leading-relaxed text-[#94a3b8]">
+        终身已达标和合规不是一回事：考核中但仍在用的机器也算合规。下面名单是每人自己的台数，加起来才是上面的全队。
+      </p>
     </div>
   );
 }
@@ -222,7 +208,12 @@ export function XlvLeaderboardTable({
 
   return (
     <div className="rounded-[14px] border border-[#eef2f7] bg-white shadow-sm overflow-hidden">
-      <ul className="divide-y divide-[#f1f5f9]" aria-label={`${nameHeader}排行`}>
+      <p className="border-b border-[#f1f5f9] bg-[#f8fafc] px-4 py-2 text-xs text-[#64748b]">
+        {mode === "managers"
+          ? "下面每位经理只算自己团队的设备"
+          : "下面每位队员只算自己名下的设备"}
+      </p>
+      <ul className="divide-y divide-[#f1f5f9]" aria-label={`${nameHeader}名单`}>
         {rows.map((row, idx) => {
           const rank = idx + 1;
           const isInventory =
@@ -253,6 +244,11 @@ export function XlvLeaderboardTable({
               : mode === "managers"
                 ? followUpHref(row.name)
                 : undefined;
+          const who = isInventory
+            ? "库存"
+            : mode === "managers"
+              ? "该经理"
+              : "本人";
 
           return (
             <li
@@ -297,7 +293,7 @@ export function XlvLeaderboardTable({
                             : "text-[#b91c1c]"
                         }`}
                       >
-                        合规 {row.complianceRate}%
+                        {who} {row.complianceRate}%
                       </span>
                     )}
                   </div>
@@ -379,10 +375,7 @@ export function XlvLeaderboardTable({
                                 : "text-[#b91c1c]"
                             }`}
                           >
-                            合规率{" "}
-                            <span className="text-base tabular-nums">
-                              {row.complianceRate}%
-                            </span>
+                            {who} {row.compliantCount}/{row.deviceCount} 台合规
                           </p>
                           <span
                             className={`text-xs font-semibold ${
@@ -391,23 +384,9 @@ export function XlvLeaderboardTable({
                                 : "text-[#b91c1c]"
                             }`}
                           >
-                            {row.complianceGapCount === 0 ? "✓ 已达 90%" : "未达 90%"}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex items-center justify-between gap-2 text-xs">
-                          <span className="tabular-nums text-[#64748b]">
-                            合规 {row.compliantCount}/{row.deviceCount}
-                          </span>
-                          <span
-                            className={
-                              row.complianceGapCount === 0
-                                ? "text-emerald-700"
-                                : "font-medium text-[#b91c1c]"
-                            }
-                          >
-                            {row.complianceGapCount > 0
-                              ? `差 ${row.complianceGapCount} 台恢复合规`
-                              : `容错剩余 ${row.toleranceRemainingCount} 台`}
+                            {row.complianceGapCount === 0
+                              ? `已过 ${XLV_COMPLIANCE_TARGET_RATE}%`
+                              : `还差 ${row.complianceGapCount} 台`}
                           </span>
                         </div>
                         <div className="relative mt-2 h-1.5 overflow-hidden rounded-full bg-white/80">

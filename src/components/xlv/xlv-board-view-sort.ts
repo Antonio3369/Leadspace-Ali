@@ -6,7 +6,7 @@ export const XLV_BOARD_VIEW_OPTIONS = [
   {
     id: "compliance" as const,
     label: "看健康",
-    hint: "按合规率从高到低。对照 90% 线，看谁达标、谁还差几台。",
+    hint: "按每人自己的合规率从高到低。全队有没有到 90%，只看上面的全队合计。",
   },
   {
     id: "pending" as const,
