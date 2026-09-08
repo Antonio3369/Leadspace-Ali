@@ -17,6 +17,7 @@ import { detectXlvWakeUpDate } from "@/lib/xlv-wake-up";
 import {
   isXlvDeviceCompliant,
   isXlvPlaceholderName,
+  isXlvQualificationInProgressActive,
   type XlvQualificationStatus,
   XLV_COMPLIANCE_TARGET_RATE,
   xlvEffectiveAlertKind,
@@ -197,7 +198,7 @@ async function aggregateCompanyBoard(
         totals.compliantCount += 1;
       }
 
-      if (d.qualificationStatus === "in_progress") {
+      if (isXlvQualificationInProgressActive(d)) {
         row.inProgressCount += 1;
         totals.inProgressCount += 1;
       }

@@ -11,6 +11,7 @@ import {
 import {
   isXlvDeviceCompliant,
   isXlvInventoryManagerKey,
+  isXlvQualificationInProgressActive,
   isXlvUnassignedManager,
   type XlvQualificationStatus,
   XLV_COMPLIANCE_TARGET_RATE,
@@ -40,6 +41,7 @@ import { sortXlvDevices } from "./sort-devices";
 import { enrichXlvSnapshotDailyMetrics, buildXlvTxnActivityTrend } from "./snapshot-daily";
 import { inferXlvTxnDates } from "@/lib/xlv-txn-dates";
 import { withXlvBoardCache } from "./board-cache";
+import { mergeXlvStaffBoardIdentityRows } from "./staff-board-identity";
 import { withXlvHeavyGate } from "./xlv-heavy-gate";
 import { loadSalesStockForOperator } from "./inventory/service";
 import {
@@ -158,7 +160,7 @@ function addDeviceToBoardMap(
   }
   if (!isXlvUnassignedManager(d)) {
     if (d.qualificationStatus === "qualified") row.qualifiedCount += 1;
-    if (d.qualificationStatus === "in_progress") row.inProgressCount += 1;
+    if (isXlvQualificationInProgressActive(d)) row.inProgressCount += 1;
     if (d.qualificationStatus === "invalid") row.invalidCount += 1;
   }
   const alert = xlvEffectiveAlertKind(d);
@@ -219,7 +221,7 @@ async function aggregateBoardDevices(
       }
       if (isXlvDeviceCompliant(d)) compliantCount += 1;
       if (d.qualificationStatus === "qualified") qualifiedCount += 1;
-      else if (d.qualificationStatus === "in_progress") inProgressCount += 1;
+      else if (isXlvQualificationInProgressActive(d)) inProgressCount += 1;
       else if (d.qualificationStatus === "invalid") invalidCount += 1;
     }
 
@@ -364,7 +366,27 @@ export async function getXlvStaffBoard(
           { includeFollowUpMetrics: true }
       );
 
-      const { rows, summary } = boardResult;
+      const userIds = [
+        ...new Set(
+          boardResult.rows
+            .map((row) => row.userId)
+            .filter((id): id is string => Boolean(id))
+        ),
+      ];
+      const staffUsers =
+        userIds.length > 0
+          ? await db.user.findMany({
+              where: { id: { in: userIds } },
+              select: { id: true, name: true },
+            })
+          : [];
+      const rows = sortBoardRows(
+        mergeXlvStaffBoardIdentityRows(
+          boardResult.rows,
+          new Map(staffUsers.map((u) => [u.id, u.name]))
+        )
+      );
+      const { summary } = boardResult;
 
       return {
         manager: {

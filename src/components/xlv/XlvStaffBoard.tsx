@@ -18,10 +18,14 @@ import {
   XlvLeaderboardTable,
   XlvSummaryStrip,
 } from "@/components/xlv/XlvLeaderboardTable";
+import { XlvBoardSortBar } from "@/components/xlv/XlvBoardSortBar";
 import type { XlvBoardRow } from "@/services/xlv/board";
 import { parseXlvQualificationStatus } from "@/lib/xlv-rules";
-
-type StaffBoardSort = "compliance" | "pending" | "follow_up" | "wake_rate";
+import {
+  compareXlvBoardViewRows,
+  parseXlvBoardViewSort,
+  type XlvBoardViewSort,
+} from "@/components/xlv/xlv-board-view-sort";
 
 interface ApiResponse {
   manager: { key: string; name: string; userId: string | null };
@@ -53,13 +57,7 @@ export function XlvStaffBoard({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const statusFilter = parseXlvQualificationStatus(searchParams.get("status"));
-  const rawSort = searchParams.get("sort");
-  const sort: StaffBoardSort =
-    rawSort === "pending" ||
-    rawSort === "follow_up" ||
-    rawSort === "wake_rate"
-      ? rawSort
-      : "compliance";
+  const sort = parseXlvBoardViewSort(searchParams.get("sort"));
   const isHome = variant === "home";
 
   const [data, setData] = useState<ApiResponse | null>(null);
@@ -70,7 +68,7 @@ export function XlvStaffBoard({
 
   function pushQuery(patch: {
     status?: string | null;
-    sort?: StaffBoardSort | null;
+    sort?: XlvBoardViewSort | null;
   }) {
     const params = new URLSearchParams(searchParams.toString());
     if (patch.status !== undefined) {
@@ -135,42 +133,18 @@ export function XlvStaffBoard({
       if (statusFilter === "invalid") return r.invalidCount > 0;
       return true;
     }) ?? [];
-  const sortedRows = [...filteredRows].sort((a, b) => {
-    if (sort === "pending") {
-      return (
-        b.pendingFollowUpCount - a.pendingFollowUpCount ||
-        b.singleSilenceCount - a.singleSilenceCount ||
-        b.dormantCount - a.dormantCount
-      );
-    }
-    if (sort === "follow_up") {
-      return (
-        b.monthFollowUpCount - a.monthFollowUpCount ||
-        b.monthWakeUpCount - a.monthWakeUpCount
-      );
-    }
-    if (sort === "wake_rate") {
-      return (
-        b.monthWakeUpRate - a.monthWakeUpRate ||
-        b.monthWakeUpCount - a.monthWakeUpCount ||
-        b.monthFollowUpCount - a.monthFollowUpCount
-      );
-    }
-    return (
-      b.complianceRate - a.complianceRate ||
-      b.compliantCount - a.compliantCount ||
-      b.qualifiedCount - a.qualifiedCount
-    );
-  });
+  const sortedRows = [...filteredRows].sort((a, b) =>
+    compareXlvBoardViewRows(a, b, sort)
+  );
 
   return (
     <PageShell>
       <PageHeader
-        title={isHome ? "团队看板" : `${data?.manager.name ?? "经理"} · 队员排行`}
+        title={isHome ? "团队看板" : `${data?.manager.name ?? "经理"} · 队员`}
         kicker="微信小绿盒"
         meta={
           <div className="space-y-1 text-sm text-[#64748b]">
-            <p>看队员的业绩、风险与本月跟进结果；点击指标可查看明细。</p>
+            <p>点人名看月报，点数字看设备。下面三个按钮只改名单顺序，不换一套数据。</p>
             {statusFilter ? (
               <p>
                 <button
@@ -209,38 +183,18 @@ export function XlvStaffBoard({
             showInvalid={false}
             complianceLabel="团队合规率"
           />
-          <div
-            className="grid grid-cols-4 overflow-hidden rounded-[12px] border border-[#e2e8f0] bg-white"
-            aria-label="队员排行方式"
-          >
-            {(
-              [
-                ["compliance", "合规率"],
-                ["pending", "待跟进"],
-                ["follow_up", "本月跟进"],
-                ["wake_rate", "唤醒率"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => pushQuery({ sort: value })}
-                className={`min-h-10 border-l border-[#e2e8f0] px-2 py-2 text-xs font-medium first:border-l-0 sm:text-sm ${
-                  sort === value
-                    ? "bg-[#2563eb] text-white"
-                    : "text-[#475569] hover:bg-[#f8fafc]"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <XlvBoardSortBar
+            sort={sort}
+            ariaLabel="队员名单看重点"
+            onChange={(next) => pushQuery({ sort: next })}
+          />
           <XlvLeaderboardTable
             rows={sortedRows}
             mode="staff"
             managerKey={managerKey}
             managerName={data.manager.name}
             statusFilter={statusFilter}
+            viewSort={sort}
           />
         </div>
       ) : null}

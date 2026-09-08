@@ -18,10 +18,14 @@ import {
   XlvLeaderboardTable,
   XlvSummaryStrip,
 } from "@/components/xlv/XlvLeaderboardTable";
+import { XlvBoardSortBar } from "@/components/xlv/XlvBoardSortBar";
 import type { XlvBoardRow } from "@/services/xlv/board";
 import { parseXlvQualificationStatus } from "@/lib/xlv-rules";
-
-type ManagerBoardSort = "compliance" | "pending" | "follow_up" | "wake_rate";
+import {
+  compareXlvBoardViewRows,
+  parseXlvBoardViewSort,
+  type XlvBoardViewSort,
+} from "@/components/xlv/xlv-board-view-sort";
 
 interface ApiResponse {
   rows: XlvBoardRow[];
@@ -47,13 +51,7 @@ export function XlvManagerBoard() {
   const searchParams = useSearchParams();
   const search = searchParams.get("search") ?? "";
   const statusFilter = parseXlvQualificationStatus(searchParams.get("status"));
-  const rawSort = searchParams.get("sort");
-  const sort: ManagerBoardSort =
-    rawSort === "pending" ||
-    rawSort === "follow_up" ||
-    rawSort === "wake_rate"
-      ? rawSort
-      : "compliance";
+  const sort = parseXlvBoardViewSort(searchParams.get("sort"));
 
   const [data, setData] = useState<ApiResponse | null>(null);
   const [error, setError] = useState("");
@@ -65,7 +63,7 @@ export function XlvManagerBoard() {
   function pushQuery(patch: {
     search?: string;
     status?: string | null;
-    sort?: ManagerBoardSort | null;
+    sort?: XlvBoardViewSort | null;
   }) {
     const params = new URLSearchParams(searchParams.toString());
     if (patch.search != null) {
@@ -150,33 +148,9 @@ export function XlvManagerBoard() {
       if (statusFilter === "invalid") return r.invalidCount > 0;
       return true;
     }) ?? [];
-  const sortedRows = [...filteredRows].sort((a, b) => {
-    if (sort === "pending") {
-      return (
-        b.pendingFollowUpCount - a.pendingFollowUpCount ||
-        b.singleSilenceCount - a.singleSilenceCount ||
-        b.dormantCount - a.dormantCount
-      );
-    }
-    if (sort === "follow_up") {
-      return (
-        b.monthFollowUpCount - a.monthFollowUpCount ||
-        b.monthWakeUpCount - a.monthWakeUpCount
-      );
-    }
-    if (sort === "wake_rate") {
-      return (
-        b.monthWakeUpRate - a.monthWakeUpRate ||
-        b.monthWakeUpCount - a.monthWakeUpCount ||
-        b.monthFollowUpCount - a.monthFollowUpCount
-      );
-    }
-    return (
-      b.complianceRate - a.complianceRate ||
-      b.compliantCount - a.compliantCount ||
-      b.qualifiedCount - a.qualifiedCount
-    );
-  });
+  const sortedRows = [...filteredRows].sort((a, b) =>
+    compareXlvBoardViewRows(a, b, sort)
+  );
 
   return (
     <PageShell>
@@ -224,36 +198,16 @@ export function XlvManagerBoard() {
             showInvalid={false}
             complianceLabel="整体合规率"
           />
-          <div
-            className="grid grid-cols-4 overflow-hidden rounded-[12px] border border-[#e2e8f0] bg-white"
-            aria-label="经理排行方式"
-          >
-            {(
-              [
-                ["compliance", "合规率"],
-                ["pending", "待跟进"],
-                ["follow_up", "本月跟进"],
-                ["wake_rate", "唤醒率"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => pushQuery({ sort: value })}
-                className={`min-h-10 border-l border-[#e2e8f0] px-2 py-2 text-xs font-medium first:border-l-0 sm:text-sm ${
-                  sort === value
-                    ? "bg-[#2563eb] text-white"
-                    : "text-[#475569] hover:bg-[#f8fafc]"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <XlvBoardSortBar
+            sort={sort}
+            ariaLabel="经理名单看重点"
+            onChange={(next) => pushQuery({ sort: next })}
+          />
           <XlvLeaderboardTable
             rows={sortedRows}
             mode="managers"
             statusFilter={statusFilter}
+            viewSort={sort}
           />
         </div>
       ) : null}

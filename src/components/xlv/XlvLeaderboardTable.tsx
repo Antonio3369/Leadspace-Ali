@@ -16,8 +16,23 @@ import {
   xlvBoardMetricNeutralClass,
   xlvQualStatusTextClass,
 } from "@/components/xlv/xlv-filter-styles";
+import type { XlvBoardViewSort } from "@/components/xlv/xlv-board-view-sort";
 
-function RankBadge({ rank }: { rank: number }) {
+function RankBadge({
+  rank,
+  sort,
+}: {
+  rank: number;
+  sort: XlvBoardViewSort;
+}) {
+  if (sort === "pending") {
+    return (
+      <span className="text-xs font-semibold leading-tight text-[#b91c1c]">
+        催
+        <span className="mt-0.5 block text-base tabular-nums">{rank}</span>
+      </span>
+    );
+  }
   if (rank === 1) return <span className="font-bold text-amber-500">🥇 {rank}</span>;
   if (rank === 2) return <span className="font-bold text-gray-400">🥈 {rank}</span>;
   if (rank === 3) return <span className="font-bold text-orange-400">🥉 {rank}</span>;
@@ -186,12 +201,14 @@ export function XlvLeaderboardTable({
   managerKey,
   managerName,
   statusFilter,
+  viewSort = "compliance",
 }: {
   rows: XlvBoardRow[];
   mode: "managers" | "staff";
   managerKey?: string;
   managerName?: string;
   statusFilter?: XlvQualificationStatus | null;
+  viewSort?: XlvBoardViewSort;
 }) {
   if (rows.length === 0) {
     return (
@@ -244,15 +261,15 @@ export function XlvLeaderboardTable({
               className={`px-4 py-3.5 ${isInventory ? "bg-[#fafbfc]" : "hover:bg-[#f8fafc]"}`}
             >
               <div className="flex items-start gap-3">
-                <div className="w-10 shrink-0 pt-0.5 text-base tabular-nums">
-                  {isInventory ? (
-                    <span className="text-[#94a3b8]">—</span>
-                  ) : (
-                    <RankBadge rank={rank} />
-                  )}
-                </div>
+                    <div className="w-10 shrink-0 pt-0.5 text-base tabular-nums">
+                      {isInventory ? (
+                        <span className="text-[#94a3b8]">—</span>
+                      ) : (
+                        <RankBadge rank={rank} sort={viewSort} />
+                      )}
+                    </div>
                 <div className="min-w-0 flex-1 space-y-2">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+                  <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
                     <Link
                       href={rowNameHref}
                       className={`truncate text-base font-semibold ${
@@ -264,8 +281,89 @@ export function XlvLeaderboardTable({
                     >
                       {row.name}
                     </Link>
+                    {viewSort === "pending" ? (
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-[#b91c1c]">
+                        待跟进 {row.pendingFollowUpCount}
+                      </span>
+                    ) : viewSort === "wake_rate" ? (
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-emerald-700">
+                        唤醒 {row.monthWakeUpRate}%
+                      </span>
+                    ) : (
+                      <span
+                        className={`shrink-0 text-sm font-semibold tabular-nums ${
+                          row.complianceGapCount === 0
+                            ? "text-emerald-700"
+                            : "text-[#b91c1c]"
+                        }`}
+                      >
+                        合规 {row.complianceRate}%
+                      </span>
+                    )}
                   </div>
                   <div className="space-y-2 text-sm">
+                    {viewSort === "pending" ? (
+                      <div className="rounded-[10px] border border-red-100 bg-red-50/70 px-3 py-2.5">
+                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                          <BoardMetricChip
+                            label="待跟进"
+                            count={row.pendingFollowUpCount}
+                            href={pendingHref}
+                            className="rounded-md bg-white/80 px-1.5 py-0.5 text-[#b91c1c]"
+                          />
+                          <BoardMetricChip
+                            label="沉睡"
+                            count={row.dormantCount}
+                            href={
+                              mode === "managers"
+                                ? managerAlertHref(row.name, "dormant")
+                                : devicesHref
+                                  ? alertHref(devicesHref, "dormant")
+                                  : undefined
+                            }
+                            className={xlvAlertTextClass("dormant", false)}
+                          />
+                          <BoardMetricChip
+                            label="单笔沉默"
+                            count={row.singleSilenceCount}
+                            href={
+                              mode === "managers"
+                                ? managerAlertHref(row.name, "single_silence")
+                                : devicesHref
+                                  ? alertHref(devicesHref, "single_silence")
+                                  : undefined
+                            }
+                            className={xlvAlertTextClass("single_silence", false)}
+                          />
+                        </div>
+                      </div>
+                    ) : viewSort === "wake_rate" ? (
+                      <div className="rounded-[10px] border border-emerald-100 bg-emerald-50/60 px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-semibold text-emerald-800">
+                            唤醒率{" "}
+                            <span className="text-base tabular-nums">
+                              {row.monthWakeUpRate}%
+                            </span>
+                          </p>
+                          <span className="text-xs tabular-nums text-[#64748b]">
+                            已跟进 {row.monthFollowUpCount} · 已唤醒{" "}
+                            {row.monthWakeUpCount}
+                          </span>
+                        </div>
+                        <div
+                          className="relative mt-2 h-1.5 overflow-hidden rounded-full bg-white/80"
+                          aria-label={`本月唤醒率 ${row.monthWakeUpRate}%`}
+                        >
+                          <div
+                            className="h-full rounded-full bg-emerald-500"
+                            style={{
+                              width: `${Math.min(100, row.monthWakeUpRate)}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
                       <div
                         className={`rounded-[10px] border px-3 py-2.5 ${
                           row.complianceGapCount === 0
@@ -293,7 +391,7 @@ export function XlvLeaderboardTable({
                                 : "text-[#b91c1c]"
                             }`}
                           >
-                            {row.complianceGapCount === 0 ? "✓ 合规" : "未达 90%"}
+                            {row.complianceGapCount === 0 ? "✓ 已达 90%" : "未达 90%"}
                           </span>
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2 text-xs">
@@ -330,45 +428,47 @@ export function XlvLeaderboardTable({
                           />
                         </div>
                       </div>
+                    )}
 
-                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                        <span className="w-10 shrink-0 text-xs text-[#94a3b8]">
-                          业绩
-                        </span>
-                        <BoardMetricChip
-                          label="已铺设"
-                          count={row.deviceCount}
-                          href={devicesHref ?? undefined}
-                          className={xlvBoardMetricNeutralClass()}
-                        />
-                        <BoardMetricChip
-                          label="已达标"
-                          count={row.qualifiedCount}
-                          href={
-                            devicesHref
-                              ? statusHref(devicesHref, "qualified")
-                              : undefined
-                          }
-                          className={xlvQualStatusTextClass(
-                            "qualified",
-                            statusFilter === "qualified"
-                          )}
-                        />
-                        <BoardMetricChip
-                          label="考核中"
-                          count={row.inProgressCount}
-                          href={
-                            devicesHref
-                              ? statusHref(devicesHref, "in_progress")
-                              : undefined
-                          }
-                          className={xlvQualStatusTextClass(
-                            "in_progress",
-                            statusFilter === "in_progress"
-                          )}
-                        />
-                      </div>
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      <span className="w-10 shrink-0 text-xs text-[#94a3b8]">
+                        业绩
+                      </span>
+                      <BoardMetricChip
+                        label="已铺设"
+                        count={row.deviceCount}
+                        href={devicesHref ?? undefined}
+                        className={xlvBoardMetricNeutralClass()}
+                      />
+                      <BoardMetricChip
+                        label="已达标"
+                        count={row.qualifiedCount}
+                        href={
+                          devicesHref
+                            ? statusHref(devicesHref, "qualified")
+                            : undefined
+                        }
+                        className={xlvQualStatusTextClass(
+                          "qualified",
+                          statusFilter === "qualified"
+                        )}
+                      />
+                      <BoardMetricChip
+                        label="考核中"
+                        count={row.inProgressCount}
+                        href={
+                          devicesHref
+                            ? statusHref(devicesHref, "in_progress")
+                            : undefined
+                        }
+                        className={xlvQualStatusTextClass(
+                          "in_progress",
+                          statusFilter === "in_progress"
+                        )}
+                      />
+                    </div>
 
+                    {viewSort !== "pending" ? (
                       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                         <span className="w-10 shrink-0 text-xs text-[#94a3b8]">
                           风险
@@ -408,7 +508,17 @@ export function XlvLeaderboardTable({
                           }
                         />
                       </div>
+                    ) : (
+                      <p className="text-xs tabular-nums text-[#64748b]">
+                        合规 {row.complianceRate}% · {row.compliantCount}/
+                        {row.deviceCount}
+                        {row.complianceGapCount > 0
+                          ? ` · 差 ${row.complianceGapCount} 台达 90%`
+                          : " · 已达 90%"}
+                      </p>
+                    )}
 
+                    {viewSort !== "wake_rate" ? (
                       <div className="border-t border-[#f1f5f9] pt-2">
                         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                           <span className="w-14 shrink-0 text-xs text-[#94a3b8]">
@@ -417,32 +527,31 @@ export function XlvLeaderboardTable({
                           <BoardMetricChip
                             label="已跟进"
                             count={row.monthFollowUpCount}
-                            href={mode === "staff" ? nameHref ?? undefined : undefined}
+                            href={
+                              mode === "staff" ? (nameHref ?? undefined) : undefined
+                            }
                             className="text-[#2563eb]"
                           />
                           <BoardMetricChip
                             label="已唤醒"
                             count={row.monthWakeUpCount}
-                            href={mode === "staff" ? nameHref ?? undefined : undefined}
+                            href={
+                              mode === "staff" ? (nameHref ?? undefined) : undefined
+                            }
                             className="text-emerald-700"
                           />
-                          <span className="ml-auto tabular-nums font-medium text-emerald-700">
+                          <span className="ml-auto font-medium tabular-nums text-emerald-700">
                             唤醒率 {row.monthWakeUpRate}%
                           </span>
                         </div>
-                        <div
-                          className="mt-1.5 ml-[4.5rem] h-1.5 overflow-hidden rounded-full bg-[#eef2f7]"
-                          aria-label={`本月唤醒率 ${row.monthWakeUpRate}%`}
-                        >
-                          <div
-                            className="h-full rounded-full bg-emerald-500"
-                            style={{
-                              width: `${Math.min(100, row.monthWakeUpRate)}%`,
-                            }}
-                          />
-                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <p className="text-xs tabular-nums text-[#64748b]">
+                        合规 {row.complianceRate}% · 待跟进{" "}
+                        {row.pendingFollowUpCount} · 沉睡 {row.dormantCount}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             </li>

@@ -233,6 +233,7 @@ export function XlvStaffDevicesView({
         <button
           type="button"
           onClick={() => setStatusFilter("in_progress")}
+          title="考核中且近日有动销，不含沉睡/单笔沉默"
           className={`${xlvFilterChipBaseClass()} ${xlvTabButtonClass(status === "in_progress")}`}
         >
           <XlvFilterChipText
