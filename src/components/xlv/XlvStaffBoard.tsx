@@ -76,7 +76,7 @@ export function XlvStaffBoard({
       else params.delete("status");
     }
     if (patch.sort !== undefined) {
-      if (patch.sort && patch.sort !== "compliance") {
+      if (patch.sort && patch.sort !== "pending") {
         params.set("sort", patch.sort);
       } else {
         params.delete("sort");

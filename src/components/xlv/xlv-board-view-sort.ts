@@ -3,17 +3,17 @@ import type { XlvBoardRow } from "@/services/xlv/board";
 export type XlvBoardViewSort = "compliance" | "pending" | "wake_rate";
 
 export const XLV_BOARD_VIEW_OPTIONS = [
-  { id: "compliance" as const, label: "看健康" },
   { id: "pending" as const, label: "该催谁" },
+  { id: "compliance" as const, label: "看健康" },
   { id: "wake_rate" as const, label: "跟进成效" },
 ] as const;
 
 export function parseXlvBoardViewSort(
   raw: string | null | undefined
 ): XlvBoardViewSort {
-  if (raw === "pending") return "pending";
+  if (raw === "compliance") return "compliance";
   if (raw === "wake_rate" || raw === "follow_up") return "wake_rate";
-  return "compliance";
+  return "pending";
 }
 
 export function compareXlvBoardViewRows(

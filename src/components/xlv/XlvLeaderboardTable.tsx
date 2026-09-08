@@ -182,7 +182,7 @@ export function XlvLeaderboardTable({
   managerKey,
   managerName,
   statusFilter,
-  viewSort = "compliance",
+  viewSort = "pending",
 }: {
   rows: XlvBoardRow[];
   mode: "managers" | "staff";
@@ -234,11 +234,6 @@ export function XlvLeaderboardTable({
               : mode === "managers"
                 ? followUpHref(row.name)
                 : undefined;
-          const who = isInventory
-            ? "库存"
-            : mode === "managers"
-              ? "该经理"
-              : "本人";
 
           return (
             <li
@@ -283,7 +278,7 @@ export function XlvLeaderboardTable({
                             : "text-[#b91c1c]"
                         }`}
                       >
-                        {who} {row.complianceRate}%
+                        合规率 {row.complianceRate}%
                       </span>
                     )}
                   </div>
@@ -365,7 +360,7 @@ export function XlvLeaderboardTable({
                                 : "text-[#b91c1c]"
                             }`}
                           >
-                            {who} {row.compliantCount}/{row.deviceCount} 台合规
+                            {row.compliantCount}/{row.deviceCount} 台合规
                           </p>
                           <span
                             className={`text-xs font-semibold ${
