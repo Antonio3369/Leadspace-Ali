@@ -100,30 +100,30 @@ function xlvExpandPeriodCopy(dateFrom: string, dateTo: string) {
   if (dateFrom === cur.dateFrom && dateTo === cur.dateTo) {
     return {
       expandLabel: "本月拓展",
-      expandHint: "本月首笔",
-      qualifiedHint: "本月首笔已达标",
-      rateHint: "占本月拓展",
-      listExpand: "本月拓展商户",
-      listExpandQualified: "本月拓展 · 已达标",
+      expandHint: "本月新铺",
+      qualifiedHint: "已铺设中已达标",
+      rateHint: "占已铺设",
+      listExpand: "本月新铺商户",
+      listExpandQualified: "已达标商户",
     };
   }
   if (dateFrom === last.dateFrom && dateTo === last.dateTo) {
     return {
       expandLabel: "上月拓展",
-      expandHint: "上月首笔",
-      qualifiedHint: "上月首笔已达标",
-      rateHint: "占上月拓展",
-      listExpand: "上月拓展商户",
-      listExpandQualified: "上月拓展 · 已达标",
+      expandHint: "上月新铺",
+      qualifiedHint: "已铺设中已达标",
+      rateHint: "占已铺设",
+      listExpand: "上月新铺商户",
+      listExpandQualified: "已达标商户",
     };
   }
   return {
     expandLabel: "期间拓展",
-    expandHint: `${dateFrom.slice(0, 7)} 首笔`,
-    qualifiedHint: `${dateFrom.slice(0, 7)} 首笔已达标`,
-    rateHint: "占期间拓展",
-    listExpand: "期间拓展商户",
-    listExpandQualified: "期间拓展 · 已达标",
+    expandHint: `${dateFrom.slice(0, 7)} 新铺`,
+    qualifiedHint: "已铺设中已达标",
+    rateHint: "占已铺设",
+    listExpand: "期间新铺商户",
+    listExpandQualified: "已达标商户",
   };
 }
 
@@ -152,9 +152,9 @@ export function XlvDashboardView({
   const expandParam = searchParams.get("expand");
   const { dateFrom, dateTo } = readN7DateRangeFromSearchParams(searchParams);
   const rangeQs = n7DateRangeQuery(dateFrom, dateTo);
-  /** 日期条写着「首笔日期」：本月/上月默认就按首笔筛列表。expand=all 才看全部。 */
+  /** 仅点「本月拓展 / 已达标」才按首笔月筛列表；默认看全部已铺设 */
   const filterByFirstTxn =
-    !search.trim() && alert === "all" && expandParam !== "all";
+    !search.trim() && alert === "all" && expandParam === "month";
   const expandMonth = filterByFirstTxn;
   const periodCopy = xlvExpandPeriodCopy(dateFrom, dateTo);
 
@@ -196,7 +196,6 @@ export function XlvDashboardView({
     (next: { dateFrom: string; dateTo: string }) => {
       const params = new URLSearchParams(searchParams.toString());
       applyN7DateRangeToParams(params, next.dateFrom, next.dateTo);
-      if (alert === "all") params.set("expand", "month");
       router.replace(`${pathname}?${searchParamsToQueryString(params)}`, {
         scroll: false,
       });
@@ -405,11 +404,11 @@ export function XlvDashboardView({
     manager || operator || alert !== "all" || status || expandMonth || search
   );
 
-  const monthQualifiedActive = expandMonth && status === "qualified";
+  const qualifiedActive = status === "qualified" && !expandMonth;
   const monthExpandActive = expandMonth && status !== "qualified";
 
   function isPulseCardActive(id: PulseCardId) {
-    if (id === "qualified" || id === "qualify_rate") return monthQualifiedActive;
+    if (id === "qualified" || id === "qualify_rate") return qualifiedActive;
     if (id === "expand") return monthExpandActive;
     if (id === "single_silence") return alert === "single_silence";
     if (id === "dormant") return alert === "dormant" || alert === "sleep";
@@ -506,7 +505,7 @@ export function XlvDashboardView({
     }
     if (id === "qualify_rate" || id === "qualified") {
       pushQuery({
-        expand: isActive ? "all" : "month",
+        expand: null,
         status: isActive ? null : "qualified",
         alert: null,
       });
@@ -534,8 +533,8 @@ export function XlvDashboardView({
   const listTitle =
     search.trim()
       ? "搜索结果"
-      : expandMonth && status === "qualified"
-      ? periodCopy.listExpandQualified
+      : status === "qualified"
+      ? "已达标商户"
       : expandMonth
         ? periodCopy.listExpand
         : alert === "single_silence"
@@ -568,6 +567,10 @@ export function XlvDashboardView({
                     （含剩余库存 {summary.inventoryCount}）
                   </span>
                 ) : null}
+                <span className="hidden sm:inline text-[#94a3b8]">
+                  {" "}
+                  · 已铺设未达标的当月继续考核；点「{periodCopy.expandLabel}」只看该月新铺
+                </span>
               </p>
             ) : (
               <p>导入运营原始表后展示沉睡与单笔沉默商户。</p>
@@ -581,7 +584,7 @@ export function XlvDashboardView({
                 compact
                 dateFrom={dateFrom}
                 dateTo={dateTo}
-                dateLabel="首笔日期"
+                dateLabel="拓展统计"
                 onChange={applyDateRange}
               />
             </div>
@@ -601,7 +604,7 @@ export function XlvDashboardView({
           compact
           dateFrom={dateFrom}
           dateTo={dateTo}
-          dateLabel="首笔日期"
+          dateLabel="拓展统计"
           onChange={applyDateRange}
         />
       </div>

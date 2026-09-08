@@ -2,7 +2,10 @@ import { db } from "@/lib/db";
 import { parseN7DateRange } from "@/lib/n7-date";
 import type { SessionUser } from "@/lib/permissions";
 import { xlvManagerDisplayName } from "@/lib/xlv-rules";
-import { xlvStatDateKey } from "@/lib/xlv-stat-date";
+import {
+  xlvShanghaiDateTimeRange,
+  xlvStatDateKey,
+} from "@/lib/xlv-stat-date";
 import { detectXlvWakeUpDate } from "@/lib/xlv-wake-up";
 import { loadXlvSnapshotMapAfterFollowUp } from "@/services/xlv/assessment";
 import {
@@ -49,15 +52,17 @@ function emptyPoint(date: string): XlvDailyPoint {
   return { date, followUpCount: 0, wakeUpCount: 0 };
 }
 
-function eachDayKey(from: Date, to: Date): string[] {
+function eachDayKey(dateFrom: string, dateTo: string): string[] {
   const keys: string[] = [];
-  const cursor = new Date(from);
-  cursor.setHours(0, 0, 0, 0);
-  const end = new Date(to);
-  end.setHours(0, 0, 0, 0);
-  while (cursor <= end) {
-    keys.push(xlvStatDateKey(cursor));
-    cursor.setDate(cursor.getDate() + 1);
+  let [y, m, d] = dateFrom.split("-").map(Number);
+  for (;;) {
+    const key = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    keys.push(key);
+    if (key >= dateTo) break;
+    const next = new Date(Date.UTC(y!, m! - 1, d! + 1));
+    y = next.getUTCFullYear();
+    m = next.getUTCMonth() + 1;
+    d = next.getUTCDate();
   }
   return keys;
 }
@@ -143,8 +148,9 @@ export async function getXlvMonthWakeUpRate(
 ) {
   return withXlvHeavyGate(async () => {
     assertCanViewXlv(user);
-    const { from, to } = parseN7DateRange(opts ?? {});
-    if (!from || !to) return 0;
+    const { dateFrom, dateTo } = parseN7DateRange(opts ?? {});
+    if (!dateFrom || !dateTo) return 0;
+    const { from, to } = xlvShanghaiDateTimeRange(dateFrom, dateTo);
     const inPeriod = await loadFollowedDevicesWithWake(user, {
       gte: from,
       lte: to,
@@ -175,10 +181,11 @@ async function loadXlvDailyPerformance(
   }
 ) {
   assertCanViewXlv(user);
-  const { from, to, dateFrom, dateTo } = parseN7DateRange(opts);
-  if (!from || !to) {
+  const { dateFrom, dateTo } = parseN7DateRange(opts);
+  if (!dateFrom || !dateTo) {
     throw new Error("请选择有效日期范围");
   }
+  const { from, to } = xlvShanghaiDateTimeRange(dateFrom, dateTo);
 
   const inPeriod = await loadFollowedDevicesWithWake(user, {
     gte: from,
@@ -186,7 +193,7 @@ async function loadXlvDailyPerformance(
   });
 
   const byDay = new Map<string, XlvDailyPoint>();
-  for (const key of eachDayKey(from, to)) {
+  for (const key of eachDayKey(dateFrom, dateTo)) {
     byDay.set(key, emptyPoint(key));
   }
 

@@ -41,7 +41,7 @@ export type XlvFollowUpDeviceItem = XlvDeviceListItem & {
 };
 
 function isoDate(d: Date | null | undefined) {
-  return d ? d.toISOString().slice(0, 10) : null;
+  return d ? xlvStatDateKey(d) || null : null;
 }
 
 export function shouldReopenXlvFollowUp(input: {

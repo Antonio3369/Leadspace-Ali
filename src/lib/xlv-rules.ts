@@ -60,7 +60,7 @@ export function xlvAssessmentStartDate(device: XlvAssessmentAnchor): Date | null
 
 export function xlvAssessmentStartIso(device: XlvAssessmentAnchor): string | null {
   const start = xlvAssessmentStartDate(device);
-  return start ? start.toISOString().slice(0, 10) : null;
+  return start ? xlvStatDateKey(start) || null : null;
 }
 
 function snapshotsForAssessment(

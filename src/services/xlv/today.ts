@@ -1,6 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import type { SessionUser } from "@/lib/permissions";
+import { xlvStatDateKey } from "@/lib/xlv-stat-date";
 import {
   classifyXlvTodayPriority,
   getXlvAssessmentDaysRemaining,
@@ -33,7 +34,7 @@ export type XlvTodayDeviceItem = XlvFollowUpDeviceItem & {
 };
 
 function isoDate(d: Date | null | undefined) {
-  return d ? d.toISOString().slice(0, 10) : null;
+  return d ? xlvStatDateKey(d) || null : null;
 }
 
 function mapTodayDevice(

@@ -18,12 +18,36 @@ export function normalizeXlvStatDate(value: Date | string): Date {
   return new Date(Date.UTC(y, m - 1, d));
 }
 
-/** 首笔日期筛选用：与库内 UTC 零点日历日对齐 */
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+/** 首笔/统计日筛选用：与库内 UTC 零点日历日对齐 */
 export function xlvCalendarDayRange(dateFrom: string, dateTo: string) {
   return {
     from: normalizeXlvStatDate(dateFrom),
     to: normalizeXlvStatDate(dateTo),
   };
+}
+
+/** 跟进时间等真实时点：按中国自然日起止，不跟服务器 TZ */
+export function xlvShanghaiDateTimeRange(dateFrom: string, dateTo: string) {
+  return {
+    from: new Date(`${dateFrom}T00:00:00+08:00`),
+    to: new Date(`${dateTo}T23:59:59.999+08:00`),
+  };
+}
+
+export function xlvChinaMonthDateRange(year: number, month: number) {
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const dateFrom = `${year}-${pad2(month)}-01`;
+  const dateTo = `${year}-${pad2(month)}-${pad2(lastDay)}`;
+  return { dateFrom, dateTo };
+}
+
+export function xlvCurrentChinaMonthDateRange(now = new Date()) {
+  const [y, m] = xlvStatDateKey(now).split("-").map(Number);
+  return xlvChinaMonthDateRange(y!, m!);
 }
 
 export function parseXlvStatDateFromCell(value: unknown): Date | null {

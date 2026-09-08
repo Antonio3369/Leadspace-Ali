@@ -3,6 +3,11 @@ import { parseN7DateRange } from "@/lib/n7-date";
 import type { SessionUser } from "@/lib/permissions";
 import { PermissionError } from "@/lib/permissions";
 import type { XlvQualificationStatus } from "@/lib/xlv-rules";
+import {
+  xlvCalendarDayRange,
+  xlvShanghaiDateTimeRange,
+  xlvStatDateKey,
+} from "@/lib/xlv-stat-date";
 import { detectXlvWakeUpDate } from "@/lib/xlv-wake-up";
 import { loadXlvSnapshotMapAfterFollowUp } from "@/services/xlv/assessment";
 import {
@@ -10,6 +15,7 @@ import {
   assertManagerOwnsXlvKey,
   buildXlvAssignedDeviceWhere,
   buildXlvManagerDeviceWhere,
+  buildXlvOperationalDeviceWhere,
   buildXlvRoleWhere,
   buildXlvStaffDeviceWhere,
   xlvSessionStaffKey,
@@ -37,7 +43,7 @@ export type XlvStaffMonthlySummary = {
 };
 
 function isoDate(d: Date | null | undefined) {
-  return d ? d.toISOString().slice(0, 10) : null;
+  return d ? xlvStatDateKey(d) || null : null;
 }
 
 function ratePercent(n: number, d: number) {
@@ -69,23 +75,28 @@ export async function getXlvStaffMonthlyPerformance(
     assertManagerOwnsXlvKey(user, opts.managerKey);
   }
 
-  const { from, to, dateFrom, dateTo } = parseN7DateRange(opts);
-  if (!from || !to) {
+  const { dateFrom, dateTo } = parseN7DateRange(opts);
+  if (!dateFrom || !dateTo) {
     throw new Error("请选择有效日期范围");
   }
+
+  const firstTxnRange = xlvCalendarDayRange(dateFrom, dateTo);
+  const followUpRange = xlvShanghaiDateTimeRange(dateFrom, dateTo);
 
   const managerWhere = await buildXlvManagerDeviceWhere(opts.managerKey);
   const staffWhere = await buildXlvStaffDeviceWhere(opts.staffKey);
   const roleWhere = buildXlvRoleWhere(user);
 
-  const expandWhere = {
+  const portfolioWhere = {
     AND: [
       roleWhere,
-      buildXlvAssignedDeviceWhere(),
+      buildXlvOperationalDeviceWhere(),
       managerWhere,
       staffWhere,
-      { firstTxnDate: { gte: from, lte: to } },
     ],
+  };
+  const expandWhere = {
+    AND: [portfolioWhere, { firstTxnDate: { gte: firstTxnRange.from, lte: firstTxnRange.to } }],
   };
   const followWhere = {
     AND: [
@@ -93,7 +104,7 @@ export async function getXlvStaffMonthlyPerformance(
       buildXlvAssignedDeviceWhere(),
       managerWhere,
       staffWhere,
-      { followUpAt: { gte: from, lte: to } },
+      { followUpAt: { gte: followUpRange.from, lte: followUpRange.to } },
     ],
   };
 
@@ -114,29 +125,35 @@ export async function getXlvStaffMonthlyPerformance(
     qualificationStatus: true,
   } as const;
 
-  const [expanded, followed] = await Promise.all([
-    db.xlvDeviceRecord.findMany({
-      where: expandWhere,
-      orderBy: { deviceSn: "asc" },
-      select: STAFF_MONTHLY_SELECT,
-    }),
-    db.xlvDeviceRecord.findMany({
-      where: followWhere,
-      orderBy: { deviceSn: "asc" },
-      select: STAFF_MONTHLY_SELECT,
-    }),
-  ]);
+  const [expanded, followed, qualifiedCount, inProgressCount, invalidCount, deployedCount, nameRow] =
+    await Promise.all([
+      db.xlvDeviceRecord.findMany({
+        where: expandWhere,
+        orderBy: { deviceSn: "asc" },
+        select: STAFF_MONTHLY_SELECT,
+      }),
+      db.xlvDeviceRecord.findMany({
+        where: followWhere,
+        orderBy: { deviceSn: "asc" },
+        select: STAFF_MONTHLY_SELECT,
+      }),
+      db.xlvDeviceRecord.count({
+        where: { AND: [portfolioWhere, { qualificationStatus: "qualified" }] },
+      }),
+      db.xlvDeviceRecord.count({
+        where: { AND: [portfolioWhere, { qualificationStatus: "in_progress" }] },
+      }),
+      db.xlvDeviceRecord.count({
+        where: { AND: [portfolioWhere, { qualificationStatus: "invalid" }] },
+      }),
+      db.xlvDeviceRecord.count({ where: portfolioWhere }),
+      db.xlvDeviceRecord.findFirst({
+        where: portfolioWhere,
+        select: { operatorName: true, managerName: true },
+      }),
+    ]);
 
   const expandCount = expanded.length;
-  const qualifiedCount = expanded.filter(
-    (d) => d.qualificationStatus === "qualified"
-  ).length;
-  const inProgressCount = expanded.filter(
-    (d) => d.qualificationStatus === "in_progress"
-  ).length;
-  const invalidCount = expanded.filter(
-    (d) => d.qualificationStatus === "invalid"
-  ).length;
 
   const snapshotMap = await loadXlvSnapshotMapAfterFollowUp(followed);
 
@@ -169,7 +186,7 @@ export async function getXlvStaffMonthlyPerformance(
       woken: extra?.woken ?? false,
     }) satisfies XlvStaffMonthlyDeviceRow;
 
-  const nameSource = expanded[0] ?? followed[0];
+  const nameSource = expanded[0] ?? followed[0] ?? nameRow;
   const staffName =
     nameSource?.operatorName?.trim() ||
     (opts.staffKey.startsWith("name:")
@@ -187,7 +204,7 @@ export async function getXlvStaffMonthlyPerformance(
       qualifiedCount,
       inProgressCount,
       invalidCount,
-      qualifyRate: ratePercent(qualifiedCount, expandCount),
+      qualifyRate: ratePercent(qualifiedCount, deployedCount),
       followUpCount,
       wakeUpCount,
       stillDormantCount,

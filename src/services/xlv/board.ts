@@ -1,8 +1,13 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { getCurrentMonthRange } from "@/lib/n7-date";
 import type { SessionUser } from "@/lib/permissions";
 import { detectXlvWakeUpDate } from "@/lib/xlv-wake-up";
+import {
+  normalizeXlvStatDate,
+  xlvCurrentChinaMonthDateRange,
+  xlvShanghaiDateTimeRange,
+  xlvStatDateKey,
+} from "@/lib/xlv-stat-date";
 import {
   isXlvDeviceCompliant,
   isXlvInventoryManagerKey,
@@ -33,7 +38,6 @@ import {
 } from "./xlv-scope";
 import { sortXlvDevices } from "./sort-devices";
 import { enrichXlvSnapshotDailyMetrics, buildXlvTxnActivityTrend } from "./snapshot-daily";
-import { normalizeXlvStatDate, xlvStatDateKey } from "@/lib/xlv-stat-date";
 import { inferXlvTxnDates } from "@/lib/xlv-txn-dates";
 import { withXlvBoardCache } from "./board-cache";
 import { withXlvHeavyGate } from "./xlv-heavy-gate";
@@ -44,7 +48,7 @@ import {
 } from "./relocation";
 
 function isoDate(d: Date | null | undefined) {
-  return d ? d.toISOString().slice(0, 10) : null;
+  return d ? xlvStatDateKey(d) || null : null;
 }
 
 export type XlvBoardRow = {
@@ -183,7 +187,8 @@ async function aggregateBoardDevices(
   let invalidCount = 0;
   let compliantCount = 0;
   let cursor: string | undefined;
-  const { from: monthFrom, to: monthTo } = getCurrentMonthRange();
+  const { dateFrom, dateTo } = xlvCurrentChinaMonthDateRange();
+  const followUpRange = xlvShanghaiDateTimeRange(dateFrom, dateTo);
   const monthFollowed: BoardDeviceRow[] = [];
 
   for (;;) {
@@ -201,8 +206,8 @@ async function aggregateBoardDevices(
       if (
         opts?.includeFollowUpMetrics &&
         d.followUpAt &&
-        d.followUpAt >= monthFrom &&
-        d.followUpAt <= monthTo
+        d.followUpAt >= followUpRange.from &&
+        d.followUpAt <= followUpRange.to
       ) {
         map.get(keyFn(d))!.monthFollowUpCount += 1;
         monthFollowed.push(d);

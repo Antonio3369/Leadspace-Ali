@@ -91,10 +91,10 @@ export function XlvStaffMonthlyPerformanceView({
         meta={
           <div className="space-y-1 text-sm text-[#64748b]">
             <p className="hidden sm:block">
-              拓展/达标按<strong>首笔交易日期</strong>落在所选区间统计；回访按<strong>跟进日</strong>；唤醒由导入数据自动判定。
+              已铺设未达标的当月继续考核（不限装机月）；「本月新铺」只统计首笔落在所选月的设备。回访按跟进日。
             </p>
             <p className="sm:hidden">
-              拓展/达标看首笔交易月；回访看跟进日。
+              未达标当月继续考核；新铺看首笔月。
             </p>
             {backHref ? (
               <HistoryBackLink
@@ -144,15 +144,15 @@ export function XlvStaffMonthlyPerformanceView({
         <div className="space-y-6">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard
-              label="拓展（首笔交易）"
+              label="本月新铺"
               value={data.summary.expandCount}
-              sub={`达标 ${data.summary.qualifiedCount}（${data.summary.qualifyRate}%）`}
+              sub="按首笔交易月"
               tone="blue"
             />
             <StatCard
               label="考核中"
               value={data.summary.inProgressCount}
-              sub={`无效 ${data.summary.invalidCount}`}
+              sub={`已达标 ${data.summary.qualifiedCount}（${data.summary.qualifyRate}%）· 无效 ${data.summary.invalidCount}`}
             />
             <StatCard
               label="回访跟进"
@@ -177,7 +177,7 @@ export function XlvStaffMonthlyPerformanceView({
           </p>
 
           <DeviceSection
-            title="拓展设备"
+            title="本月新铺"
             emptyText="所选区间内无首笔交易设备"
             devices={data.expandDevices}
             showQualification

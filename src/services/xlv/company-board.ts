@@ -7,7 +7,12 @@ import {
   type XlvCompanyBoardResult,
   type XlvCompanyBoardRow,
 } from "@/lib/xlv-company-board";
-import { getCurrentMonthRange } from "@/lib/n7-date";
+import {
+  xlvCalendarDayRange,
+  xlvCurrentChinaMonthDateRange,
+  xlvShanghaiDateTimeRange,
+  xlvStatDateKey,
+} from "@/lib/xlv-stat-date";
 import { detectXlvWakeUpDate } from "@/lib/xlv-wake-up";
 import {
   isXlvDeviceCompliant,
@@ -140,7 +145,9 @@ async function aggregateCompanyBoard(
 }> {
   const map = new Map<string, XlvCompanyBoardRow>();
   const monthFollowed: CompanyBoardDeviceRow[] = [];
-  const { from: monthFrom, to: monthTo } = getCurrentMonthRange();
+  const { dateFrom, dateTo } = xlvCurrentChinaMonthDateRange();
+  const firstTxnRange = xlvCalendarDayRange(dateFrom, dateTo);
+  const followUpRange = xlvShanghaiDateTimeRange(dateFrom, dateTo);
   const totals = {
     deployedCount: 0,
     monthExpandCount: 0,
@@ -178,8 +185,8 @@ async function aggregateCompanyBoard(
 
       if (
         d.firstTxnDate &&
-        d.firstTxnDate >= monthFrom &&
-        d.firstTxnDate <= monthTo
+        d.firstTxnDate >= firstTxnRange.from &&
+        d.firstTxnDate <= firstTxnRange.to
       ) {
         row.monthExpandCount += 1;
         totals.monthExpandCount += 1;
@@ -207,8 +214,8 @@ async function aggregateCompanyBoard(
 
       if (
         d.followUpAt &&
-        d.followUpAt >= monthFrom &&
-        d.followUpAt <= monthTo
+        d.followUpAt >= followUpRange.from &&
+        d.followUpAt <= followUpRange.to
       ) {
         row.monthFollowUpCount += 1;
         totals.monthFollowUpCount += 1;
@@ -296,7 +303,7 @@ export async function getXlvCompanyBoard(): Promise<XlvCompanyBoardResult> {
           complianceRate,
           monthWakeUpRate,
           dataDate: latest?.lastTxnDate
-            ? latest.lastTxnDate.toISOString().slice(0, 10)
+            ? xlvStatDateKey(latest.lastTxnDate)
             : null,
           unassignedDeployedCount: unassignedRow?.deployedCount ?? 0,
           compliantCount: totals.compliantCount,

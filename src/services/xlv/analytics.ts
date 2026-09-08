@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { parseN7DateRange } from "@/lib/n7-date";
-import { xlvCalendarDayRange } from "@/lib/xlv-stat-date";
+import { xlvCalendarDayRange, xlvStatDateKey } from "@/lib/xlv-stat-date";
 import type { SessionUser } from "@/lib/permissions";
 import { getXlvMonthWakeUpRate } from "@/services/xlv/daily";
 import {
@@ -49,9 +49,9 @@ export interface XlvDashboardPulseSummary {
   dateFrom: string;
   dateTo: string;
   monthExpandCount: number;
-  /** 所选月首笔里已达标台数 */
+  /** 已铺设中当前已达标（不限首笔月；往月未达标当月继续考核） */
   monthQualifiedCount: number;
-  /** 所选区间无拓展时为 null，界面显示 — */
+  /** 已铺设为 0 时为 null */
   monthQualifyRate: number | null;
   singleSilence: number;
   dormant: number;
@@ -88,7 +88,7 @@ export interface XlvManagerStat {
 export const XLV_DASHBOARD_PAGE_SIZE = 20;
 
 function isoDate(d: Date | null | undefined) {
-  return d ? d.toISOString().slice(0, 10) : null;
+  return d ? xlvStatDateKey(d) || null : null;
 }
 
 type XlvListDeviceRow = {
@@ -256,33 +256,36 @@ export async function getXlvDashboardPulseSummary(
     throw new Error("请选择有效日期范围");
   }
   const { from, to } = xlvCalendarDayRange(dateFrom, dateTo);
+  const roleWhere = buildXlvRoleWhere(user);
+  const operationalWhere = {
+    AND: [roleWhere, buildXlvOperationalDeviceWhere()],
+  };
   const expandWhere = {
-    AND: [
-      buildXlvRoleWhere(user),
-      buildXlvOperationalDeviceWhere(),
-      { firstTxnDate: { gte: from, lte: to } },
-    ],
+    AND: [operationalWhere, { firstTxnDate: { gte: from, lte: to } }],
   };
 
-  const [fast, expandCount, expandQualified, wakeUpRate] = await Promise.all([
+  const [fast, expandCount, qualifiedCount, wakeUpRate] = await Promise.all([
     getXlvDashboardSummaryFast(user),
     db.xlvDeviceRecord.count({ where: expandWhere }),
     db.xlvDeviceRecord.count({
-      where: { AND: [expandWhere, { qualificationStatus: "qualified" }] },
+      where: {
+        AND: [operationalWhere, { qualificationStatus: "qualified" }],
+      },
     }),
     getXlvMonthWakeUpRate(user, { dateFrom, dateTo }),
   ]);
 
+  const deployedCount = fast.deployedCount;
   const monthQualifyRate =
-    expandCount > 0
-      ? Math.round((expandQualified / expandCount) * 1000) / 10
+    deployedCount > 0
+      ? Math.round((qualifiedCount / deployedCount) * 1000) / 10
       : null;
 
   return {
     dateFrom,
     dateTo,
     monthExpandCount: expandCount,
-    monthQualifiedCount: expandQualified,
+    monthQualifiedCount: qualifiedCount,
     monthQualifyRate,
     singleSilence: fast.singleSilence,
     dormant: fast.dormant,
