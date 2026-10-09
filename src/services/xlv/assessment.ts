@@ -80,6 +80,8 @@ export async function attachXlvInProgressMonthProgress<
     { statDateFrom: previousCalendarMonthStart() }
   );
 
+  const statusUpdates: { deviceSn: string; status: XlvQualificationStatus }[] = [];
+
   for (const d of targets) {
     const snaps = [...(snapshotMap.get(d.deviceSn) ?? [])];
     const latest = snaps[snaps.length - 1];
@@ -120,10 +122,32 @@ export async function attachXlvInProgressMonthProgress<
       true
     );
     const { monthLine, gapLine } = xlvQualificationListProgress(detail);
+    if (d.qualificationStatus && detail.status !== d.qualificationStatus) {
+      d.qualificationStatus = detail.status;
+      statusUpdates.push({ deviceSn: d.deviceSn, status: detail.status });
+    }
     Object.assign(d, {
       monthProgressLine: monthLine,
       qualificationGapLine: gapLine,
     });
+  }
+
+  if (statusUpdates.length > 0) {
+    const byStatus = new Map<XlvQualificationStatus, string[]>();
+    for (const row of statusUpdates) {
+      const list = byStatus.get(row.status) ?? [];
+      list.push(row.deviceSn);
+      byStatus.set(row.status, list);
+    }
+    const assessedAt = new Date();
+    await Promise.all(
+      [...byStatus.entries()].map(([status, sns]) =>
+        db.xlvDeviceRecord.updateMany({
+          where: { deviceSn: { in: sns } },
+          data: { qualificationStatus: status, qualificationAssessedAt: assessedAt },
+        })
+      )
+    );
   }
 
   return devices;
