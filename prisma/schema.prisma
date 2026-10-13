@@ -283,6 +283,8 @@ model SystemConfig {
   syncCron         String   @default("10 0 * * *") // 每日 00:10
   syncFrequency    String   @default("daily")      // hourly | daily
   lastSyncAt       DateTime?
+  /// 小绿盒考核规则版本。与代码不一致时，部署引导重算一次达标状态。
+  xlvQualificationRuleVersion String @default("")
   updatedAt        DateTime @updatedAt
 }
 

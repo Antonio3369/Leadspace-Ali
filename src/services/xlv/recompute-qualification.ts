@@ -12,7 +12,7 @@ import {
 } from "@/services/xlv/xlv-scope";
 import { loadXlvSnapshotMap, xlvQualificationOf } from "@/services/xlv/assessment";
 
-export const XLV_QUALIFICATION_RULE_VERSION = "2026-09-window-to-2027-03";
+export const XLV_QUALIFICATION_RULE_VERSION = "2026-10-natural-month";
 
 const DEVICE_QUAL_SELECT = {
   deviceSn: true,
@@ -189,37 +189,53 @@ export async function countXlvQualificationSummary(user: SessionUser) {
   return { qualifiedCount, inProgressCount, invalidCount, active };
 }
 
-/** 若仍有设备从未评估，或按旧两月窗口判了无效，在部署引导中按新政策重算 */
+/** 若仍有设备从未评估、按旧两月窗口判了无效，或规则版本变了，在部署引导中重算 */
 export async function backfillXlvQualificationIfNeeded() {
-  const pending = await db.xlvDeviceRecord.count({
-    where: {
-      AND: [
-        buildXlvAssignedDeviceWhere(),
-        {
-          OR: [
-            { qualificationAssessedAt: null },
-            { qualificationStatus: "invalid" },
-          ],
-        },
-      ],
-    },
+  const config = await db.systemConfig.upsert({
+    where: { id: "singleton" },
+    update: {},
+    create: { id: "singleton" },
+    select: { xlvQualificationRuleVersion: true },
   });
-  if (pending === 0) return { scanned: 0, updated: pending };
+  const ruleChanged =
+    config.xlvQualificationRuleVersion !== XLV_QUALIFICATION_RULE_VERSION;
+
+  const pendingWhere = {
+    AND: [
+      buildXlvAssignedDeviceWhere(),
+      {
+        OR: [
+          { qualificationAssessedAt: null },
+          { qualificationStatus: "invalid" as const },
+          ...(ruleChanged
+            ? [{ qualificationStatus: "qualified" as const }]
+            : []),
+        ],
+      },
+    ],
+  };
+
+  const pending = await db.xlvDeviceRecord.count({ where: pendingWhere });
+  if (pending === 0) {
+    if (ruleChanged) {
+      await db.systemConfig.update({
+        where: { id: "singleton" },
+        data: { xlvQualificationRuleVersion: XLV_QUALIFICATION_RULE_VERSION },
+      });
+    }
+    return { scanned: 0, updated: 0 };
+  }
 
   const rows = await db.xlvDeviceRecord.findMany({
-    where: {
-      AND: [
-        buildXlvAssignedDeviceWhere(),
-        {
-          OR: [
-            { qualificationAssessedAt: null },
-            { qualificationStatus: "invalid" },
-          ],
-        },
-      ],
-    },
+    where: pendingWhere,
     select: { deviceSn: true },
   });
   await recomputeXlvQualificationForDevices(rows.map((r) => r.deviceSn));
+  if (ruleChanged) {
+    await db.systemConfig.update({
+      where: { id: "singleton" },
+      data: { xlvQualificationRuleVersion: XLV_QUALIFICATION_RULE_VERSION },
+    });
+  }
   return { scanned: rows.length, updated: rows.length };
 }

@@ -36,14 +36,6 @@ export function isXlvMonthlyTargetMet(users: number, txns: number) {
   );
 }
 
-/** 累计值已明显达标（快照不足时的兜底） */
-export function isXlvCumulativeQualified(device: {
-  cumulativeUsers: number;
-  cumulativeTxns: number;
-}) {
-  return isXlvMonthlyTargetMet(device.cumulativeUsers, device.cumulativeTxns);
-}
-
 export type XlvAssessmentAnchor = {
   firstTxnDate: Date | null;
   relocatedAt?: Date | null;
@@ -175,10 +167,6 @@ export function assessXlvQualification(
   const points = snapshotsForAssessment(device, snapshots).sort(
     (a, b) => a.statDate.getTime() - b.statDate.getTime()
   );
-  // 移机后微信累计可能仍含旧店或已解绑只剩残量，不用终身累计直接判达标
-  if (!device.relocatedAt && isXlvCumulativeQualified(assessed)) {
-    return "qualified";
-  }
   if (!assessed.firstTxnDate) return "in_progress";
 
   const reference = qualificationAsOf(asOf);

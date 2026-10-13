@@ -8,7 +8,6 @@ import {
   type ParsedXlvRosterRow,
 } from "@/services/import/xlv-excel-parser";
 import {
-  isXlvCumulativeQualified,
   isXlvManagerSelfSale,
   isXlvPlaceholderName,
   xlvRosterPairKey,
@@ -41,7 +40,7 @@ import {
   findUserInIndexes,
 } from "@/services/org/user-matcher";
 import { reopenXlvFollowUpsAfterSnapshot } from "@/services/xlv/follow-up";
-import { recomputeXlvQualificationForDevices, syncXlvQualificationStatuses } from "@/services/xlv/recompute-qualification";
+import { recomputeXlvQualificationForDevices } from "@/services/xlv/recompute-qualification";
 import { syncInventoryFromSnAttribution } from "@/services/xlv/inventory/service";
 
 function createId() {
@@ -360,7 +359,6 @@ async function importAssignmentRows(
   let inventorySynced = 0;
   const createdSns: string[] = [];
   const relocatedSns: string[] = [];
-  const qualifyNowSns: string[] = [];
 
   for (let offset = 0; offset < uniqueRows.length; offset += CHUNK) {
     const slice = uniqueRows.slice(offset, offset + CHUNK);
@@ -385,7 +383,6 @@ async function importAssignmentRows(
         firstTxnDate: Date | null;
         merchantName: string | null;
         relocatedAt: Date | null;
-        qualificationStatus: string;
       }
     >();
     for (let i = 0; i < sliceSns.length; i += LOOKUP_CHUNK) {
@@ -403,7 +400,6 @@ async function importAssignmentRows(
           firstTxnDate: true,
           merchantName: true,
           relocatedAt: true,
-          qualificationStatus: true,
         },
       });
       for (const row of found) existingBySn.set(row.deviceSn, row);
@@ -488,13 +484,6 @@ async function importAssignmentRows(
         createdSns.push(row.deviceSn);
       }
       if (merchantMoved) relocatedSns.push(row.deviceSn);
-      if (
-        !write.relocatedAt &&
-        isXlvCumulativeQualified(write) &&
-        existing?.qualificationStatus !== "qualified"
-      ) {
-        qualifyNowSns.push(row.deviceSn);
-      }
 
       if (managerName && !isXlvPlaceholderName(operatorName)) {
         inventoryRows.push({
@@ -521,14 +510,6 @@ async function importAssignmentRows(
     );
     inventorySynced += inventorySync.synced;
     await yieldImportTick();
-  }
-
-  const qualifyUnique = [...new Set(qualifyNowSns)];
-  if (qualifyUnique.length > 0) {
-    await onProgress?.(88, `累计已达标 ${qualifyUnique.length.toLocaleString()} 台，回写状态…`);
-    await syncXlvQualificationStatuses(
-      qualifyUnique.map((deviceSn) => ({ deviceSn, status: "qualified" as const }))
-    );
   }
 
   const recomputeSns = [...new Set([...createdSns, ...relocatedSns])];
