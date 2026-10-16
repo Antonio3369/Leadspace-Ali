@@ -493,7 +493,8 @@ export function XlvDashboardView({
   function isPulseCardActive(id: PulseCardId) {
     if (id === "hit_fubei") return monthHit === "fubei";
     if (id === "hit_leshua") return monthHit === "leshua";
-    if (id === "qualified" || id === "qualify_rate") return qualifiedActive;
+    if (id === "qualified") return periodQualifiedActive;
+    if (id === "qualify_rate") return qualifiedActive;
     if (id === "expand") return monthExpandActive;
     if (id === "single_silence") return alert === "single_silence";
     if (id === "dormant") return alert === "dormant" || alert === "sleep";
@@ -512,7 +513,7 @@ export function XlvDashboardView({
         {
           id: "qualified" as const,
           label: "已达标",
-          hint: periodCopy.qualifiedHint,
+          hint: periodCopy.periodQualifiedHint,
           value: pulseLoaded ? pulse.monthQualifiedCount : null,
           tone: "green" as const,
         },
@@ -612,7 +613,7 @@ export function XlvDashboardView({
       const next = id === "hit_fubei" ? "fubei" : "leshua";
       pushQuery({
         hit: isActive ? null : next,
-        expand: "all",
+        expand: "month",
         status: null,
         alert: null,
       });
@@ -628,7 +629,16 @@ export function XlvDashboardView({
       });
       return;
     }
-    if (id === "qualify_rate" || id === "qualified") {
+    if (id === "qualified") {
+      pushQuery({
+        expand: isActive ? null : "month",
+        status: isActive ? null : "qualified",
+        alert: null,
+        hit: null,
+      });
+      return;
+    }
+    if (id === "qualify_rate") {
       pushQuery({
         expand: null,
         status: isActive ? null : "qualified",
@@ -662,9 +672,9 @@ export function XlvDashboardView({
     search.trim()
       ? "搜索结果"
       : monthHit === "fubei"
-        ? "已达标 · 付呗"
+        ? `${periodCopy.periodQualifiedHint} · 付呗`
         : monthHit === "leshua"
-          ? "已达标 · 乐刷"
+          ? `${periodCopy.periodQualifiedHint} · 乐刷`
           : status === "qualified" && !expandMonth
             ? "已达标商户"
             : expandMonth && status === "qualified"
@@ -761,7 +771,7 @@ export function XlvDashboardView({
               <div
                 key={item.id}
                 className={`order-1 col-span-2 md:order-2 md:col-span-1 rounded-[14px] border px-3 py-3 ${toneClass[item.tone]} ${
-                  qualifiedActive ? "ring-2 ring-[#2563eb]/30" : ""
+                  periodQualifiedActive ? "ring-2 ring-[#2563eb]/30" : ""
                 }`}
               >
                 <button

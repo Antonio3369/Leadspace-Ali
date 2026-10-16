@@ -51,11 +51,11 @@ export interface XlvDashboardPulseSummary {
   dateFrom: string;
   dateTo: string;
   monthExpandCount: number;
-  /** 已铺设中当前已达标（不限首笔月；往月未达标当月继续考核） */
+  /** 所选日期内新铺且已达标 */
   monthQualifiedCount: number;
   /** 已铺设为 0 时为 null */
   monthQualifyRate: number | null;
-  /** 已铺设且已达标，按付呗 / 乐刷拆开；有渠道的设备两者之和等于 monthQualifiedCount */
+  /** 所选日期内新铺且已达标，按付呗 / 乐刷拆开 */
   monthHitLabel: string;
   monthHitFubei: number;
   monthHitLeshua: number;
@@ -272,10 +272,13 @@ export async function getXlvDashboardPulseSummary(
     AND: [operationalWhere, { firstTxnDate: { gte: from, lte: to } }],
   };
 
-  const [fast, expandCount, qualifiedCount, wakeUpRate, monthHits] =
+  const [fast, expandCount, periodQualified, deployedQualified, wakeUpRate, monthHits] =
     await Promise.all([
       getXlvDashboardSummaryFast(user),
       db.xlvDeviceRecord.count({ where: expandWhere }),
+      db.xlvDeviceRecord.count({
+        where: { AND: [expandWhere, { qualificationStatus: "qualified" }] },
+      }),
       db.xlvDeviceRecord.count({
         where: {
           AND: [operationalWhere, { qualificationStatus: "qualified" }],
@@ -288,14 +291,14 @@ export async function getXlvDashboardPulseSummary(
   const deployedCount = fast.deployedCount;
   const monthQualifyRate =
     deployedCount > 0
-      ? Math.round((qualifiedCount / deployedCount) * 1000) / 10
+      ? Math.round((deployedQualified / deployedCount) * 1000) / 10
       : null;
 
   return {
     dateFrom,
     dateTo,
     monthExpandCount: expandCount,
-    monthQualifiedCount: qualifiedCount,
+    monthQualifiedCount: periodQualified,
     monthQualifyRate,
     monthHitLabel: monthHits.label,
     monthHitFubei: monthHits.fubei,

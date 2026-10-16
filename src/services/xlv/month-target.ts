@@ -5,6 +5,7 @@ import {
   xlvMonthHitLabel,
   type XlvMonthHitChannel,
 } from "@/lib/xlv-month-hit";
+import { xlvCalendarDayRange } from "@/lib/xlv-stat-date";
 import {
   assertCanViewXlv,
   buildXlvOperationalDeviceWhere,
@@ -20,7 +21,7 @@ export type XlvMonthTargetHits = {
   leshuaSns: string[];
 };
 
-/** 与「已达标」同一批：已铺设且考核状态为已达标，再按渠道拆开。不按装机日期收窄。 */
+/** 与所选日期的「新铺已达标」同一批，再按渠道拆开 */
 async function computeXlvMonthTargetHits(
   user: SessionUser,
   dateFrom: string,
@@ -28,11 +29,13 @@ async function computeXlvMonthTargetHits(
 ): Promise<XlvMonthTargetHits> {
   assertCanViewXlv(user);
   const label = xlvMonthHitLabel(dateFrom, dateTo);
+  const { from, to } = xlvCalendarDayRange(dateFrom, dateTo);
   const devices = await db.xlvDeviceRecord.findMany({
     where: {
       AND: [
         buildXlvRoleWhere(user),
         buildXlvOperationalDeviceWhere(),
+        { firstTxnDate: { gte: from, lte: to } },
         { qualificationStatus: "qualified" },
       ],
     },
@@ -61,7 +64,7 @@ export async function loadXlvMonthTargetHits(
   opts: { dateFrom: string; dateTo: string }
 ): Promise<XlvMonthTargetHits> {
   const key = [
-    "month-hit-v6",
+    "month-hit-v7",
     user.id,
     user.role,
     user.xlvManagerName ?? "",
