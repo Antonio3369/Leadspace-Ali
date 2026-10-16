@@ -1247,6 +1247,10 @@ export type InventoryOverview = {
     complianceRate: number | null;
     adminStock: number;
     pendingReceipt: number;
+    /** 库存账渠道台数（付呗 / 乐刷 / 未标注） */
+    channelFubei: number;
+    channelLeshua: number;
+    channelUnknown: number;
   };
   managers: InventoryManagerReportRow[];
   staff?: InventoryStaffReportRow[];

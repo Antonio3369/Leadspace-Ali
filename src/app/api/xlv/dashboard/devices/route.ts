@@ -3,11 +3,16 @@ import { requireSessionUser } from "@/lib/auth";
 import { parseN7DateRange } from "@/lib/n7-date";
 import { PermissionError } from "@/lib/permissions";
 import { xlvCalendarDayRange } from "@/lib/xlv-stat-date";
+import { parseXlvMonthHitChannel } from "@/lib/xlv-month-hit";
 import { parseXlvAlertKind, parseXlvQualificationStatus } from "@/lib/xlv-rules";
 import {
   getXlvDashboardDevicesPage,
   XLV_DASHBOARD_PAGE_SIZE,
 } from "@/services/xlv/analytics";
+import {
+  loadXlvMonthTargetHits,
+  xlvMonthHitSns,
+} from "@/services/xlv/month-target";
 
 export async function GET(request: Request) {
   try {
@@ -21,7 +26,8 @@ export async function GET(request: Request) {
       alert !== "all"
         ? null
         : parseXlvQualificationStatus(searchParams.get("status"));
-    const expandMonth = searchParams.get("expand") === "month";
+    const monthHit = parseXlvMonthHitChannel(searchParams.get("hit"));
+    const expandMonth = searchParams.get("expand") === "month" && !monthHit;
     const range = parseN7DateRange({
       dateFrom: searchParams.get("dateFrom"),
       dateTo: searchParams.get("dateTo"),
@@ -32,6 +38,16 @@ export async function GET(request: Request) {
         : null;
     const expandFrom = bounds?.from ?? null;
     const expandTo = bounds?.to ?? null;
+    const monthHitSns =
+      monthHit && range.dateFrom && range.dateTo
+        ? xlvMonthHitSns(
+            await loadXlvMonthTargetHits(user, {
+              dateFrom: range.dateFrom,
+              dateTo: range.dateTo,
+            }),
+            monthHit
+          )
+        : undefined;
 
     const offset = Math.max(0, Number(searchParams.get("offset") ?? "0") || 0);
     const limitRaw = Number(searchParams.get("limit") ?? String(XLV_DASHBOARD_PAGE_SIZE));
@@ -48,6 +64,7 @@ export async function GET(request: Request) {
       qualificationStatus,
       expandFrom,
       expandTo,
+      deviceSns: monthHitSns,
       offset,
       limit,
     });

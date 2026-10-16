@@ -18,6 +18,7 @@ import {
   type XlvQualificationStatus,
 } from "@/lib/xlv-rules";
 import type { XlvDeviceListItem } from "@/services/xlv/analytics";
+import { XlvChannelBadge } from "@/components/xlv/XlvChannelBadge";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
 import { XlvRelocationBadge } from "@/components/xlv/XlvRelocationBadge";
 import { XlvFollowUpStatusCell } from "@/components/xlv/XlvFollowUpStatusCell";
@@ -150,6 +151,7 @@ export function XlvDeviceCardList({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
+                      <XlvChannelBadge channel={d.channel} compact />
                       {shouldShowAlertBadge(d, hideAlertBadge) &&
                       sleepLabel &&
                       !hideLegacyTxn ? (
@@ -178,7 +180,7 @@ export function XlvDeviceCardList({
                         <div className="text-xs tabular-nums text-[#64748b] leading-snug">
                           {d.firstTxnDate ? (
                             <p>
-                              {d.relocation?.fromStore ? "考核起算" : "首笔"}{" "}
+                              {d.relocation?.fromStore ? "考核起算" : "装机"}{" "}
                               {d.firstTxnDate}
                             </p>
                           ) : null}

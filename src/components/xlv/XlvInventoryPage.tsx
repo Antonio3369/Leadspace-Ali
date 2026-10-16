@@ -5,6 +5,7 @@ import { readResponseJson, getFetchErrorMessage } from "@/lib/fetch-json";
 import { XLV_INVENTORY_STATUS_LABEL, XLV_WITHDRAW_IMPORT_ENABLED } from "@/lib/xlv-inventory";
 import type { XlvInventoryStatus } from "@/lib/xlv-inventory";
 import type { InventoryOverview } from "@/services/xlv/inventory/service";
+import { XlvChannelBadge } from "@/components/xlv/XlvChannelBadge";
 import { XlvInventoryOverview } from "@/components/xlv/XlvInventoryOverview";
 import {
   NotionAlert,
@@ -344,9 +345,7 @@ export function XlvInventoryPage({ isAdmin }: { isAdmin: boolean }) {
                       }}
                     />
                     <span className="font-mono">{item.deviceSn}</span>
-                    {item.channel && (
-                      <span className="text-[#94a3b8]">{item.channel}</span>
-                    )}
+                    <XlvChannelBadge channel={item.channel} compact />
                   </li>
                 ))}
               </ul>

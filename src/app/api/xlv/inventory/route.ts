@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { sessionAuthRealm } from "@/lib/auth-realm";
 import { canImportExcel, canLogin } from "@/lib/permissions";
 import { loadXlvManagerComplianceByName } from "@/services/xlv/board";
+import { loadXlvChannelCounts } from "@/services/xlv/channel";
 import {
   enrichManagerReportWithCompliance,
   getInventorySummary,
@@ -31,7 +32,10 @@ export const GET = auth(async (request) => {
     return NextResponse.json({ error: "无权访问库存" }, { status: 403 });
   }
 
-  const summary = await getInventorySummary(managerScope);
+  const [summary, channelCounts] = await Promise.all([
+    getInventorySummary(managerScope),
+    loadXlvChannelCounts(managerScope),
+  ]);
   const managersRaw = await loadInventoryManagerReport(
     user.role === "MANAGER" ? managerScope : null
   );
@@ -74,6 +78,9 @@ export const GET = auth(async (request) => {
           : null,
       adminStock: summary.counts.admin_stock ?? 0,
       pendingReceipt: summary.pendingReceipt,
+      channelFubei: channelCounts.fubei,
+      channelLeshua: channelCounts.leshua,
+      channelUnknown: channelCounts.unknown,
     },
     managers,
     staff,

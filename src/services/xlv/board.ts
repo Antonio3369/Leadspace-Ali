@@ -48,6 +48,8 @@ import {
   attachXlvRelocations,
   loadXlvRelocationsBySn,
 } from "./relocation";
+import { attachXlvChannels } from "./channel";
+import { xlvChannelDisplay } from "@/lib/xlv-channel";
 
 function isoDate(d: Date | null | undefined) {
   return d ? xlvStatDateKey(d) || null : null;
@@ -491,6 +493,7 @@ export async function getXlvStaffDevices(
     qualificationGapLine: undefined as string | undefined,
   }));
   await attachXlvRelocations(devicesOut);
+  await attachXlvChannels(devicesOut);
   await attachXlvInProgressMonthProgress(devicesOut);
   for (const d of devicesOut) {
     if (d.qualificationGapLine) {
@@ -583,10 +586,25 @@ export async function getXlvDeviceDetail(user: SessionUser, deviceSn: string) {
     ];
   }
 
-  const relocation =
-    (await loadXlvRelocationsBySn([deviceSn])).get(deviceSn) ?? null;
+  const [relocation, inventory] = await Promise.all([
+    loadXlvRelocationsBySn([deviceSn]).then((map) => map.get(deviceSn) ?? null),
+    db.xlvInventoryDevice.findUnique({
+      where: { deviceSn },
+      select: { channel: true },
+    }),
+  ]);
 
-  return { device, qualificationDetail, txnTrend, relocation };
+  return {
+    device: {
+      ...device,
+      channel:
+        xlvChannelDisplay(device.channel) ??
+        xlvChannelDisplay(inventory?.channel),
+    },
+    qualificationDetail,
+    txnTrend,
+    relocation,
+  };
 }
 
 export type XlvManagerComplianceSnapshot = {

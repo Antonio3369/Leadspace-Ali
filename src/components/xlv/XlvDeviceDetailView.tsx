@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/notion";
 import { HistoryBackLink } from "@/components/ui/HistoryBackLink";
 import { CopyTextButton } from "@/components/ui/CopyTextButton";
+import { XlvChannelBadge } from "@/components/xlv/XlvChannelBadge";
 import { XlvAssessmentPanel } from "@/components/xlv/XlvAssessmentPanel";
 import { XlvQualificationBadge } from "@/components/xlv/XlvQualificationBadge";
 import { XlvRelocationBadge } from "@/components/xlv/XlvRelocationBadge";
@@ -61,6 +62,7 @@ interface Device {
   followUpReviewNote?: string | null;
   followUpReviewAt?: string | null;
   followUpReviewByName?: string | null;
+  channel?: string | null;
 }
 
 type PendingWithdraw = {
@@ -305,6 +307,7 @@ export function XlvDeviceDetailView({
 
           <div className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm space-y-3">
             <div className="flex flex-wrap items-center gap-2">
+              <XlvChannelBadge channel={device.channel} />
               {xlvShouldShowSleepAlertBadge(displayInput) &&
               sleepLabel &&
               !hideLegacyTxn ? (
@@ -327,6 +330,16 @@ export function XlvDeviceDetailView({
 
             <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
               <div>
+                <dt className="text-[#94a3b8] text-xs">渠道</dt>
+                <dd className="font-medium">
+                  {device.channel ? (
+                    <XlvChannelBadge channel={device.channel} />
+                  ) : (
+                    "—"
+                  )}
+                </dd>
+              </div>
+              <div>
                 <dt className="text-[#94a3b8] text-xs">队员</dt>
                 <dd className="font-medium">{device.operatorName || "—"}</dd>
               </div>
@@ -346,7 +359,7 @@ export function XlvDeviceDetailView({
               ) : null}
               <div>
                 <dt className="text-[#94a3b8] text-xs">
-                  {relocation?.fromStore ? "移机后考核起算" : "首笔交易"}
+                  {relocation?.fromStore ? "移机后考核起算" : "装机"}
                 </dt>
                 <dd className="tabular-nums">{fmtDate(device.firstTxnDate)}</dd>
               </div>

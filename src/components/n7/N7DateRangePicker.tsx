@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import {
+  endOfMonthDateInput,
   getPresetRange,
   type LedgerDatePreset,
 } from "@/lib/ledger-date";
@@ -19,6 +20,7 @@ export function N7DateRangePicker({
   dateLabel = "注册日期",
   trailing,
   compact = false,
+  snapEndToStartMonth = false,
 }: {
   dateFrom: string;
   dateTo: string;
@@ -29,10 +31,20 @@ export function N7DateRangePicker({
   trailing?: ReactNode;
   /** 嵌入页头时略收紧间距 */
   compact?: boolean;
+  /** 改起始日后，结束日落到该月最后一天 */
+  snapEndToStartMonth?: boolean;
 }) {
   function applyPreset(preset: LedgerDatePreset) {
     const range = getPresetRange(preset);
     onChange(range);
+  }
+
+  function applyStart(value: string) {
+    if (!snapEndToStartMonth || !value) {
+      onChange({ dateFrom: value, dateTo });
+      return;
+    }
+    onChange({ dateFrom: value, dateTo: endOfMonthDateInput(value) ?? dateTo });
   }
 
   function isPresetActive(preset: LedgerDatePreset) {
@@ -74,7 +86,7 @@ export function N7DateRangePicker({
             <NotionInput
               type="date"
               value={dateFrom}
-              onChange={(e) => onChange({ dateFrom: e.target.value, dateTo })}
+              onChange={(e) => applyStart(e.target.value)}
               className="min-h-11 w-full"
             />
           </label>
@@ -95,7 +107,7 @@ export function N7DateRangePicker({
           <NotionInput
             type="date"
             value={dateFrom}
-            onChange={(e) => onChange({ dateFrom: e.target.value, dateTo })}
+            onChange={(e) => applyStart(e.target.value)}
             className="min-h-10 w-[10.5rem]"
           />
           <span className="text-[#94a3b8] shrink-0">至</span>

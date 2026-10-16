@@ -31,6 +31,8 @@ import {
 import type { XlvRelocationHint } from "@/lib/xlv-relocation";
 import { attachXlvRelocations } from "@/services/xlv/relocation";
 import { attachXlvInProgressMonthProgress } from "@/services/xlv/assessment";
+import { attachXlvChannels } from "@/services/xlv/channel";
+import { loadXlvMonthTargetHits } from "@/services/xlv/month-target";
 
 export interface XlvDashboardSummary {
   totalDevices: number;
@@ -53,6 +55,10 @@ export interface XlvDashboardPulseSummary {
   monthQualifiedCount: number;
   /** 已铺设为 0 时为 null */
   monthQualifyRate: number | null;
+  /** 已铺设且已达标，按付呗 / 乐刷拆开；有渠道的设备两者之和等于 monthQualifiedCount */
+  monthHitLabel: string;
+  monthHitFubei: number;
+  monthHitLeshua: number;
   singleSilence: number;
   dormant: number;
   wakeUpRate: number;
@@ -76,6 +82,8 @@ export interface XlvDeviceListItem {
   /** 考核中：当月用户/笔数；已达标设备不展示 */
   monthProgressLine?: string;
   relocation?: XlvRelocationHint | null;
+  /** 库存账渠道：付呗 / 乐刷 */
+  channel?: string | null;
 }
 
 export interface XlvManagerStat {
@@ -264,16 +272,18 @@ export async function getXlvDashboardPulseSummary(
     AND: [operationalWhere, { firstTxnDate: { gte: from, lte: to } }],
   };
 
-  const [fast, expandCount, qualifiedCount, wakeUpRate] = await Promise.all([
-    getXlvDashboardSummaryFast(user),
-    db.xlvDeviceRecord.count({ where: expandWhere }),
-    db.xlvDeviceRecord.count({
-      where: {
-        AND: [operationalWhere, { qualificationStatus: "qualified" }],
-      },
-    }),
-    getXlvMonthWakeUpRate(user, { dateFrom, dateTo }),
-  ]);
+  const [fast, expandCount, qualifiedCount, wakeUpRate, monthHits] =
+    await Promise.all([
+      getXlvDashboardSummaryFast(user),
+      db.xlvDeviceRecord.count({ where: expandWhere }),
+      db.xlvDeviceRecord.count({
+        where: {
+          AND: [operationalWhere, { qualificationStatus: "qualified" }],
+        },
+      }),
+      getXlvMonthWakeUpRate(user, { dateFrom, dateTo }),
+      loadXlvMonthTargetHits(user, { dateFrom, dateTo }),
+    ]);
 
   const deployedCount = fast.deployedCount;
   const monthQualifyRate =
@@ -287,6 +297,9 @@ export async function getXlvDashboardPulseSummary(
     monthExpandCount: expandCount,
     monthQualifiedCount: qualifiedCount,
     monthQualifyRate,
+    monthHitLabel: monthHits.label,
+    monthHitFubei: monthHits.fubei,
+    monthHitLeshua: monthHits.leshua,
     singleSilence: fast.singleSilence,
     dormant: fast.dormant,
     wakeUpRate,
@@ -301,6 +314,8 @@ type XlvDashboardListOpts = {
   qualificationStatus?: XlvQualificationStatus | null;
   expandFrom?: Date | null;
   expandTo?: Date | null;
+  /** 限定为这些 SN；空数组表示没有命中 */
+  deviceSns?: string[];
 };
 
 /** 看板设备列表（分页）：仅拉当前页，不走重查询队列（避免被「今日待办」全量扫描堵住） */
@@ -332,7 +347,7 @@ async function loadXlvDashboardDevicesPage(
   assertCanViewXlv(user);
   const offset = Math.max(0, opts.offset ?? 0);
   const limit = opts.limit ?? XLV_DASHBOARD_PAGE_SIZE;
-  const listWhere = buildXlvDeviceWhere(user, {
+  const scopedWhere = buildXlvDeviceWhere(user, {
     alert: opts.alert,
     managerName: opts.managerName,
     operatorName: opts.operatorName,
@@ -341,6 +356,9 @@ async function loadXlvDashboardDevicesPage(
     expandFrom: opts.expandFrom,
     expandTo: opts.expandTo,
   });
+  const listWhere = opts.deviceSns
+    ? { AND: [scopedWhere, { deviceSn: { in: opts.deviceSns } }] }
+    : scopedWhere;
 
   const sortMode = resolveXlvDeviceSortMode({
     alert: opts.alert,
@@ -361,6 +379,7 @@ async function loadXlvDashboardDevicesPage(
 
   let devices = buildXlvDeviceListItems(pageRows);
   await attachXlvRelocations(devices);
+  await attachXlvChannels(devices);
   await attachXlvInProgressMonthProgress(devices);
   if (opts.qualificationStatus) {
     devices = devices.filter(

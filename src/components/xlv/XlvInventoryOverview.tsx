@@ -96,6 +96,22 @@ export function XlvInventoryOverview({
           sub={`运营考核 · 目标 ≥${XLV_COMPLIANCE_TARGET_RATE}%`}
           valueClassName={complianceClass(scopeSummary.complianceRate)}
         />
+        <Metric
+          label="付呗"
+          value={scopeSummary.channelFubei}
+          sub="渠道"
+          valueClassName="text-orange-800"
+        />
+        <Metric
+          label="乐刷"
+          value={scopeSummary.channelLeshua}
+          sub={
+            scopeSummary.channelUnknown > 0
+              ? `渠道 · 未标注 ${scopeSummary.channelUnknown}`
+              : "渠道"
+          }
+          valueClassName="text-violet-800"
+        />
       </div>
 
       {isAdmin ? (

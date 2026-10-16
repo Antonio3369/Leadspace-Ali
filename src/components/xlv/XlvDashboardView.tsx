@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { xlvPath } from "@/lib/business-lines";
 import {
+  endOfMonthDateInput,
   getCurrentMonthRange as getLedgerCurrentMonthRange,
   getLastMonthRange,
 } from "@/lib/ledger-date";
@@ -24,6 +25,10 @@ import {
   type XlvAlertKind,
   type XlvQualificationStatus,
 } from "@/lib/xlv-rules";
+import {
+  parseXlvMonthHitChannel,
+  type XlvMonthHitChannel,
+} from "@/lib/xlv-month-hit";
 import {
   NotionAlert,
   NotionCallout,
@@ -56,9 +61,25 @@ interface PulseSummaryResponse {
   monthExpandCount: number;
   monthQualifiedCount: number;
   monthQualifyRate: number | null;
+  monthHitLabel: string;
+  monthHitFubei: number;
+  monthHitLeshua: number;
   singleSilence: number;
   dormant: number;
   wakeUpRate: number;
+}
+
+interface PeriodBreakdownRow {
+  name: string;
+  installed: number;
+  qualified: number;
+  fubei: number;
+  leshua: number;
+}
+
+interface PeriodBreakdownResponse {
+  groupBy: "manager" | "operator";
+  rows: PeriodBreakdownRow[];
 }
 
 type PulseCardId =
@@ -67,7 +88,9 @@ type PulseCardId =
   | "single_silence"
   | "dormant"
   | "wake_rate"
-  | "qualified";
+  | "qualified"
+  | "hit_fubei"
+  | "hit_leshua";
 
 function buildListQuery(
   alert: XlvAlertKind,
@@ -78,12 +101,16 @@ function buildListQuery(
   expandMonth: boolean,
   dateFrom: string,
   dateTo: string,
-  offset: number
+  offset: number,
+  monthHit: XlvMonthHitChannel | null
 ) {
   const params = new URLSearchParams();
   if (alert !== "all") params.set("alert", alert);
   if (status && alert === "all") params.set("status", status);
-  if (expandMonth) {
+  if (monthHit) {
+    params.set("hit", monthHit);
+    applyN7DateRangeToParams(params, dateFrom, dateTo);
+  } else if (expandMonth) {
     params.set("expand", "month");
     applyN7DateRangeToParams(params, dateFrom, dateTo);
   }
@@ -94,6 +121,10 @@ function buildListQuery(
   return params;
 }
 
+function isCompleteCalendarMonth(dateFrom: string, dateTo: string) {
+  return dateFrom.endsWith("-01") && endOfMonthDateInput(dateFrom) === dateTo;
+}
+
 function xlvExpandPeriodCopy(dateFrom: string, dateTo: string) {
   const cur = getLedgerCurrentMonthRange();
   const last = getLastMonthRange();
@@ -102,9 +133,10 @@ function xlvExpandPeriodCopy(dateFrom: string, dateTo: string) {
       expandLabel: "本月拓展",
       expandHint: "本月新铺",
       qualifiedHint: "已铺设中已达标",
+      periodQualifiedHint: "本月新铺已达标",
       rateHint: "占已铺设",
       listExpand: "本月新铺商户",
-      listExpandQualified: "已达标商户",
+      listExpandQualified: "本月新铺 · 已达标",
     };
   }
   if (dateFrom === last.dateFrom && dateTo === last.dateTo) {
@@ -112,18 +144,32 @@ function xlvExpandPeriodCopy(dateFrom: string, dateTo: string) {
       expandLabel: "上月拓展",
       expandHint: "上月新铺",
       qualifiedHint: "已铺设中已达标",
+      periodQualifiedHint: "上月新铺已达标",
       rateHint: "占已铺设",
       listExpand: "上月新铺商户",
-      listExpandQualified: "已达标商户",
+      listExpandQualified: "上月新铺 · 已达标",
+    };
+  }
+  if (isCompleteCalendarMonth(dateFrom, dateTo)) {
+    const month = Number(dateFrom.slice(5, 7));
+    return {
+      expandLabel: `${month}月拓展`,
+      expandHint: `${month}月新铺`,
+      qualifiedHint: "已铺设中已达标",
+      periodQualifiedHint: `${month}月新铺已达标`,
+      rateHint: "占已铺设",
+      listExpand: `${month}月新铺商户`,
+      listExpandQualified: `${month}月新铺 · 已达标`,
     };
   }
   return {
     expandLabel: "期间拓展",
-    expandHint: `${dateFrom.slice(0, 7)} 新铺`,
+    expandHint: "期间新铺",
     qualifiedHint: "已铺设中已达标",
+    periodQualifiedHint: "期间新铺已达标",
     rateHint: "占已铺设",
     listExpand: "期间新铺商户",
-    listExpandQualified: "已达标商户",
+    listExpandQualified: "期间新铺 · 已达标",
   };
 }
 
@@ -149,10 +195,11 @@ export function XlvDashboardView({
   const manager = searchParams.get("manager") ?? "";
   const operator = searchParams.get("operator") ?? "";
   const search = searchParams.get("q") ?? "";
+  const monthHit = parseXlvMonthHitChannel(searchParams.get("hit"));
   const expandParam = searchParams.get("expand");
   const { dateFrom, dateTo } = readN7DateRangeFromSearchParams(searchParams);
   const rangeQs = n7DateRangeQuery(dateFrom, dateTo);
-  /** 仅点「本月拓展 / 已达标」才按首笔月筛列表；默认看全部已铺设 */
+  /** 仅点「新铺 / 期间达标」才按装机日筛列表；默认看全部已铺设 */
   const filterByFirstTxn =
     !search.trim() && alert === "all" && expandParam === "month";
   const expandMonth = filterByFirstTxn;
@@ -170,12 +217,14 @@ export function XlvDashboardView({
   const [loadingMore, setLoadingMore] = useState(false);
   const [pulse, setPulse] = useState<PulseSummaryResponse | null>(null);
   const [pulseLoaded, setPulseLoaded] = useState(false);
+  const [breakdown, setBreakdown] = useState<PeriodBreakdownResponse | null>(null);
+  const [breakdownLoaded, setBreakdownLoaded] = useState(false);
   const [loadedFilterKey, setLoadedFilterKey] = useState("");
   const [error, setError] = useState("");
   const [retryLabel, setRetryLabel] = useState("");
   const [searchDraft, setSearchDraft] = useState(search);
 
-  const filterKey = `${alert}|${status}|${expandMonth}|${manager}|${operator}|${search}|${expandMonth ? rangeQs : ""}`;
+  const filterKey = `${alert}|${status}|${expandMonth}|${monthHit ?? ""}|${manager}|${operator}|${search}|${expandMonth || monthHit ? rangeQs : ""}`;
   const listLoading = loading && loadedFilterKey !== filterKey;
 
   useRestoreListScroll(pathname, active && !listLoading && devices.length > 0);
@@ -268,7 +317,8 @@ export function XlvDashboardView({
       expandMonth,
       dateFrom,
       dateTo,
-      0
+      0,
+      monthHit
     );
     const devicesUrl = `/api/xlv/dashboard/devices?${searchParamsToQueryString(listParams)}`;
 
@@ -326,7 +376,7 @@ export function XlvDashboardView({
     return () => {
       cancelled = true;
     };
-  }, [active, alert, status, expandMonth, dateFrom, dateTo, manager, operator, search, filterKey, loadedFilterKey]);
+  }, [active, alert, status, expandMonth, monthHit, dateFrom, dateTo, manager, operator, search, filterKey, loadedFilterKey]);
 
   useEffect(() => {
     if (!active) return;
@@ -350,6 +400,35 @@ export function XlvDashboardView({
     };
   }, [active, rangeQs]);
 
+  const breakdownManager =
+    role === "DIRECTOR" && manager && manager !== XLV_INVENTORY_MANAGER_LABEL
+      ? manager
+      : "";
+
+  useEffect(() => {
+    if (!active || (role !== "DIRECTOR" && role !== "MANAGER")) return;
+    let cancelled = false;
+    setBreakdownLoaded(false);
+    const params = new URLSearchParams(rangeQs);
+    if (breakdownManager) params.set("manager", breakdownManager);
+    void fetchXlvJson<PeriodBreakdownResponse>(
+      `/api/xlv/dashboard/breakdown?${params.toString()}`,
+      { context: "加载达标汇总" }
+    )
+      .then((json) => {
+        if (!cancelled) {
+          setBreakdown(json);
+          setBreakdownLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setBreakdownLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, role, rangeQs, breakdownManager]);
+
   useEffect(() => {
     if (!filters.operators.length || !operator) return;
     if (!filters.operators.includes(operator)) {
@@ -369,7 +448,8 @@ export function XlvDashboardView({
       expandMonth,
       dateFrom,
       dateTo,
-      devices.length
+      devices.length,
+      monthHit
     );
     const url = `/api/xlv/dashboard/devices?${searchParamsToQueryString(listParams)}`;
     try {
@@ -389,6 +469,7 @@ export function XlvDashboardView({
     alert,
     status,
     expandMonth,
+    monthHit,
     dateFrom,
     dateTo,
     manager,
@@ -404,10 +485,14 @@ export function XlvDashboardView({
     manager || operator || alert !== "all" || status || expandMonth || search
   );
 
-  const qualifiedActive = status === "qualified" && !expandMonth;
-  const monthExpandActive = expandMonth && status !== "qualified";
+  const qualifiedActive = status === "qualified" && !expandMonth && !monthHit;
+  const periodQualifiedActive =
+    expandMonth && status === "qualified" && !monthHit;
+  const monthExpandActive = expandMonth && status !== "qualified" && !monthHit;
 
   function isPulseCardActive(id: PulseCardId) {
+    if (id === "hit_fubei") return monthHit === "fubei";
+    if (id === "hit_leshua") return monthHit === "leshua";
     if (id === "qualified" || id === "qualify_rate") return qualifiedActive;
     if (id === "expand") return monthExpandActive;
     if (id === "single_silence") return alert === "single_silence";
@@ -475,6 +560,8 @@ export function XlvDashboardView({
     danger: "border-red-100 bg-red-50/80 hover:bg-red-50",
     amber: "border-amber-100 bg-amber-50/70 hover:bg-amber-50",
     green: "border-emerald-100 bg-emerald-50/60 hover:bg-emerald-50",
+    fubei: "border-orange-200 bg-orange-50/80 hover:bg-orange-50",
+    leshua: "border-violet-200 bg-violet-50/80 hover:bg-violet-50",
     sky: "border-sky-100 bg-sky-50/60 hover:bg-sky-50",
     muted: "border-slate-100 bg-slate-50/80 hover:bg-slate-50",
   };
@@ -483,9 +570,35 @@ export function XlvDashboardView({
     danger: "text-[#b91c1c]",
     amber: "text-amber-800",
     green: "text-emerald-800",
+    fubei: "text-orange-800",
+    leshua: "text-violet-800",
     sky: "text-sky-800",
     muted: "text-slate-600",
   };
+
+  function selectBreakdownRow(name: string) {
+    const groupBy = breakdown?.groupBy;
+    if (groupBy === "manager") {
+      const isActive = manager === name && periodQualifiedActive && !operator;
+      pushQuery({
+        manager: isActive ? null : name,
+        operator: null,
+        expand: "month",
+        status: isActive ? null : "qualified",
+        alert: null,
+        hit: null,
+      });
+      return;
+    }
+    const isActive = operator === name && periodQualifiedActive;
+    pushQuery({
+      operator: isActive ? null : name,
+      expand: "month",
+      status: isActive ? null : "qualified",
+      alert: null,
+      hit: null,
+    });
+  }
 
   function selectPulseCard(id: PulseCardId) {
     if (id === "wake_rate") {
@@ -495,11 +608,23 @@ export function XlvDashboardView({
 
     const isActive = isPulseCardActive(id);
 
+    if (id === "hit_fubei" || id === "hit_leshua") {
+      const next = id === "hit_fubei" ? "fubei" : "leshua";
+      pushQuery({
+        hit: isActive ? null : next,
+        expand: "all",
+        status: null,
+        alert: null,
+      });
+      return;
+    }
+
     if (id === "expand") {
       pushQuery({
         expand: isActive ? "all" : "month",
         status: null,
         alert: null,
+        hit: null,
       });
       return;
     }
@@ -508,6 +633,7 @@ export function XlvDashboardView({
         expand: null,
         status: isActive ? null : "qualified",
         alert: null,
+        hit: null,
       });
       return;
     }
@@ -516,6 +642,7 @@ export function XlvDashboardView({
         alert: isActive ? null : "single_silence",
         status: null,
         expand: null,
+        hit: null,
       });
       return;
     }
@@ -524,6 +651,7 @@ export function XlvDashboardView({
         alert: isActive ? null : "dormant",
         status: null,
         expand: null,
+        hit: null,
       });
     }
   }
@@ -533,8 +661,14 @@ export function XlvDashboardView({
   const listTitle =
     search.trim()
       ? "搜索结果"
-      : status === "qualified"
-      ? "已达标商户"
+      : monthHit === "fubei"
+        ? "已达标 · 付呗"
+        : monthHit === "leshua"
+          ? "已达标 · 乐刷"
+          : status === "qualified" && !expandMonth
+            ? "已达标商户"
+            : expandMonth && status === "qualified"
+              ? periodCopy.listExpandQualified
       : expandMonth
         ? periodCopy.listExpand
         : alert === "single_silence"
@@ -585,6 +719,7 @@ export function XlvDashboardView({
                 dateFrom={dateFrom}
                 dateTo={dateTo}
                 dateLabel="拓展统计"
+                snapEndToStartMonth
                 onChange={applyDateRange}
               />
             </div>
@@ -605,6 +740,7 @@ export function XlvDashboardView({
           dateFrom={dateFrom}
           dateTo={dateTo}
           dateLabel="拓展统计"
+          snapEndToStartMonth
           onChange={applyDateRange}
         />
       </div>
@@ -619,28 +755,151 @@ export function XlvDashboardView({
       ) : null}
 
       {showPulseGrid ? (
-        <div className="grid grid-cols-3 gap-3">
-          {pulseCards.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => selectPulseCard(item.id)}
-              className={`rounded-[14px] border px-3 py-3 text-left transition-colors ${toneClass[item.tone]} ${
-                isPulseCardActive(item.id) ? "ring-2 ring-[#2563eb]/30" : ""
-              }`}
-            >
-              <p className="text-xs text-[#64748b]">{item.hint}</p>
-              <p
-                className={`mt-1 text-2xl font-bold tabular-nums ${
-                  item.valueClass ?? valueClass[item.tone]
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          {pulseCards.map((item) =>
+            item.id === "qualified" ? (
+              <div
+                key={item.id}
+                className={`order-1 col-span-2 md:order-2 md:col-span-1 rounded-[14px] border px-3 py-3 ${toneClass[item.tone]} ${
+                  qualifiedActive ? "ring-2 ring-[#2563eb]/30" : ""
                 }`}
               >
-                {item.value == null ? "…" : item.value}
-              </p>
-              <p className="text-sm font-medium text-[#334155]">{item.label}</p>
-            </button>
-          ))}
+                <button
+                  type="button"
+                  onClick={() => selectPulseCard("qualified")}
+                  className="w-full text-left"
+                >
+                  <p className="text-xs text-[#64748b]">{item.hint}</p>
+                  <p className={`mt-1 text-2xl font-bold tabular-nums ${valueClass.green}`}>
+                    {item.value == null ? "…" : item.value}
+                  </p>
+                  <p className="text-sm font-medium text-[#334155]">{item.label}</p>
+                </button>
+                {pulseLoaded && pulse && pulse.monthHitFubei + pulse.monthHitLeshua === 0 ? null : (
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => selectPulseCard("hit_fubei")}
+                    className={`min-h-9 rounded-lg border px-2 py-1 text-left ${
+                      monthHit === "fubei"
+                        ? "border-orange-300 bg-orange-100 ring-2 ring-orange-300"
+                        : "border-orange-200 bg-white/80"
+                    }`}
+                  >
+                    <span className="block text-[11px] text-orange-800">付呗</span>
+                    <span className="block text-sm font-semibold tabular-nums text-orange-900">
+                      {pulseLoaded && pulse ? pulse.monthHitFubei : "…"}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => selectPulseCard("hit_leshua")}
+                    className={`min-h-9 rounded-lg border px-2 py-1 text-left ${
+                      monthHit === "leshua"
+                        ? "border-violet-300 bg-violet-100 ring-2 ring-violet-300"
+                        : "border-violet-200 bg-white/80"
+                    }`}
+                  >
+                    <span className="block text-[11px] text-violet-800">乐刷</span>
+                    <span className="block text-sm font-semibold tabular-nums text-violet-900">
+                      {pulseLoaded && pulse ? pulse.monthHitLeshua : "…"}
+                    </span>
+                    </button>
+                </div>
+                )}
+              </div>
+            ) : (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => selectPulseCard(item.id)}
+                className={`${
+                  item.id === "expand"
+                    ? "order-2 md:order-1"
+                    : item.id === "qualify_rate"
+                      ? "order-3 md:order-3"
+                      : item.id === "single_silence"
+                        ? "order-4"
+                        : item.id === "dormant"
+                          ? "order-5"
+                          : "order-6"
+                } rounded-[14px] border px-3 py-3 text-left transition-colors ${toneClass[item.tone]} ${
+                  isPulseCardActive(item.id) ? "ring-2 ring-[#2563eb]/30" : ""
+                }`}
+              >
+                <p className="text-xs text-[#64748b]">{item.hint}</p>
+                <p
+                  className={`mt-1 text-2xl font-bold tabular-nums ${
+                    item.valueClass ?? valueClass[item.tone]
+                  }`}
+                >
+                  {item.value == null ? "…" : item.value}
+                </p>
+                <p className="text-sm font-medium text-[#334155]">{item.label}</p>
+              </button>
+            )
+          )}
         </div>
+      ) : null}
+
+      {showPulseGrid &&
+      (role === "DIRECTOR" || role === "MANAGER") &&
+      manager !== XLV_INVENTORY_MANAGER_LABEL ? (
+        <section className="rounded-[14px] border border-[#e7edf5] bg-white px-3 py-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-[#111827]">
+              {breakdown?.groupBy === "operator"
+                ? breakdownManager
+                  ? `${breakdownManager}的队员`
+                  : "各队员"
+                : "各经理"}
+              <span className="ml-1.5 font-normal text-[#64748b]">
+                {periodCopy.periodQualifiedHint}
+              </span>
+            </h2>
+          </div>
+          {!breakdownLoaded ? (
+            <p className="py-6 text-center text-sm text-[#94a3b8]">汇总加载中…</p>
+          ) : !breakdown || breakdown.rows.length === 0 ? (
+            <p className="py-6 text-center text-sm text-[#94a3b8]">这个期间没有装机</p>
+          ) : (
+            <ul className="mt-2 max-h-80 space-y-1.5 overflow-y-auto">
+              {breakdown.rows.map((row) => {
+                const active =
+                  breakdown.groupBy === "manager"
+                    ? manager === row.name && !operator
+                    : operator === row.name;
+                return (
+                  <li key={row.name}>
+                    <button
+                      type="button"
+                      onClick={() => selectBreakdownRow(row.name)}
+                      className={`w-full rounded-xl border px-3 py-2 text-left ${
+                        active
+                          ? "border-[#2563eb]/40 bg-[#eff6ff]"
+                          : "border-[#eef2f7] bg-[#f8fafc]"
+                      }`}
+                    >
+                      <span className="flex items-baseline justify-between gap-3">
+                        <span className="truncate text-sm font-medium text-[#111827]">
+                          {row.name}
+                        </span>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums text-emerald-800">
+                          已达标 {row.qualified}
+                        </span>
+                      </span>
+                      <span className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs tabular-nums text-[#64748b]">
+                        <span>装机 {row.installed}</span>
+                        <span className="text-orange-800">付呗 {row.fubei}</span>
+                        <span className="text-violet-800">乐刷 {row.leshua}</span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       ) : null}
 
       {showFilters ? (

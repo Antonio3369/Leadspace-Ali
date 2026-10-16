@@ -26,6 +26,11 @@ import {
   resolveXlvManagerFromRoster,
 } from "@/services/xlv/roster";
 import { provisionXlvAccountsFromRoster } from "@/services/xlv/member-accounts";
+import { stampXlvDeviceChannel } from "@/services/xlv/channel";
+import {
+  xlvChannelFromFileName,
+  type XlvChannelLabel,
+} from "@/lib/xlv-channel";
 import {
   bulkUpdateDevicesFromRaw,
   bulkUpsertAssignmentDevices,
@@ -118,7 +123,8 @@ function statDateRangeFromRows(rows: ParsedXlvRawRow[]) {
 async function importRawRows(
   rows: ParsedXlvRawRow[],
   importBatchId: string,
-  onProgress?: XlvImportProgress
+  onProgress?: XlvImportProgress,
+  channel?: XlvChannelLabel | null
 ) {
   await onProgress?.(18, `整理 ${rows.length.toLocaleString()} 行数据…`);
 
@@ -222,6 +228,11 @@ async function importRawRows(
     },
   });
   await reopenXlvFollowUpsAfterSnapshot([...allSns]);
+
+  if (channel) {
+    await onProgress?.(99, `写入渠道「${channel}」…`);
+    await stampXlvDeviceChannel([...allSns], channel);
+  }
 
   return {
     snapshotRows: snapshotRowCount,
@@ -630,7 +641,12 @@ async function importParsedXlvExcel(
   let importSummary: Partial<XlvImportSummary> = {};
 
   if (parsed.format === "raw") {
-    const result = await importRawRows(rawRows, importLog.id, onProgress);
+    const result = await importRawRows(
+      rawRows,
+      importLog.id,
+      onProgress,
+      xlvChannelFromFileName(fileName)
+    );
     snapshotRows = result.snapshotRows;
     createdDevices = result.createdDevices;
     updatedDevices = result.updatedDevices;

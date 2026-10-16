@@ -1,3 +1,14 @@
+/** YYYY-MM-DD 所在月的最后一天；非法日期返回 null */
+export function endOfMonthDateInput(iso: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return null;
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${match[1]}-${match[2]}-${String(last).padStart(2, "0")}`;
+}
+
 /** YYYY-MM-DD */
 export function formatDateInput(date: Date): string {
   const y = date.getFullYear();

@@ -18,6 +18,11 @@ export function XlvAssessmentPanel({
   firstTxnDate: string | null;
   hasTxnActivity?: boolean;
 }) {
+  const missingMonthSnapshots =
+    hasTxnActivity &&
+    detail.months.length > 0 &&
+    detail.months.every((row) => row.users == null && row.txns == null);
+
   return (
     <section className="rounded-[14px] border border-[#eef2f7] bg-white p-4 shadow-sm space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -41,6 +46,14 @@ export function XlvAssessmentPanel({
         </p>
       )}
 
+      {missingMonthSnapshots ? (
+        <p className="text-xs text-amber-800">
+          只有至今累计，没有按月快照，拆不出每个月的用户和笔数。累计已超过每月{" "}
+          {XLV_MONTHLY_USER_TARGET} 用户 + {XLV_MONTHLY_TXN_TARGET}{" "}
+          笔，所以记为已达标。
+        </p>
+      ) : null}
+
       {detail.months.length > 0 ? (
         <div className="overflow-auto max-h-72">
           <table className="w-full min-w-[280px] text-xs">
@@ -54,7 +67,9 @@ export function XlvAssessmentPanel({
             </thead>
             <tbody>
               {detail.months.map((row) => {
-                const result = xlvQualificationMonthResultLabel(row);
+                const result = missingMonthSnapshots
+                  ? { tone: "muted" as const, text: "缺快照" }
+                  : xlvQualificationMonthResultLabel(row);
                 const isFocus =
                   detail.focusMonth != null &&
                   detail.focusMonth.period === row.period &&

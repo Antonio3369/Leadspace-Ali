@@ -500,6 +500,8 @@ model XlvDeviceRecord {
   operatorName           String              @default("")
   managerName            String              @default("")
   companyName            String?
+  /** 渠道：付呗 / 乐刷。运营原表文件名写入；SN 归属导入不覆盖 */
+  channel                String?
   merchantName           String?
   agentId                String?
   agentName              String?

@@ -24,6 +24,7 @@ import { withXlvBoardCache } from "./board-cache";
 import { withXlvHeavyGate } from "./xlv-heavy-gate";
 import { attachXlvRelocations } from "./relocation";
 import { attachXlvInProgressMonthProgress } from "./assessment";
+import { attachXlvChannels } from "./channel";
 
 export const XLV_TODAY_LIST_CAP = 40;
 
@@ -253,6 +254,7 @@ async function loadXlvTodayQueues(
     // 考核将到期必须能点开看全量，不能截成 40 台
     P2: sortTodayQueue(filteredBuckets.P2, "P2"),
   };
+  await attachXlvChannels([...queues.P0, ...queues.P1, ...queues.P2]);
   await attachXlvInProgressMonthProgress([
     ...queues.P0,
     ...queues.P1,

@@ -419,20 +419,25 @@ export function parseXlvExcelBuffer(
     const idxActivated = headerIndex(headers, ["是否激活"]);
     const idxFirst = headerIndex(headers, ["首笔交易日期"]);
     const idxDailyUsers = metricHeaderIndex(headers, [
+      "当月交易用户数",
       "当日交易用户数",
       "昨日交易用户数",
     ]);
     const idxDailyTxns = metricHeaderIndex(headers, [
+      "当月有效交易笔数",
       "当日有效交易笔数",
       "昨日有效交易笔数",
     ]);
     const idxDailyTxnsFallback = metricHeaderIndex(headers, [
+      "当月交易笔数",
       "当日交易笔数",
       "昨日交易笔数",
     ]);
     const idxDailyAmount = metricHeaderIndex(headers, [
+      "当月有效交易金额",
       "当日有效交易金额",
       "当日交易金额",
+      "当月交易金额",
       "昨日有效交易金额",
       "昨日交易金额",
     ]);

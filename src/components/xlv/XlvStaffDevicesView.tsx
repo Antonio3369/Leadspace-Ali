@@ -12,6 +12,7 @@ import {
   PageHeader,
   PageShell,
 } from "@/components/ui/notion";
+import { XlvChannelBadge } from "@/components/xlv/XlvChannelBadge";
 import { XlvDeviceCardList } from "@/components/xlv/XlvDeviceCardList";
 import {
   XlvFilterChipText,
@@ -51,6 +52,7 @@ interface ApiDevice {
   monthProgressLine?: string;
   followUpDone?: boolean;
   relocation?: { fromStore: string; toStore: string } | null;
+  channel?: string | null;
 }
 
 interface ApiResponse {
@@ -297,7 +299,9 @@ export function XlvStaffDevicesView({
                   {item.deviceSn}
                 </Link>
                 {item.channel ? (
-                  <p className="text-xs text-[#94a3b8] mt-1">{item.channel}</p>
+                  <div className="mt-1">
+                    <XlvChannelBadge channel={item.channel} compact />
+                  </div>
                 ) : null}
               </li>
             ))}
