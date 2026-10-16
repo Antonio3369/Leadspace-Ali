@@ -31,6 +31,7 @@ import {
 import type { XlvRelocationHint } from "@/lib/xlv-relocation";
 import { attachXlvRelocations } from "@/services/xlv/relocation";
 import { attachXlvInProgressMonthProgress } from "@/services/xlv/assessment";
+import { xlvChannelLabel } from "@/lib/xlv-channel";
 import { attachXlvChannels } from "@/services/xlv/channel";
 import { loadXlvMonthTargetHits } from "@/services/xlv/month-target";
 
@@ -51,11 +52,14 @@ export interface XlvDashboardPulseSummary {
   dateFrom: string;
   dateTo: string;
   monthExpandCount: number;
-  /** 所选日期内新铺且已达标 */
+  /** 所选日期内装机，按付呗 / 乐刷拆开（与装机卡同一批） */
+  monthExpandFubei: number;
+  monthExpandLeshua: number;
+  /** 所选日期内装机且已达标 */
   monthQualifiedCount: number;
   /** 已铺设为 0 时为 null */
   monthQualifyRate: number | null;
-  /** 所选日期内新铺且已达标，按付呗 / 乐刷拆开 */
+  /** 所选日期内装机且已达标，按付呗 / 乐刷拆开 */
   monthHitLabel: string;
   monthHitFubei: number;
   monthHitLeshua: number;
@@ -272,10 +276,15 @@ export async function getXlvDashboardPulseSummary(
     AND: [operationalWhere, { firstTxnDate: { gte: from, lte: to } }],
   };
 
-  const [fast, expandCount, periodQualified, deployedQualified, wakeUpRate, monthHits] =
+  const [fast, expandCount, expandByChannel, periodQualified, deployedQualified, wakeUpRate, monthHits] =
     await Promise.all([
       getXlvDashboardSummaryFast(user),
       db.xlvDeviceRecord.count({ where: expandWhere }),
+      db.xlvDeviceRecord.groupBy({
+        by: ["channel"],
+        where: expandWhere,
+        _count: { _all: true },
+      }),
       db.xlvDeviceRecord.count({
         where: { AND: [expandWhere, { qualificationStatus: "qualified" }] },
       }),
@@ -287,6 +296,13 @@ export async function getXlvDashboardPulseSummary(
       getXlvMonthWakeUpRate(user, { dateFrom, dateTo }),
       loadXlvMonthTargetHits(user, { dateFrom, dateTo }),
     ]);
+  let monthExpandFubei = 0;
+  let monthExpandLeshua = 0;
+  for (const row of expandByChannel) {
+    const label = xlvChannelLabel(row.channel);
+    if (label === "付呗") monthExpandFubei += row._count._all;
+    else if (label === "乐刷") monthExpandLeshua += row._count._all;
+  }
 
   const deployedCount = fast.deployedCount;
   const monthQualifyRate =
@@ -298,6 +314,8 @@ export async function getXlvDashboardPulseSummary(
     dateFrom,
     dateTo,
     monthExpandCount: expandCount,
+    monthExpandFubei,
+    monthExpandLeshua,
     monthQualifiedCount: periodQualified,
     monthQualifyRate,
     monthHitLabel: monthHits.label,
@@ -319,6 +337,8 @@ type XlvDashboardListOpts = {
   expandTo?: Date | null;
   /** 限定为这些 SN；空数组表示没有命中 */
   deviceSns?: string[];
+  /** 装机卡下的渠道：付呗 / 乐刷 */
+  channel?: "付呗" | "乐刷" | null;
 };
 
 /** 看板设备列表（分页）：仅拉当前页，不走重查询队列（避免被「今日待办」全量扫描堵住） */
@@ -359,9 +379,13 @@ async function loadXlvDashboardDevicesPage(
     expandFrom: opts.expandFrom,
     expandTo: opts.expandTo,
   });
-  const listWhere = opts.deviceSns
-    ? { AND: [scopedWhere, { deviceSn: { in: opts.deviceSns } }] }
-    : scopedWhere;
+  const listWhere = {
+    AND: [
+      scopedWhere,
+      ...(opts.deviceSns ? [{ deviceSn: { in: opts.deviceSns } }] : []),
+      ...(opts.channel ? [{ channel: opts.channel }] : []),
+    ],
+  };
 
   const sortMode = resolveXlvDeviceSortMode({
     alert: opts.alert,

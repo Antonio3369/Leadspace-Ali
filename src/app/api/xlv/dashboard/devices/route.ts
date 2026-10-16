@@ -27,7 +27,9 @@ export async function GET(request: Request) {
         ? null
         : parseXlvQualificationStatus(searchParams.get("status"));
     const monthHit = parseXlvMonthHitChannel(searchParams.get("hit"));
-    const expandMonth = searchParams.get("expand") === "month" && !monthHit;
+    const installLane = parseXlvMonthHitChannel(searchParams.get("lane"));
+    const expandMonth =
+      (searchParams.get("expand") === "month" || Boolean(installLane)) && !monthHit;
     const range = parseN7DateRange({
       dateFrom: searchParams.get("dateFrom"),
       dateTo: searchParams.get("dateTo"),
@@ -65,6 +67,7 @@ export async function GET(request: Request) {
       expandFrom,
       expandTo,
       deviceSns: monthHitSns,
+      channel: installLane === "fubei" ? "付呗" : installLane === "leshua" ? "乐刷" : null,
       offset,
       limit,
     });

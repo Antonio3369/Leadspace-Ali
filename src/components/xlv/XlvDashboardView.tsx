@@ -59,6 +59,8 @@ interface PulseSummaryResponse {
   dateFrom: string;
   dateTo: string;
   monthExpandCount: number;
+  monthExpandFubei: number;
+  monthExpandLeshua: number;
   monthQualifiedCount: number;
   monthQualifyRate: number | null;
   monthHitLabel: string;
@@ -90,7 +92,9 @@ type PulseCardId =
   | "wake_rate"
   | "qualified"
   | "hit_fubei"
-  | "hit_leshua";
+  | "hit_leshua"
+  | "install_fubei"
+  | "install_leshua";
 
 function buildListQuery(
   alert: XlvAlertKind,
@@ -102,13 +106,18 @@ function buildListQuery(
   dateFrom: string,
   dateTo: string,
   offset: number,
-  monthHit: XlvMonthHitChannel | null
+  monthHit: XlvMonthHitChannel | null,
+  installLane: XlvMonthHitChannel | null
 ) {
   const params = new URLSearchParams();
   if (alert !== "all") params.set("alert", alert);
   if (status && alert === "all") params.set("status", status);
   if (monthHit) {
     params.set("hit", monthHit);
+    applyN7DateRangeToParams(params, dateFrom, dateTo);
+  } else if (installLane) {
+    params.set("lane", installLane);
+    params.set("expand", "month");
     applyN7DateRangeToParams(params, dateFrom, dateTo);
   } else if (expandMonth) {
     params.set("expand", "month");
@@ -130,46 +139,46 @@ function xlvExpandPeriodCopy(dateFrom: string, dateTo: string) {
   const last = getLastMonthRange();
   if (dateFrom === cur.dateFrom && dateTo === cur.dateTo) {
     return {
-      expandLabel: "本月拓展",
-      expandHint: "本月新铺",
+      expandLabel: "装机",
+      expandHint: "本月装机",
       qualifiedHint: "已铺设中已达标",
-      periodQualifiedHint: "本月新铺已达标",
+      periodQualifiedHint: "本月装机已达标",
       rateHint: "占已铺设",
-      listExpand: "本月新铺商户",
-      listExpandQualified: "本月新铺 · 已达标",
+      listExpand: "本月装机",
+      listExpandQualified: "本月装机 · 已达标",
     };
   }
   if (dateFrom === last.dateFrom && dateTo === last.dateTo) {
     return {
-      expandLabel: "上月拓展",
-      expandHint: "上月新铺",
+      expandLabel: "装机",
+      expandHint: "上月装机",
       qualifiedHint: "已铺设中已达标",
-      periodQualifiedHint: "上月新铺已达标",
+      periodQualifiedHint: "上月装机已达标",
       rateHint: "占已铺设",
-      listExpand: "上月新铺商户",
-      listExpandQualified: "上月新铺 · 已达标",
+      listExpand: "上月装机",
+      listExpandQualified: "上月装机 · 已达标",
     };
   }
   if (isCompleteCalendarMonth(dateFrom, dateTo)) {
     const month = Number(dateFrom.slice(5, 7));
     return {
-      expandLabel: `${month}月拓展`,
-      expandHint: `${month}月新铺`,
+      expandLabel: "装机",
+      expandHint: `${month}月装机`,
       qualifiedHint: "已铺设中已达标",
-      periodQualifiedHint: `${month}月新铺已达标`,
+      periodQualifiedHint: `${month}月装机已达标`,
       rateHint: "占已铺设",
-      listExpand: `${month}月新铺商户`,
-      listExpandQualified: `${month}月新铺 · 已达标`,
+      listExpand: `${month}月装机`,
+      listExpandQualified: `${month}月装机 · 已达标`,
     };
   }
   return {
-    expandLabel: "期间拓展",
-    expandHint: "期间新铺",
+    expandLabel: "装机",
+    expandHint: "期间装机",
     qualifiedHint: "已铺设中已达标",
-    periodQualifiedHint: "期间新铺已达标",
+    periodQualifiedHint: "期间装机已达标",
     rateHint: "占已铺设",
-    listExpand: "期间新铺商户",
-    listExpandQualified: "期间新铺 · 已达标",
+    listExpand: "期间装机",
+    listExpandQualified: "期间装机 · 已达标",
   };
 }
 
@@ -196,10 +205,11 @@ export function XlvDashboardView({
   const operator = searchParams.get("operator") ?? "";
   const search = searchParams.get("q") ?? "";
   const monthHit = parseXlvMonthHitChannel(searchParams.get("hit"));
+  const installLane = parseXlvMonthHitChannel(searchParams.get("lane"));
   const expandParam = searchParams.get("expand");
   const { dateFrom, dateTo } = readN7DateRangeFromSearchParams(searchParams);
   const rangeQs = n7DateRangeQuery(dateFrom, dateTo);
-  /** 仅点「新铺 / 期间达标」才按装机日筛列表；默认看全部已铺设 */
+  /** 仅点「装机 / 期间达标」才按装机日筛列表；默认看全部已铺设 */
   const filterByFirstTxn =
     !search.trim() && alert === "all" && expandParam === "month";
   const expandMonth = filterByFirstTxn;
@@ -224,7 +234,7 @@ export function XlvDashboardView({
   const [retryLabel, setRetryLabel] = useState("");
   const [searchDraft, setSearchDraft] = useState(search);
 
-  const filterKey = `${alert}|${status}|${expandMonth}|${monthHit ?? ""}|${manager}|${operator}|${search}|${expandMonth || monthHit ? rangeQs : ""}`;
+  const filterKey = `${alert}|${status}|${expandMonth}|${monthHit ?? ""}|${installLane ?? ""}|${manager}|${operator}|${search}|${expandMonth || monthHit || installLane ? rangeQs : ""}`;
   const listLoading = loading && loadedFilterKey !== filterKey;
 
   useRestoreListScroll(pathname, active && !listLoading && devices.length > 0);
@@ -318,7 +328,8 @@ export function XlvDashboardView({
       dateFrom,
       dateTo,
       0,
-      monthHit
+      monthHit,
+      installLane
     );
     const devicesUrl = `/api/xlv/dashboard/devices?${searchParamsToQueryString(listParams)}`;
 
@@ -376,7 +387,7 @@ export function XlvDashboardView({
     return () => {
       cancelled = true;
     };
-  }, [active, alert, status, expandMonth, monthHit, dateFrom, dateTo, manager, operator, search, filterKey, loadedFilterKey]);
+  }, [active, alert, status, expandMonth, monthHit, installLane, dateFrom, dateTo, manager, operator, search, filterKey, loadedFilterKey]);
 
   useEffect(() => {
     if (!active) return;
@@ -449,7 +460,8 @@ export function XlvDashboardView({
       dateFrom,
       dateTo,
       devices.length,
-      monthHit
+      monthHit,
+      installLane
     );
     const url = `/api/xlv/dashboard/devices?${searchParamsToQueryString(listParams)}`;
     try {
@@ -470,6 +482,7 @@ export function XlvDashboardView({
     status,
     expandMonth,
     monthHit,
+    installLane,
     dateFrom,
     dateTo,
     manager,
@@ -488,11 +501,14 @@ export function XlvDashboardView({
   const qualifiedActive = status === "qualified" && !expandMonth && !monthHit;
   const periodQualifiedActive =
     expandMonth && status === "qualified" && !monthHit;
-  const monthExpandActive = expandMonth && status !== "qualified" && !monthHit;
+  const monthExpandActive =
+    expandMonth && status !== "qualified" && !monthHit && !installLane;
 
   function isPulseCardActive(id: PulseCardId) {
     if (id === "hit_fubei") return monthHit === "fubei";
     if (id === "hit_leshua") return monthHit === "leshua";
+    if (id === "install_fubei") return installLane === "fubei";
+    if (id === "install_leshua") return installLane === "leshua";
     if (id === "qualified") return periodQualifiedActive;
     if (id === "qualify_rate") return qualifiedActive;
     if (id === "expand") return monthExpandActive;
@@ -588,6 +604,7 @@ export function XlvDashboardView({
         status: isActive ? null : "qualified",
         alert: null,
         hit: null,
+        lane: null,
       });
       return;
     }
@@ -598,6 +615,7 @@ export function XlvDashboardView({
       status: isActive ? null : "qualified",
       alert: null,
       hit: null,
+      lane: null,
     });
   }
 
@@ -616,6 +634,19 @@ export function XlvDashboardView({
         expand: "month",
         status: null,
         alert: null,
+        lane: null,
+      });
+      return;
+    }
+
+    if (id === "install_fubei" || id === "install_leshua") {
+      const next = id === "install_fubei" ? "fubei" : "leshua";
+      pushQuery({
+        lane: isActive ? null : next,
+        expand: "month",
+        status: null,
+        alert: null,
+        hit: null,
       });
       return;
     }
@@ -626,6 +657,7 @@ export function XlvDashboardView({
         status: null,
         alert: null,
         hit: null,
+        lane: null,
       });
       return;
     }
@@ -635,6 +667,7 @@ export function XlvDashboardView({
         status: isActive ? null : "qualified",
         alert: null,
         hit: null,
+        lane: null,
       });
       return;
     }
@@ -644,6 +677,7 @@ export function XlvDashboardView({
         status: isActive ? null : "qualified",
         alert: null,
         hit: null,
+        lane: null,
       });
       return;
     }
@@ -653,6 +687,7 @@ export function XlvDashboardView({
         status: null,
         expand: null,
         hit: null,
+        lane: null,
       });
       return;
     }
@@ -662,6 +697,7 @@ export function XlvDashboardView({
         status: null,
         expand: null,
         hit: null,
+        lane: null,
       });
     }
   }
@@ -675,6 +711,10 @@ export function XlvDashboardView({
         ? `${periodCopy.periodQualifiedHint} · 付呗`
         : monthHit === "leshua"
           ? `${periodCopy.periodQualifiedHint} · 乐刷`
+          : installLane === "fubei"
+            ? `${periodCopy.expandHint} · 付呗`
+            : installLane === "leshua"
+              ? `${periodCopy.expandHint} · 乐刷`
           : status === "qualified" && !expandMonth
             ? "已达标商户"
             : expandMonth && status === "qualified"
@@ -713,7 +753,7 @@ export function XlvDashboardView({
                 ) : null}
                 <span className="hidden sm:inline text-[#94a3b8]">
                   {" "}
-                  · 已铺设未达标的当月继续考核；点「{periodCopy.expandLabel}」只看该月新铺
+                  · 已铺设未达标的当月继续考核；点「{periodCopy.expandLabel}」只看该月装机
                 </span>
               </p>
             ) : (
@@ -818,15 +858,64 @@ export function XlvDashboardView({
                 </div>
                 )}
               </div>
+            ) : item.id === "expand" ? (
+              <div
+                key={item.id}
+                className={`order-2 col-span-2 md:order-1 md:col-span-1 rounded-[14px] border px-3 py-3 ${toneClass[item.tone]} ${
+                  monthExpandActive ? "ring-2 ring-[#2563eb]/30" : ""
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => selectPulseCard("expand")}
+                  className="w-full text-left"
+                >
+                  <p className="text-xs text-[#64748b]">{item.hint}</p>
+                  <p className={`mt-1 text-2xl font-bold tabular-nums ${valueClass.sky}`}>
+                    {item.value == null ? "…" : item.value}
+                  </p>
+                  <p className="text-sm font-medium text-[#334155]">{item.label}</p>
+                </button>
+                {pulseLoaded && pulse && pulse.monthExpandFubei + pulse.monthExpandLeshua === 0 ? null : (
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => selectPulseCard("install_fubei")}
+                      className={`min-h-9 rounded-lg border px-2 py-1 text-left ${
+                        installLane === "fubei"
+                          ? "border-orange-300 bg-orange-100 ring-2 ring-orange-300"
+                          : "border-orange-200 bg-white/80"
+                      }`}
+                    >
+                      <span className="block text-[11px] text-orange-800">付呗</span>
+                      <span className="block text-sm font-semibold tabular-nums text-orange-900">
+                        {pulseLoaded && pulse ? pulse.monthExpandFubei : "…"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => selectPulseCard("install_leshua")}
+                      className={`min-h-9 rounded-lg border px-2 py-1 text-left ${
+                        installLane === "leshua"
+                          ? "border-violet-300 bg-violet-100 ring-2 ring-violet-300"
+                          : "border-violet-200 bg-white/80"
+                      }`}
+                    >
+                      <span className="block text-[11px] text-violet-800">乐刷</span>
+                      <span className="block text-sm font-semibold tabular-nums text-violet-900">
+                        {pulseLoaded && pulse ? pulse.monthExpandLeshua : "…"}
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => selectPulseCard(item.id)}
                 className={`${
-                  item.id === "expand"
-                    ? "order-2 md:order-1"
-                    : item.id === "qualify_rate"
+                  item.id === "qualify_rate"
                       ? "order-3 md:order-3"
                       : item.id === "single_silence"
                         ? "order-4"
