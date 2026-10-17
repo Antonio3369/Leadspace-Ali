@@ -143,7 +143,7 @@ function xlvExpandPeriodCopy(dateFrom: string, dateTo: string) {
       expandHint: "本月装机",
       qualifiedHint: "已铺设中已达标",
       periodQualifiedHint: "本月装机已达标",
-      rateHint: "占已铺设",
+      rateHint: "占本月装机",
       listExpand: "本月装机",
       listExpandQualified: "本月装机 · 已达标",
     };
@@ -154,7 +154,7 @@ function xlvExpandPeriodCopy(dateFrom: string, dateTo: string) {
       expandHint: "上月装机",
       qualifiedHint: "已铺设中已达标",
       periodQualifiedHint: "上月装机已达标",
-      rateHint: "占已铺设",
+      rateHint: "占上月装机",
       listExpand: "上月装机",
       listExpandQualified: "上月装机 · 已达标",
     };
@@ -166,7 +166,7 @@ function xlvExpandPeriodCopy(dateFrom: string, dateTo: string) {
       expandHint: `${month}月装机`,
       qualifiedHint: "已铺设中已达标",
       periodQualifiedHint: `${month}月装机已达标`,
-      rateHint: "占已铺设",
+      rateHint: `占${month}月装机`,
       listExpand: `${month}月装机`,
       listExpandQualified: `${month}月装机 · 已达标`,
     };
@@ -176,7 +176,7 @@ function xlvExpandPeriodCopy(dateFrom: string, dateTo: string) {
     expandHint: "期间装机",
     qualifiedHint: "已铺设中已达标",
     periodQualifiedHint: "期间装机已达标",
-    rateHint: "占已铺设",
+    rateHint: "占期间装机",
     listExpand: "期间装机",
     listExpandQualified: "期间装机 · 已达标",
   };
@@ -498,7 +498,6 @@ export function XlvDashboardView({
     manager || operator || alert !== "all" || status || expandMonth || search
   );
 
-  const qualifiedActive = status === "qualified" && !expandMonth && !monthHit;
   const periodQualifiedActive =
     expandMonth && status === "qualified" && !monthHit;
   const monthExpandActive =
@@ -509,8 +508,7 @@ export function XlvDashboardView({
     if (id === "hit_leshua") return monthHit === "leshua";
     if (id === "install_fubei") return installLane === "fubei";
     if (id === "install_leshua") return installLane === "leshua";
-    if (id === "qualified") return periodQualifiedActive;
-    if (id === "qualify_rate") return qualifiedActive;
+    if (id === "qualified" || id === "qualify_rate") return periodQualifiedActive;
     if (id === "expand") return monthExpandActive;
     if (id === "single_silence") return alert === "single_silence";
     if (id === "dormant") return alert === "dormant" || alert === "sleep";
@@ -673,7 +671,7 @@ export function XlvDashboardView({
     }
     if (id === "qualify_rate") {
       pushQuery({
-        expand: null,
+        expand: isActive ? null : "month",
         status: isActive ? null : "qualified",
         alert: null,
         hit: null,

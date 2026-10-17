@@ -57,7 +57,7 @@ export interface XlvDashboardPulseSummary {
   monthExpandLeshua: number;
   /** 所选日期内装机且已达标 */
   monthQualifiedCount: number;
-  /** 已铺设为 0 时为 null */
+  /** 该区间装机为 0 时为 null；分子分母与装机卡 / 已达标卡同一批 */
   monthQualifyRate: number | null;
   /** 所选日期内装机且已达标，按付呗 / 乐刷拆开 */
   monthHitLabel: string;
@@ -276,7 +276,7 @@ export async function getXlvDashboardPulseSummary(
     AND: [operationalWhere, { firstTxnDate: { gte: from, lte: to } }],
   };
 
-  const [fast, expandCount, expandByChannel, periodQualified, deployedQualified, wakeUpRate, monthHits] =
+  const [fast, expandCount, expandByChannel, periodQualified, wakeUpRate, monthHits] =
     await Promise.all([
       getXlvDashboardSummaryFast(user),
       db.xlvDeviceRecord.count({ where: expandWhere }),
@@ -287,11 +287,6 @@ export async function getXlvDashboardPulseSummary(
       }),
       db.xlvDeviceRecord.count({
         where: { AND: [expandWhere, { qualificationStatus: "qualified" }] },
-      }),
-      db.xlvDeviceRecord.count({
-        where: {
-          AND: [operationalWhere, { qualificationStatus: "qualified" }],
-        },
       }),
       getXlvMonthWakeUpRate(user, { dateFrom, dateTo }),
       loadXlvMonthTargetHits(user, { dateFrom, dateTo }),
@@ -304,10 +299,9 @@ export async function getXlvDashboardPulseSummary(
     else if (label === "乐刷") monthExpandLeshua += row._count._all;
   }
 
-  const deployedCount = fast.deployedCount;
   const monthQualifyRate =
-    deployedCount > 0
-      ? Math.round((deployedQualified / deployedCount) * 1000) / 10
+    expandCount > 0
+      ? Math.round((periodQualified / expandCount) * 1000) / 10
       : null;
 
   return {
