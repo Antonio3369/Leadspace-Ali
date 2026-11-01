@@ -6,10 +6,10 @@ import { db } from "@/lib/db";
 import { notifyXlvOutboundOpsAlert } from "./outbound-notifier";
 
 const COOLDOWN_MS = 30 * 60 * 1000;
-/** 告警线。须高于日常看板峰值，且不要低于 Node 堆上限，否则堆一顶满就误报 */
-const MEM_WARN_RSS_MB = Number(process.env.XLV_OPS_MEM_WARN_MB ?? "1600");
-/** 自动重启线。须低于容器 2G，并高于 --max-old-space-size=1536，避免堆用满就踢人 */
-const MEM_RESTART_RSS_MB = Number(process.env.XLV_OPS_MEM_RESTART_MB ?? "1850");
+/** 只写巡检日志，不推企微。堆上限 1536，日常顶到 1550 很常见，不能当故障 */
+const MEM_WARN_RSS_MB = Number(process.env.XLV_OPS_MEM_WARN_MB ?? "1800");
+/** 自动重启线：离容器 2G 只剩约 100MB。低于此不踢人、不刷告警 */
+const MEM_RESTART_RSS_MB = Number(process.env.XLV_OPS_MEM_RESTART_MB ?? "1920");
 
 const lastAlertAt = new Map<string, number>();
 
@@ -74,12 +74,7 @@ export async function runXlvOpsHealthCheck(): Promise<XlvOpsHealthResult> {
   } else if (rssMb >= MEM_WARN_RSS_MB) {
     warnings.push(`memory_high:${rssMb}MB`);
     console.warn(
-      `[xlv-ops-health] memory_high rss=${rssMb}MB warn=${MEM_WARN_RSS_MB}MB`
-    );
-    await alert(
-      "memory_high",
-      "应用内存偏高",
-      `> RSS：${rssMb}MB（告警线 ${MEM_WARN_RSS_MB}MB）\n> 未到重启线 ${MEM_RESTART_RSS_MB}MB，只告警不重启；凌晨 03:00 仍会常规回收`
+      `[xlv-ops-health] memory_high rss=${rssMb}MB warn=${MEM_WARN_RSS_MB}MB (log only)`
     );
   }
 
