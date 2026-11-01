@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 生产健康巡检：站点可达 + 小绿盒运维 API（内存/导入卡死 → 企微）
-# 内存：第一次超阈值只告警；连续两次（约 20 分钟）仍高且无导入才重启
+# 内存：RSS 到重启线（默认 1850MB）才进入重启；告警线只记日志/企微，不踢白天用户
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -46,10 +46,14 @@ if [[ -n "${XLV_OPS_CRON_SECRET:-}" ]]; then
   )"
   if [[ "${code}" == "200" ]]; then
     rm -f "${MEM_FLAG}"
-    log "正常 $(tr -d '\n' < /tmp/xlv-ops-health.json 2>/dev/null | head -c 200)"
+    if grep -q 'memory_high' /tmp/xlv-ops-health.json 2>/dev/null; then
+      log "内存偏高但不重启 $(tr -d '\n' < /tmp/xlv-ops-health.json 2>/dev/null | head -c 240)"
+    else
+      log "正常 $(tr -d '\n' < /tmp/xlv-ops-health.json 2>/dev/null | head -c 200)"
+    fi
   elif [[ "${code}" == "503" ]]; then
     log "有告警 $(cat /tmp/xlv-ops-health.json 2>/dev/null)"
-    if grep -q 'memory_high' /tmp/xlv-ops-health.json 2>/dev/null; then
+    if grep -q 'memory_critical' /tmp/xlv-ops-health.json 2>/dev/null; then
       if [[ -f "${MEM_FLAG}" ]]; then
         active="$(
           sudo docker exec leadspace-postgres psql -U leadspace -d leadspace -tAc \
@@ -69,7 +73,7 @@ if [[ -n "${XLV_OPS_CRON_SECRET:-}" ]]; then
             rm -f "${MEM_FLAG}"
             log "连续超阈值已自动重启"
             if [[ -x "${ALERT}" ]]; then
-              bash "${ALERT}" "应用已自动重启" "> 原因：连续两次巡检内存超阈值\n> 动作：已重启 leadspace-alipay-app" "auto_restart" || true
+              bash "${ALERT}" "应用已自动重启" "> 原因：连续两次巡检内存接近 2G 上限\n> 动作：已重启 leadspace-alipay-app" "auto_restart" || true
             fi
           else
             log "自动重启失败"
@@ -80,11 +84,10 @@ if [[ -n "${XLV_OPS_CRON_SECRET:-}" ]]; then
         fi
       else
         date -Iseconds > "${MEM_FLAG}"
-        log "内存告警，记一次；下次仍高再重启"
-        # 第一次超阈值：由 /api/xlv/ops/health 内推个人；此处 bash 再补一条容器级内存（docker stats）
+        log "内存接近上限，记一次；下次仍高再重启"
         mem_line="$(sudo docker stats leadspace-alipay-app --no-stream --format '{{.MemUsage}}' 2>/dev/null || echo '?')"
         if [[ -x "${ALERT}" ]]; then
-          bash "${ALERT}" "应用内存过高" "> 容器内存：${mem_line}\n> 下次巡检仍高且无导入将自动重启" "memory_high_host" || true
+          bash "${ALERT}" "应用内存接近上限" "> 容器内存：${mem_line}\n> 下次巡检仍高且无导入将自动重启" "memory_high_host" || true
         fi
       fi
     else

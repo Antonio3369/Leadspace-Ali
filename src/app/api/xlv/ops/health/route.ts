@@ -45,7 +45,10 @@ export async function GET(request: Request) {
 
   try {
     const result = await runXlvOpsHealthCheck();
-    return NextResponse.json(result, { status: result.ok ? 200 : 503 });
+    const critical = result.warnings.some((w) => w.startsWith("memory_critical:"));
+    return NextResponse.json(result, {
+      status: result.ok && !critical ? 200 : 503,
+    });
   } catch (err) {
     console.error("[xlv-ops-health]", err);
     return NextResponse.json(
