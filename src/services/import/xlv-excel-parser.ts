@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { parseXlvStatDateFromCell } from "@/lib/xlv-stat-date";
+import { guardSheetDataRows } from "@/services/import/xlv-import-memory";
 import {
   buildXlvAssignmentColumnMeta,
   buildXlvRawColumnMeta,
@@ -224,7 +225,7 @@ const MAX_IMPORT_COLUMNS = 80;
  * 运营表常把整列格式刷到第 104 万行。dense 模式会按 !ref 矩形分配内存，
  * sheet_to_json 也会扫空行。把范围收到真正有内容的单元格。
  */
-function tightenSheetRef(sheet: XLSX.WorkSheet) {
+export function tightenSheetRef(sheet: XLSX.WorkSheet): boolean {
   let lastRow = 0;
   let lastCol = 0;
   let found = false;
@@ -237,11 +238,19 @@ function tightenSheetRef(sheet: XLSX.WorkSheet) {
     if (addr.r > lastRow) lastRow = addr.r;
     if (addr.c > lastCol) lastCol = addr.c;
   }
-  if (!found) return;
+  if (!found) return false;
   sheet["!ref"] = XLSX.utils.encode_range({
     s: { r: 0, c: 0 },
     e: { r: lastRow, c: Math.min(lastCol, MAX_IMPORT_COLUMNS - 1) },
   });
+  return true;
+}
+
+export function sheetDataRowCount(sheet: XLSX.WorkSheet): number {
+  const ref = sheet["!ref"];
+  if (!ref) return 0;
+  const range = XLSX.utils.decode_range(ref);
+  return Math.max(0, range.e.r);
 }
 
 export function parseXlvExcelBuffer(
@@ -268,7 +277,14 @@ export function parseXlvExcelBuffer(
   if (!sheet) {
     return { format: "raw", sheetName, rows: [], errors: ["Excel 工作表为空"] };
   }
-  tightenSheetRef(sheet);
+  const refTightened = tightenSheetRef(sheet);
+  const rowGuard = guardSheetDataRows(sheetDataRowCount(sheet), refTightened);
+  if (!rowGuard.ok) {
+    for (const name of workbook.SheetNames) {
+      delete workbook.Sheets[name];
+    }
+    return { format: "raw", sheetName, rows: [], errors: [rowGuard.message] };
+  }
   for (const name of workbook.SheetNames) {
     if (name !== sheetName) delete workbook.Sheets[name];
   }
@@ -279,6 +295,10 @@ export function parseXlvExcelBuffer(
     blankrows: false,
   }) as unknown[][];
   delete workbook.Sheets[sheetName];
+  for (const name of workbook.SheetNames) {
+    delete workbook.Sheets[name];
+  }
+  workbook.SheetNames.length = 0;
 
   if (matrix.length < 2) {
     return {

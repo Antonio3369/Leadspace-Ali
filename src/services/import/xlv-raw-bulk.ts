@@ -82,7 +82,8 @@ function sqlFloat(n: number) {
 export async function upsertSnapshotsBulk(
   snapshots: SnapshotWrite[],
   importBatchId: string,
-  onProgress?: XlvImportProgress
+  onProgress?: XlvImportProgress,
+  betweenChunks?: () => void | Promise<void>
 ) {
   const stats = {
     created: 0,
@@ -171,6 +172,7 @@ export async function upsertSnapshotsBulk(
       `写入快照 ${Math.min(i + slice.length, snapshots.length).toLocaleString()} / ${snapshots.length.toLocaleString()} 行…`
     );
 
+    await betweenChunks?.();
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
 
