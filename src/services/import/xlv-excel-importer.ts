@@ -47,6 +47,13 @@ import {
 import { reopenXlvFollowUpsAfterSnapshot } from "@/services/xlv/follow-up";
 import { recomputeXlvQualificationForDevices } from "@/services/xlv/recompute-qualification";
 import { syncInventoryFromSnAttribution } from "@/services/xlv/inventory/service";
+import {
+  checkImportMemoryOrAbort,
+  maybeGc,
+  rssMb,
+  XlvImportAbortedError,
+  yieldImportTick,
+} from "@/services/import/xlv-import-memory";
 
 function createId() {
   return `c${randomBytes(12).toString("hex")}`;
@@ -120,26 +127,40 @@ function statDateRangeFromRows(rows: ParsedXlvRawRow[]) {
   return { min: keys[0]!, max: keys[keys.length - 1]! };
 }
 
+function statDateRangeFromSnapshots(snapshots: SnapshotWrite[]) {
+  const keys = snapshots
+    .map((row) => xlvStatDateKey(row.statDate))
+    .filter(Boolean)
+    .sort();
+  if (keys.length === 0) return undefined;
+  return { min: keys[0]!, max: keys[keys.length - 1]! };
+}
+
 async function importRawRows(
   rows: ParsedXlvRawRow[],
   importBatchId: string,
   onProgress?: XlvImportProgress,
   channel?: XlvChannelLabel | null
 ) {
+  checkImportMemoryOrAbort();
   await onProgress?.(18, `整理 ${rows.length.toLocaleString()} 行数据…`);
 
   const dedupedSnapshots = uniqueSnapshots(rows);
   const snapshotRowCount = dedupedSnapshots.length;
-  await onProgress?.(
-    19,
-    `去重后 ${snapshotRowCount.toLocaleString()} 条快照，按设备分批写入…`
-  );
-
-  const latestBySn = pickLatestRawBySn(rows);
-  const statDateRange = statDateRangeFromRows(rows);
   const fileDuplicateRowsCollapsed = Math.max(
     0,
     rows.length - dedupedSnapshots.length
+  );
+
+  const latestBySn = pickLatestRawBySn(rows);
+  rows.length = 0;
+  maybeGc();
+
+  const statDateRange = statDateRangeFromSnapshots(dedupedSnapshots);
+
+  await onProgress?.(
+    19,
+    `去重后 ${snapshotRowCount.toLocaleString()} 条快照，按设备分批写入…`
   );
 
   const byDevice = new Map<string, SnapshotWrite[]>();
@@ -148,6 +169,9 @@ async function importRawRows(
     list.push(snap);
     byDevice.set(snap.deviceSn, list);
   }
+  dedupedSnapshots.length = 0;
+  maybeGc();
+
   for (const list of byDevice.values()) {
     list.sort((a, b) => a.statDate.getTime() - b.statDate.getTime());
   }
@@ -165,6 +189,10 @@ async function importRawRows(
       })),
       skipDuplicates: true,
     });
+    if (i > 0 && i % (CREATE_CHUNK * 4) === 0) {
+      checkImportMemoryOrAbort();
+      await yieldImportTick();
+    }
   }
 
   const deviceSns = [...byDevice.keys()].sort();
@@ -177,15 +205,23 @@ async function importRawRows(
 
   const flushWriteBatch = async () => {
     if (writeBatch.length === 0) return;
+    checkImportMemoryOrAbort();
     const stats = await upsertSnapshotsBulk(
       writeBatch,
       importBatchId,
-      onProgress
+      onProgress,
+      async () => {
+        checkImportMemoryOrAbort();
+        maybeGc();
+        await yieldImportTick();
+      }
     );
     snapshotStats.created += stats.created;
     snapshotStats.updated += stats.updated;
     snapshotStats.duplicatesRemoved += stats.duplicatesRemoved;
     writeBatch = [];
+    maybeGc();
+    await yieldImportTick();
   };
 
   for (let i = 0; i < deviceSns.length; i++) {
@@ -211,11 +247,14 @@ async function importRawRows(
   }
   await flushWriteBatch();
 
+  checkImportMemoryOrAbort();
   const { createdDevices, updatedDevices } = await bulkUpdateDevicesFromRaw(
     latestBySn,
     importBatchId,
     onProgress
   );
+  latestBySn.clear();
+  maybeGc();
 
   await onProgress?.(88, "更新考核状态…");
   await recomputeXlvQualificationForDevices([...allSns], {
@@ -322,19 +361,6 @@ async function importRosterRows(rows: ParsedXlvRosterRow[], _importBatchId: stri
     unmatchedOperators: [] as string[],
     uniqueDevices: 0,
   };
-}
-
-function rssMb() {
-  return Math.round(process.memoryUsage().rss / 1024 / 1024);
-}
-
-function yieldImportTick() {
-  return new Promise<void>((resolve) => setImmediate(resolve));
-}
-
-function maybeGc() {
-  const gc = (globalThis as { gc?: () => void }).gc;
-  if (typeof gc === "function") gc();
 }
 
 async function importAssignmentRows(
@@ -578,11 +604,17 @@ export async function importXlvExcelFileFromPath(
   uploadedById: string,
   opts?: { onProgress?: XlvImportProgress }
 ): Promise<XlvImportResult> {
+  checkImportMemoryOrAbort();
   let buffer: Buffer | null = fs.readFileSync(filePath);
-  const parsed = parseXlvExcelBuffer(buffer, fileName);
-  buffer = null;
-  maybeGc();
-  return importParsedXlvExcel(parsed, fileName, uploadedById, opts);
+  try {
+    const parsed = parseXlvExcelBuffer(buffer, fileName);
+    buffer = null;
+    maybeGc();
+    return await importParsedXlvExcel(parsed, fileName, uploadedById, opts);
+  } finally {
+    buffer = null;
+    maybeGc();
+  }
 }
 
 async function importXlvExcelBuffer(
@@ -592,8 +624,10 @@ async function importXlvExcelBuffer(
   opts?: { onProgress?: XlvImportProgress }
 ): Promise<XlvImportResult> {
   const onProgress = opts?.onProgress;
+  checkImportMemoryOrAbort();
   await onProgress?.(16, "正在解析 Excel…");
   const parsed = parseXlvExcelBuffer(buffer, fileName);
+  maybeGc();
   return importParsedXlvExcel(parsed, fileName, uploadedById, opts);
 }
 
@@ -629,6 +663,7 @@ async function importParsedXlvExcel(
     },
   });
 
+  const totalParsedRows = parsed.rows.length;
   const rawRows = parsed.rows.filter((r) => r.format === "raw") as ParsedXlvRawRow[];
   const rosterRows = parsed.rows.filter((r) => r.format === "roster") as ParsedXlvRosterRow[];
   const assignmentRows = parsed.rows.filter(
@@ -641,32 +676,59 @@ async function importParsedXlvExcel(
   let importSummary: Partial<XlvImportSummary> = {};
 
   if (parsed.format === "raw") {
-    const result = await importRawRows(
-      rawRows,
-      importLog.id,
-      onProgress,
-      xlvChannelFromFileName(fileName)
-    );
-    snapshotRows = result.snapshotRows;
-    createdDevices = result.createdDevices;
-    updatedDevices = result.updatedDevices;
-    importSummary = {
-      statDateRange: result.statDateRange,
-      uniqueDevices: result.uniqueDevices,
-      snapshotsWritten: result.snapshotRows,
-      snapshotsCreated: result.snapshotStats.created,
-      snapshotsUpdated: result.snapshotStats.updated,
-      duplicateSnapshotsRemoved: result.snapshotStats.duplicatesRemoved,
-      fileDuplicateRowsCollapsed: result.fileDuplicateRowsCollapsed,
-      rosterRowsWritten: 0,
-      rosterCreated: 0,
-      rosterUpdated: 0,
-      uniqueOperators: 0,
-      devicesBackfilledFromRoster: 0,
-      managersInferredFromRoster: 0,
-      unmatchedManagers: [],
-      unmatchedOperators: [],
-    };
+    parsed.rows.length = 0;
+    maybeGc();
+    try {
+      const result = await importRawRows(
+        rawRows,
+        importLog.id,
+        onProgress,
+        xlvChannelFromFileName(fileName)
+      );
+      snapshotRows = result.snapshotRows;
+      createdDevices = result.createdDevices;
+      updatedDevices = result.updatedDevices;
+      importSummary = {
+        statDateRange: result.statDateRange,
+        uniqueDevices: result.uniqueDevices,
+        snapshotsWritten: result.snapshotRows,
+        snapshotsCreated: result.snapshotStats.created,
+        snapshotsUpdated: result.snapshotStats.updated,
+        duplicateSnapshotsRemoved: result.snapshotStats.duplicatesRemoved,
+        fileDuplicateRowsCollapsed: result.fileDuplicateRowsCollapsed,
+        rosterRowsWritten: 0,
+        rosterCreated: 0,
+        rosterUpdated: 0,
+        uniqueOperators: 0,
+        devicesBackfilledFromRoster: 0,
+        managersInferredFromRoster: 0,
+        unmatchedManagers: [],
+        unmatchedOperators: [],
+      };
+    } catch (err) {
+      const failMsg =
+        err instanceof XlvImportAbortedError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "导入失败，请重新上传。";
+      await db.importLog
+        .update({
+          where: { id: importLog.id },
+          data: {
+            status: "FAILED",
+            completedAt: new Date(),
+          },
+        })
+        .catch(() => undefined);
+      rawRows.length = 0;
+      maybeGc();
+      throw err instanceof XlvImportAbortedError
+        ? err
+        : new Error(failMsg);
+    } finally {
+      rawRows.length = 0;
+    }
   } else if (parsed.format === "roster") {
     const result = await importRosterRows(rosterRows, importLog.id);
     importSummary = {
@@ -727,7 +789,7 @@ async function importParsedXlvExcel(
     format: parsed.format,
     sheetName: parsed.sheetName,
     columns: parsed.meta?.columns ?? [],
-    rawRowsInFile: parsed.rows.length,
+    rawRowsInFile: totalParsedRows,
     uniqueDevices: importSummary.uniqueDevices ?? 0,
     statDateRange: importSummary.statDateRange,
     snapshotsWritten: importSummary.snapshotsWritten ?? 0,
@@ -763,15 +825,17 @@ async function importParsedXlvExcel(
     },
   });
 
+  maybeGc();
+
   return {
     importLogId: importLog.id,
     format: parsed.format,
-    totalRows: parsed.rows.length,
+    totalRows: totalParsedRows,
     importedRows,
     snapshotRows,
     createdDevices,
     updatedDevices,
-    skippedRows: parsed.rows.length - importedRows,
+    skippedRows: totalParsedRows - importedRows,
     sheetName: parsed.sheetName,
     status,
     errors: parsed.errors,
