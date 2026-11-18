@@ -19,6 +19,7 @@
 
 # production
 /build
+/scripts/xlv-parse-worker.mjs
 
 # misc
 .DS_Store

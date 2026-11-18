@@ -34,7 +34,7 @@ export function rssMb(): number {
   return Math.round(process.memoryUsage().rss / 1024 / 1024);
 }
 
-/** 先 GC 再读 RSS，供导入中的内存判断 */
+/** 先 GC 再读 RSS（辅助观测；中止判断须用 raw {@link rssMb}） */
 export function rssMbAfterGc(): number {
   maybeGc();
   return rssMb();
@@ -45,12 +45,17 @@ export function isImportMemoryOverLimit(rssMbValue: number): boolean {
 }
 
 export function checkImportMemoryOrAbort(): void {
-  const used = rssMbAfterGc();
+  const used = rssMb();
   if (isImportMemoryOverLimit(used)) {
     throw new XlvImportAbortedError(
       `内存占用过高（约 ${used}MB），${XLV_IMPORT_REUPLOAD_MSG}`
     );
   }
+}
+
+/** Import pipeline memory probe (no PII). */
+export function logImportMemoryRss(stage: string): void {
+  console.info(`[xlv-import] mem rssMb=${rssMb()} stage=${stage}`);
 }
 
 export function yieldImportTick(): Promise<void> {
