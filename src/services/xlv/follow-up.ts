@@ -25,6 +25,12 @@ import { attachXlvRelocations } from "@/services/xlv/relocation";
 import { attachXlvInProgressMonthProgress } from "@/services/xlv/assessment";
 import { attachXlvChannels } from "@/services/xlv/channel";
 import { withXlvHeavyGate } from "./xlv-heavy-gate";
+import {
+  checkImportMemoryOrAbort,
+  logImportMemoryRss,
+  maybeGc,
+  yieldImportTick,
+} from "@/services/import/xlv-import-memory";
 
 export type XlvFollowFilter = "pending" | "done" | "all";
 
@@ -69,11 +75,26 @@ export function shouldReopenXlvFollowUp(input: {
  * 新运营快照仍显示风险时，上一轮跟进失效并重新进入待跟进。
  * 已达标设备已取得结算资格，不重开；保留旧跟进内容供回看，新跟进会覆盖当前记录。
  */
-export async function reopenXlvFollowUpsAfterSnapshot(deviceSns: string[]) {
+export async function reopenXlvFollowUpsAfterSnapshot(
+  deviceSns: string[],
+  opts?: { importPhase?: boolean }
+) {
   const uniqueSns = [...new Set(deviceSns)];
   let reopened = 0;
+  const importPhase = opts?.importPhase === true;
+  let batchIndex = 0;
+
+  if (importPhase) {
+    checkImportMemoryOrAbort();
+    logImportMemoryRss("followup-start");
+  }
 
   for (let i = 0; i < uniqueSns.length; i += REOPEN_LOOKUP_CHUNK) {
+    batchIndex += 1;
+    if (importPhase) {
+      checkImportMemoryOrAbort();
+      logImportMemoryRss(`followup-chunk-${batchIndex}-before`);
+    }
     const rows = await db.xlvDeviceRecord.findMany({
       where: {
         deviceSn: { in: uniqueSns.slice(i, i + REOPEN_LOOKUP_CHUNK) },
@@ -104,6 +125,18 @@ export async function reopenXlvFollowUpsAfterSnapshot(deviceSns: string[]) {
       });
       reopened += result.count;
     }
+
+    if (importPhase) {
+      checkImportMemoryOrAbort();
+      logImportMemoryRss(`followup-chunk-${batchIndex}-done`);
+      maybeGc();
+      await yieldImportTick();
+    }
+  }
+
+  if (importPhase) {
+    checkImportMemoryOrAbort();
+    logImportMemoryRss("followup-done");
   }
 
   return reopened;

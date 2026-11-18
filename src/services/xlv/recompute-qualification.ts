@@ -10,7 +10,17 @@ import {
   buildXlvAssignedDeviceWhere,
   buildXlvRoleWhere,
 } from "@/services/xlv/xlv-scope";
-import { loadXlvSnapshotMap, xlvQualificationOf } from "@/services/xlv/assessment";
+import {
+  loadXlvSnapshotMap,
+  loadXlvSnapshotMapForQualification,
+  xlvQualificationOf,
+} from "@/services/xlv/assessment";
+import {
+  checkImportMemoryOrAbort,
+  logImportMemoryRss,
+  maybeGc,
+  yieldImportTick,
+} from "@/services/import/xlv-import-memory";
 
 export const XLV_QUALIFICATION_RULE_VERSION = "2026-10-natural-month";
 
@@ -84,14 +94,25 @@ export async function recomputeXlvQualificationForDevice(
 /** 导入后：仅重算本批涉及的设备（分批拉快照，按下界 firstTxnDate） */
 export async function recomputeXlvQualificationForDevices(
   deviceSns: string[],
-  opts?: { onProgress?: (done: number, total: number) => void | Promise<void> }
+  opts?: {
+    onProgress?: (done: number, total: number) => void | Promise<void>;
+    /** 原始表导入尾声：分批拉快照 + RSS 护栏 */
+    importPhase?: boolean;
+  }
 ) {
   const unique = [...new Set(deviceSns.filter(Boolean))];
   const total = unique.length;
-  const CHUNK = 80;
+  const DEVICE_CHUNK = 80;
+  const importPhase = opts?.importPhase === true;
 
-  for (let i = 0; i < unique.length; i += CHUNK) {
-    const slice = unique.slice(i, i + CHUNK);
+  if (importPhase) {
+    checkImportMemoryOrAbort();
+    logImportMemoryRss("qual-start");
+  }
+
+  let batchIndex = 0;
+  for (let i = 0; i < unique.length; i += DEVICE_CHUNK) {
+    const slice = unique.slice(i, i + DEVICE_CHUNK);
     const devices = await db.xlvDeviceRecord.findMany({
       where: { deviceSn: { in: slice } },
       select: DEVICE_QUAL_SELECT,
@@ -101,17 +122,31 @@ export async function recomputeXlvQualificationForDevices(
       continue;
     }
 
-    const earliestStart = devices.reduce<Date | undefined>((min, d) => {
-      const start = xlvAssessmentStartDate(d);
-      if (!start) return min;
-      if (!min || start < min) return start;
-      return min;
-    }, undefined);
+    batchIndex += 1;
+    if (importPhase) {
+      checkImportMemoryOrAbort();
+      logImportMemoryRss(`qual-chunk-${batchIndex}-before-fetch`);
+    }
 
-    const snapshotMap = await loadXlvSnapshotMap(
-      devices.map((d) => d.deviceSn),
-      earliestStart ? { statDateFrom: earliestStart } : undefined
-    );
+    const snapshotMap = importPhase
+      ? await loadXlvSnapshotMapForQualification(devices)
+      : await loadXlvSnapshotMap(
+          devices.map((d) => d.deviceSn),
+          (() => {
+            const earliestStart = devices.reduce<Date | undefined>((min, d) => {
+              const start = xlvAssessmentStartDate(d);
+              if (!start) return min;
+              if (!min || start < min) return min;
+              return min;
+            }, undefined);
+            return earliestStart ? { statDateFrom: earliestStart } : undefined;
+          })()
+        );
+
+    if (importPhase) {
+      checkImportMemoryOrAbort();
+      logImportMemoryRss(`qual-chunk-${batchIndex}-after-fetch`);
+    }
 
     const byStatus = new Map<XlvQualificationStatus, string[]>();
     for (const device of devices) {
@@ -121,6 +156,8 @@ export async function recomputeXlvQualificationForDevices(
       list.push(device.deviceSn);
       byStatus.set(status, list);
     }
+
+    snapshotMap.clear();
 
     const assessedAt = new Date();
     await Promise.all(
@@ -132,7 +169,19 @@ export async function recomputeXlvQualificationForDevices(
       )
     );
 
+    if (importPhase) {
+      checkImportMemoryOrAbort();
+      logImportMemoryRss(`qual-chunk-${batchIndex}-done`);
+      maybeGc();
+      await yieldImportTick();
+    }
+
     await opts?.onProgress?.(Math.min(i + slice.length, total), total);
+  }
+
+  if (importPhase) {
+    checkImportMemoryOrAbort();
+    logImportMemoryRss("qual-done");
   }
 }
 

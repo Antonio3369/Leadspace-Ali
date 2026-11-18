@@ -258,6 +258,7 @@ async function importRawRows(
   await flushWriteBatch();
 
   checkImportMemoryOrAbort();
+  logImportMemoryRss("post-snapshot-start");
   const { createdDevices, updatedDevices } = await bulkUpdateDevicesFromRaw(
     latestBySn,
     importBatchId,
@@ -268,6 +269,7 @@ async function importRawRows(
 
   await onProgress?.(88, "更新考核状态…");
   await recomputeXlvQualificationForDevices([...allSns], {
+    importPhase: true,
     onProgress: async (done, total) => {
       const pct = 88 + Math.round((done / Math.max(total, 1)) * 10);
       await onProgress?.(
@@ -276,11 +278,11 @@ async function importRawRows(
       );
     },
   });
-  await reopenXlvFollowUpsAfterSnapshot([...allSns]);
+  await reopenXlvFollowUpsAfterSnapshot([...allSns], { importPhase: true });
 
   if (channel) {
     await onProgress?.(99, `写入渠道「${channel}」…`);
-    await stampXlvDeviceChannel([...allSns], channel);
+    await stampXlvDeviceChannel([...allSns], channel, { importPhase: true });
   }
 
   return {

@@ -1,5 +1,11 @@
 import { db } from "@/lib/db";
 import {
+  checkImportMemoryOrAbort,
+  logImportMemoryRss,
+  maybeGc,
+  yieldImportTick,
+} from "@/services/import/xlv-import-memory";
+import {
   xlvChannelDisplay,
   xlvChannelLabel,
   type XlvChannelLabel,
@@ -10,10 +16,24 @@ const LOOKUP_CHUNK = 500;
 /** 运营原表导入后写入渠道；已有值会被本次文件名覆盖 */
 export async function stampXlvDeviceChannel(
   deviceSns: string[],
-  channel: XlvChannelLabel
+  channel: XlvChannelLabel,
+  opts?: { importPhase?: boolean }
 ) {
   const unique = [...new Set(deviceSns.filter(Boolean))];
+  const importPhase = opts?.importPhase === true;
+  let batchIndex = 0;
+
+  if (importPhase) {
+    checkImportMemoryOrAbort();
+    logImportMemoryRss("channel-start");
+  }
+
   for (let i = 0; i < unique.length; i += LOOKUP_CHUNK) {
+    batchIndex += 1;
+    if (importPhase) {
+      checkImportMemoryOrAbort();
+      logImportMemoryRss(`channel-chunk-${batchIndex}-before`);
+    }
     const chunk = unique.slice(i, i + LOOKUP_CHUNK);
     await db.xlvDeviceRecord.updateMany({
       where: { deviceSn: { in: chunk } },
@@ -23,6 +43,17 @@ export async function stampXlvDeviceChannel(
       where: { deviceSn: { in: chunk } },
       data: { channel },
     });
+    if (importPhase) {
+      checkImportMemoryOrAbort();
+      logImportMemoryRss(`channel-chunk-${batchIndex}-done`);
+      maybeGc();
+      await yieldImportTick();
+    }
+  }
+
+  if (importPhase) {
+    checkImportMemoryOrAbort();
+    logImportMemoryRss("channel-done");
   }
 }
 

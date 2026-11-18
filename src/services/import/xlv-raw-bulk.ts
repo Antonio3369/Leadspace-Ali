@@ -6,6 +6,8 @@ import type { ParsedXlvRawRow } from "@/services/import/xlv-excel-parser";
 import {
   checkImportMemoryOrAbort,
   logImportMemoryRss,
+  maybeGc,
+  yieldImportTick,
 } from "@/services/import/xlv-import-memory";
 import {
   buildIncomingSnapshotPairWhere,
@@ -58,6 +60,8 @@ type DeviceRawUpdate = {
 const SNAPSHOT_CHUNK = 500;
 const DEVICE_UPDATE_CHUNK = 150;
 const DEVICE_LOOKUP_CHUNK = 1000;
+/** 导入尾声：每批查库+构更新+写回，不常驻全量 working set */
+const DEVICE_RAW_PIPELINE_CHUNK = 150;
 
 function isoOrEmpty(value: Date | null | undefined) {
   return value ? value.toISOString() : "";
@@ -195,13 +199,17 @@ async function loadExistingDevices(deviceSns: string[]) {
 function buildDeviceUpdates(
   latestBySn: Map<string, ParsedXlvRawRow>,
   existingBySn: Map<string, ExistingDevice>,
-  importBatchId: string
+  importBatchId: string,
+  deviceSns?: string[]
 ) {
   const updates: DeviceRawUpdate[] = [];
   let createdDevices = 0;
   let updatedDevices = 0;
 
-  for (const row of latestBySn.values()) {
+  const sns = deviceSns ?? [...latestBySn.keys()];
+  for (const sn of sns) {
+    const row = latestBySn.get(sn);
+    if (!row) continue;
     const existing = existingBySn.get(row.deviceSn);
     const hadMetrics = Boolean(existing?.statDate);
     if (hadMetrics) updatedDevices += 1;
@@ -233,9 +241,14 @@ function buildDeviceUpdates(
   return { updates, createdDevices, updatedDevices };
 }
 
-async function bulkUpdateXlvDevices(rows: DeviceRawUpdate[]) {
+async function bulkUpdateXlvDevices(
+  rows: DeviceRawUpdate[],
+  onChunk?: (chunkIndex: number) => void | Promise<void>
+) {
   for (let i = 0; i < rows.length; i += DEVICE_UPDATE_CHUNK) {
     const chunk = rows.slice(i, i + DEVICE_UPDATE_CHUNK);
+    const chunkIndex = Math.floor(i / DEVICE_UPDATE_CHUNK) + 1;
+    checkImportMemoryOrAbort();
     await db.$executeRaw`
       UPDATE "XlvDeviceRecord" AS d
       SET
@@ -290,6 +303,9 @@ async function bulkUpdateXlvDevices(rows: DeviceRawUpdate[]) {
       )
       WHERE d."deviceSn" = v."deviceSn"::text
     `;
+    logImportMemoryRss(`device-update-sql-chunk-${chunkIndex}`);
+    checkImportMemoryOrAbort();
+    await onChunk?.(chunkIndex);
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
 }
@@ -300,15 +316,52 @@ export async function bulkUpdateDevicesFromRaw(
   onProgress?: XlvImportProgress
 ) {
   const deviceSns = [...latestBySn.keys()];
-  const existingBySn = await loadExistingDevices(deviceSns);
-  const { updates, createdDevices, updatedDevices } = buildDeviceUpdates(
-    latestBySn,
-    existingBySn,
-    importBatchId
+  let createdDevices = 0;
+  let updatedDevices = 0;
+
+  checkImportMemoryOrAbort();
+  logImportMemoryRss("device-update-start");
+  await onProgress?.(80, `更新设备最新状态 ${deviceSns.length.toLocaleString()} 台…`);
+
+  const totalBatches = Math.max(
+    1,
+    Math.ceil(deviceSns.length / DEVICE_RAW_PIPELINE_CHUNK)
   );
 
-  await onProgress?.(80, `更新设备最新状态 ${deviceSns.length.toLocaleString()} 台…`);
-  await bulkUpdateXlvDevices(updates);
+  for (let i = 0; i < deviceSns.length; i += DEVICE_RAW_PIPELINE_CHUNK) {
+    const batchIndex = Math.floor(i / DEVICE_RAW_PIPELINE_CHUNK) + 1;
+    const batchSns = deviceSns.slice(i, i + DEVICE_RAW_PIPELINE_CHUNK);
+    checkImportMemoryOrAbort();
+    logImportMemoryRss(`device-update-chunk-${batchIndex}-before`);
+
+    const existingBySn = await loadExistingDevices(batchSns);
+    const { updates, createdDevices: c, updatedDevices: u } = buildDeviceUpdates(
+      latestBySn,
+      existingBySn,
+      importBatchId,
+      batchSns
+    );
+    createdDevices += c;
+    updatedDevices += u;
+    existingBySn.clear();
+
+    await bulkUpdateXlvDevices(updates);
+    updates.length = 0;
+
+    checkImportMemoryOrAbort();
+    logImportMemoryRss(`device-update-chunk-${batchIndex}-done`);
+    maybeGc();
+    await yieldImportTick();
+
+    const pct = 80 + Math.round((batchIndex / totalBatches) * 7);
+    await onProgress?.(
+      Math.min(pct, 87),
+      `更新设备 ${Math.min(i + batchSns.length, deviceSns.length).toLocaleString()} / ${deviceSns.length.toLocaleString()} 台…`
+    );
+  }
+
+  checkImportMemoryOrAbort();
+  logImportMemoryRss("device-update-done");
   await onProgress?.(92, "设备状态写入完成");
 
   return { createdDevices, updatedDevices };
