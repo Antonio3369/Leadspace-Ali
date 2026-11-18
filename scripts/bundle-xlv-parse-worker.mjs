@@ -21,10 +21,15 @@ await esbuild.build({
   target: "node20",
   format: "esm",
   outfile,
-  packages: "external",
+  // Bundle npm deps (notably xlsx) so the standalone runner image needs no node_modules/xlsx.
+  packages: "bundle",
   alias: {
     "@": path.join(root, "src"),
+    // Prefer SheetJS ESM entry so esbuild does not wrap CJS dynamic require().
+    xlsx: path.join(root, "node_modules/xlsx/xlsx.mjs"),
   },
+  mainFields: ["module", "main"],
+  conditions: ["node", "import", "default"],
   logLevel: "info",
 });
 
