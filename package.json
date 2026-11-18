@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && npm run build:parse-worker",
+    "build:parse-worker": "node scripts/bundle-xlv-parse-worker.mjs",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "prisma generate",
@@ -21,7 +22,8 @@
     "backfill:sales-login": "tsx scripts/backfill-sales-login.ts",
     "dedupe:team-sales": "tsx scripts/dedupe-team-sales.ts",
     "deploy:bootstrap": "tsx scripts/deploy-bootstrap.ts",
-    "test:import-memory": "tsx --test src/services/import/xlv-import-memory.test.ts"
+    "test:import-memory": "tsx --test src/services/import/xlv-import-memory.test.ts",
+    "test:xlv-import": "npm run build:parse-worker && tsx --test src/services/import/xlv-import-memory.test.ts src/services/import/xlv-snapshot-upsert-lookup.test.ts src/services/import/xlv-excel-parse-subprocess.test.ts src/lib/xlv-stat-date.test.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
@@ -47,6 +49,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "^0.25.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "prisma": "^7.8.0",

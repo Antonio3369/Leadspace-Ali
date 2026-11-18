@@ -3,26 +3,22 @@ import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { normalizeXlvStatDate, xlvStatDateKey } from "@/lib/xlv-stat-date";
 import type { ParsedXlvRawRow } from "@/services/import/xlv-excel-parser";
+import {
+  checkImportMemoryOrAbort,
+  logImportMemoryRss,
+} from "@/services/import/xlv-import-memory";
+import {
+  buildIncomingSnapshotPairWhere,
+  incomingSnapshotsByKey,
+  indexExistingSnapshotIds,
+  type SnapshotWrite,
+} from "@/services/import/xlv-snapshot-upsert-lookup";
 
 function createId() {
   return `c${randomBytes(12).toString("hex")}`;
 }
 
-export type SnapshotWrite = {
-  deviceSn: string;
-  statDate: Date;
-  cumulativeUsers: number;
-  cumulativeTxns: number;
-  cumulativeAmount: number;
-  lastTxnDate: Date | null;
-  sleepDays: number;
-  isActivated: boolean;
-  firstTxnDate: Date | null;
-  dailyUsers: number;
-  dailyTxns: number;
-  dailyAmount: number;
-  importBatchId: string;
-};
+export type { SnapshotWrite } from "@/services/import/xlv-snapshot-upsert-lookup";
 
 export type XlvImportProgress = (
   progress: number,
@@ -97,27 +93,17 @@ export async function upsertSnapshotsBulk(
     const slice = snapshots.slice(i, i + SNAPSHOT_CHUNK);
     const chunkIndex = Math.floor(i / SNAPSHOT_CHUNK) + 1;
 
-    const incomingByKey = new Map<string, SnapshotWrite>();
-    for (const snap of slice) {
-      const statDate = normalizeXlvStatDate(snap.statDate);
-      const key = `${snap.deviceSn}::${xlvStatDateKey(statDate)}`;
-      incomingByKey.set(key, { ...snap, statDate, importBatchId });
-    }
+    const incomingByKey = incomingSnapshotsByKey(slice, importBatchId);
 
-    const sns = [...new Set(slice.map((s) => s.deviceSn))];
+    checkImportMemoryOrAbort();
     const existingRows = await db.xlvDeviceSnapshot.findMany({
-      where: { deviceSn: { in: sns } },
+      where: buildIncomingSnapshotPairWhere(incomingByKey),
       select: { id: true, deviceSn: true, statDate: true },
     });
+    checkImportMemoryOrAbort();
 
-    const existingIdsByKey = new Map<string, string[]>();
-    for (const row of existingRows) {
-      const key = `${row.deviceSn}::${xlvStatDateKey(row.statDate)}`;
-      if (!incomingByKey.has(key)) continue;
-      const ids = existingIdsByKey.get(key) ?? [];
-      ids.push(row.id);
-      existingIdsByKey.set(key, ids);
-    }
+    const existingIdsByKey = indexExistingSnapshotIds(existingRows);
+    existingRows.length = 0;
 
     const idsToDelete: string[] = [];
     let chunkCreated = 0;
@@ -146,6 +132,8 @@ export async function upsertSnapshotsBulk(
         where: { id: { in: idsToDelete } },
       });
     }
+    checkImportMemoryOrAbort();
+    idsToDelete.length = 0;
 
     await db.xlvDeviceSnapshot.createMany({
       data: [...incomingByKey.values()].map((snap) => ({
@@ -172,6 +160,9 @@ export async function upsertSnapshotsBulk(
       `写入快照 ${Math.min(i + slice.length, snapshots.length).toLocaleString()} / ${snapshots.length.toLocaleString()} 行…`
     );
 
+    incomingByKey.clear();
+    slice.length = 0;
+    logImportMemoryRss(`snapshot-chunk-${chunkIndex}`);
     await betweenChunks?.();
     await new Promise<void>((resolve) => setImmediate(resolve));
   }

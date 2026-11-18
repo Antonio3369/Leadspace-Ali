@@ -2,11 +2,11 @@ import { randomBytes } from "crypto";
 import fs from "fs";
 import { db } from "@/lib/db";
 import {
-  parseXlvExcelBuffer,
   type ParsedXlvAssignmentRow,
   type ParsedXlvRawRow,
   type ParsedXlvRosterRow,
 } from "@/services/import/xlv-excel-parser";
+import { parseXlvExcelBufferInChild } from "@/services/import/xlv-excel-parse-subprocess";
 import {
   isXlvManagerSelfSale,
   isXlvPlaceholderName,
@@ -49,6 +49,7 @@ import { recomputeXlvQualificationForDevices } from "@/services/xlv/recompute-qu
 import { syncInventoryFromSnAttribution } from "@/services/xlv/inventory/service";
 import {
   checkImportMemoryOrAbort,
+  logImportMemoryRss,
   maybeGc,
   rssMb,
   XlvImportAbortedError,
@@ -206,6 +207,7 @@ async function importRawRows(
   const flushWriteBatch = async () => {
     if (writeBatch.length === 0) return;
     checkImportMemoryOrAbort();
+    logImportMemoryRss("raw-write-batch-start");
     const stats = await upsertSnapshotsBulk(
       writeBatch,
       importBatchId,
@@ -221,6 +223,7 @@ async function importRawRows(
     snapshotStats.duplicatesRemoved += stats.duplicatesRemoved;
     writeBatch = [];
     maybeGc();
+    logImportMemoryRss("raw-write-batch-done");
     await yieldImportTick();
   };
 
@@ -232,8 +235,15 @@ async function importRawRows(
     );
     writeBatch.push(...enriched);
 
+    byDevice.delete(deviceSn);
+    deviceSnaps.length = 0;
+
     if (writeBatch.length >= 500) {
       await flushWriteBatch();
+    }
+
+    if (i > 0 && i % 20 === 0) {
+      checkImportMemoryOrAbort();
     }
 
     if (i > 0 && i % 80 === 0) {
@@ -607,7 +617,8 @@ export async function importXlvExcelFileFromPath(
   checkImportMemoryOrAbort();
   let buffer: Buffer | null = fs.readFileSync(filePath);
   try {
-    const parsed = parseXlvExcelBuffer(buffer, fileName);
+    checkImportMemoryOrAbort();
+    const parsed = await parseXlvExcelInChildWithBuffer(buffer, fileName);
     buffer = null;
     maybeGc();
     return await importParsedXlvExcel(parsed, fileName, uploadedById, opts);
@@ -615,6 +626,15 @@ export async function importXlvExcelFileFromPath(
     buffer = null;
     maybeGc();
   }
+}
+
+async function parseXlvExcelInChildWithBuffer(
+  buffer: Buffer,
+  fileName: string
+) {
+  const parsed = await parseXlvExcelBufferInChild(buffer, fileName);
+  logImportMemoryRss("parse-child-done");
+  return parsed;
 }
 
 async function importXlvExcelBuffer(
@@ -626,19 +646,20 @@ async function importXlvExcelBuffer(
   const onProgress = opts?.onProgress;
   checkImportMemoryOrAbort();
   await onProgress?.(16, "正在解析 Excel…");
-  const parsed = parseXlvExcelBuffer(buffer, fileName);
+  const parsed = await parseXlvExcelInChildWithBuffer(buffer, fileName);
   maybeGc();
   return importParsedXlvExcel(parsed, fileName, uploadedById, opts);
 }
 
 async function importParsedXlvExcel(
-  parsed: ReturnType<typeof parseXlvExcelBuffer>,
+  parsed: Awaited<ReturnType<typeof parseXlvExcelBufferInChild>>,
   fileName: string,
   uploadedById: string,
   opts?: { onProgress?: XlvImportProgress }
 ): Promise<XlvImportResult> {
   const onProgress = opts?.onProgress;
   await onProgress?.(18, `解析完成 ${parsed.rows.length.toLocaleString()} 行…`);
+  logImportMemoryRss("parse-parent-received");
   if (parsed.errors.length && parsed.rows.length === 0) {
     return {
       format: parsed.format,

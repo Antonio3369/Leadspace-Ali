@@ -6,8 +6,10 @@ import {
   tryAcquireImportLock,
 } from "@/lib/import-lock";
 import {
+  checkImportMemoryOrAbort,
   guardSheetDataRows,
   isImportMemoryOverLimit,
+  XlvImportAbortedError,
   XLV_IMPORT_MAX_DATA_ROWS,
   XLV_IMPORT_MEM_ABORT_MB,
 } from "@/services/import/xlv-import-memory";
@@ -47,6 +49,27 @@ describe("xlv-import-memory", () => {
   it("aborts only near cgroup limit", () => {
     assert.equal(isImportMemoryOverLimit(XLV_IMPORT_MEM_ABORT_MB), true);
     assert.equal(isImportMemoryOverLimit(1900), true);
+  });
+
+  it("aborts on raw RSS without running GC first", () => {
+    const orig = process.memoryUsage;
+    let gcCalled = false;
+    const priorGc = (globalThis as { gc?: () => void }).gc;
+    (globalThis as { gc?: () => void }).gc = () => {
+      gcCalled = true;
+    };
+    process.memoryUsage = () => ({
+      ...orig(),
+      rss: (XLV_IMPORT_MEM_ABORT_MB + 5) * 1024 * 1024,
+    });
+    try {
+      assert.throws(() => checkImportMemoryOrAbort(), XlvImportAbortedError);
+      assert.equal(gcCalled, false);
+    } finally {
+      process.memoryUsage = orig;
+      if (priorGc) (globalThis as { gc?: () => void }).gc = priorGc;
+      else delete (globalThis as { gc?: () => void }).gc;
+    }
   });
 });
 
