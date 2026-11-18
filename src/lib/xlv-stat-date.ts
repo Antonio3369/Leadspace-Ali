@@ -50,42 +50,76 @@ export function xlvCurrentChinaMonthDateRange(now = new Date()) {
   return xlvChinaMonthDateRange(y!, m!);
 }
 
+/** Excel 自定义日期格式里常见的「连字符」变体（如 U+2011），`Date.parse` 无法识别 */
+const XLV_DATE_SEP_LIKE = /[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE58\uFE63\uFF0D]/g;
+
+const XLV_EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30);
+
+function normalizeXlvDateSeparators(text: string): string {
+  return text.replace(XLV_DATE_SEP_LIKE, "-");
+}
+
+function xlvUtcCalendarDate(y: number, month: number, day: number): Date {
+  return new Date(Date.UTC(y, month - 1, day));
+}
+
+function parseXlvYmdFromText(text: string): Date | null {
+  const normalized = normalizeXlvDateSeparators(text);
+  const m = normalized.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return xlvUtcCalendarDate(y, month, day);
+}
+
+/** SheetJS `cellDates` 的 Date：按 Excel 序列日取整，不用时区格式化成日历日 */
+function parseXlvStatDateFromSheetJsDate(value: Date): Date | null {
+  const serial = (value.getTime() - XLV_EXCEL_EPOCH_MS) / 86400000;
+  if (!Number.isFinite(serial)) return null;
+  const parsed = XLSX.SSF.parse_date_code(Math.round(serial));
+  if (!parsed) return null;
+  return xlvUtcCalendarDate(parsed.y, parsed.m, parsed.d);
+}
+
 export function parseXlvStatDateFromCell(value: unknown): Date | null {
   if (value == null || value === "") return null;
 
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return normalizeXlvStatDate(value);
+    return parseXlvStatDateFromSheetJsDate(value);
   }
 
   if (typeof value === "number" && Number.isFinite(value)) {
     const parsed = XLSX.SSF.parse_date_code(value);
     if (parsed) {
-      return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
+      return xlvUtcCalendarDate(parsed.y, parsed.m, parsed.d);
     }
     const s = String(Math.trunc(value));
     if (/^\d{8}$/.test(s)) {
-      return new Date(
-        Date.UTC(
-          Number(s.slice(0, 4)),
-          Number(s.slice(4, 6)) - 1,
-          Number(s.slice(6, 8))
-        )
+      return xlvUtcCalendarDate(
+        Number(s.slice(0, 4)),
+        Number(s.slice(4, 6)),
+        Number(s.slice(6, 8))
       );
     }
   }
 
-  const s = String(value).replace(/^\t+|\t+$/g, "").trim();
+  const s = normalizeXlvDateSeparators(
+    String(value).replace(/^\t+|\t+$/g, "").trim()
+  );
   if (/^\d{8}$/.test(s)) {
-    return new Date(
-      Date.UTC(
-        Number(s.slice(0, 4)),
-        Number(s.slice(4, 6)) - 1,
-        Number(s.slice(6, 8))
-      )
+    return xlvUtcCalendarDate(
+      Number(s.slice(0, 4)),
+      Number(s.slice(4, 6)),
+      Number(s.slice(6, 8))
     );
   }
 
+  const ymd = parseXlvYmdFromText(s);
+  if (ymd) return ymd;
+
   const parsed = new Date(s);
   if (Number.isNaN(parsed.getTime())) return null;
-  return normalizeXlvStatDate(parsed);
+  return parseXlvStatDateFromSheetJsDate(parsed);
 }
