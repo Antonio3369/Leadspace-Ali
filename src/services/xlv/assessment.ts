@@ -11,6 +11,13 @@ import {
   dedupeXlvSnapshotsByStatDate,
   enrichXlvSnapshotDailyMetrics,
 } from "@/services/xlv/snapshot-daily";
+import { planQualificationSnapshotBatches } from "@/services/xlv/qualification-snapshot-batch";
+
+export type { QualificationSnapshotBatch } from "@/services/xlv/qualification-snapshot-batch";
+export {
+  planQualificationSnapshotBatches,
+  QUALIFICATION_IMPORT_DEVICE_BATCH,
+} from "@/services/xlv/qualification-snapshot-batch";
 
 export type { XlvQualificationDetail, XlvQualificationStatus };
 
@@ -177,6 +184,36 @@ export async function loadXlvSnapshotMapAfterFollowUp(
       const part = await fetchSnapshotChunk(
         chunk.map((d) => d.deviceSn),
         chunk[0]!.followUpAt
+      );
+      for (const [deviceSn, list] of part) {
+        map.set(deviceSn, list);
+      }
+    }
+    return map;
+  };
+
+  return enqueueSnapshotLoad(run);
+}
+
+/**
+ * 考核重算专用快照加载：与 loadXlvSnapshotMapAfterFollowUp 同思路，
+ * 按考核起点分批拉取，缩短每批历史跨度。
+ */
+export async function loadXlvSnapshotMapForQualification(
+  devices: Array<XlvDeviceQualificationInput>
+): Promise<Map<string, XlvSnapshotRow[]>> {
+  if (devices.length === 0) {
+    return new Map<string, XlvSnapshotRow[]>();
+  }
+
+  const batches = planQualificationSnapshotBatches(devices);
+  const run = async () => {
+    const map = new Map<string, XlvSnapshotRow[]>();
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i]!;
+      const part = await fetchSnapshotChunk(
+        batch.deviceSns,
+        batch.statDateFrom
       );
       for (const [deviceSn, list] of part) {
         map.set(deviceSn, list);
